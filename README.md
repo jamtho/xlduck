@@ -27,49 +27,51 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 
 | Function | Description |
 |----------|-------------|
-| `=DuckVersion()` | Returns DuckDB version |
-| `=DuckQuery(sql, ...)` | Execute SQL, return single value |
-| `=DuckQueryArray(sql, ...)` | Execute SQL, return array with headers |
-| `=DuckQueryLazy(sql)` | Execute SQL, store result, return handle |
+| `=DuckQuery(sql, ...)` | Execute SQL, return a handle |
+| `=DuckQueryOut(handle)` | Output a handle as a spilled array |
 | `=DuckExecute(sql)` | Execute DDL/DML statements |
+| `=DuckVersion()` | Returns DuckDB version |
 
 ## Examples
 
-### Basic Queries
+### Basic Usage
 
 ```excel
-=DuckQuery("SELECT 42 * 2")
-→ 84
+A1: =DuckQuery("SELECT * FROM range(5)")
+→ duck://t/1
 
-=DuckQueryArray("SELECT * FROM range(3)")
+A2: =DuckQueryOut(A1)
 → | range |
   | 0     |
   | 1     |
   | 2     |
-
-=DuckExecute("CREATE TABLE test(id INT, name VARCHAR)")
-→ OK (0 rows affected)
-```
-
-### Lazy Evaluation with Handles
-
-Store intermediate results and reference them in downstream queries:
-
-```excel
-A1: =DuckQueryLazy("SELECT * FROM range(5)")
-→ duck://t/1
-
-A2: =DuckQuery("SELECT SUM(range) FROM :src", "src", A1)
-→ 10
-
-A3: =DuckQueryArray("SELECT * FROM :data WHERE range > 2", "data", A1)
-→ | range |
   | 3     |
   | 4     |
 ```
 
-Parameters use `:name` placeholders with name/value pairs (up to 4 pairs supported):
+### Chaining Queries with Handles
+
+Store intermediate results and reference them in downstream queries:
 
 ```excel
-=DuckQuery("SELECT * FROM :t1 JOIN :t2 ON ...", "t1", A1, "t2", B1)
+A1: =DuckQuery("SELECT * FROM range(10)")
+→ duck://t/1
+
+B1: =DuckQuery("SELECT * FROM :src WHERE range > 5", "src", A1)
+→ duck://t/2
+
+C1: =DuckQuery("SELECT SUM(range) AS total FROM :data", "data", B1)
+→ duck://t/3
+
+D1: =DuckQueryOut(C1)
+→ | total |
+  | 30    |
+```
+
+### Parameter Binding
+
+Use `:name` placeholders with name/value pairs (up to 4 pairs):
+
+```excel
+=DuckQuery("SELECT * FROM :t1 JOIN :t2 ON t1.id = t2.id", "t1", A1, "t2", B1)
 ```

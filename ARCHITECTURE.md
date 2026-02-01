@@ -22,7 +22,7 @@ Handles are displayed in cells and can be passed to other functions as table ref
 
 ### Result Storage
 
-Query results from `DuckQueryLazy` are stored in .NET memory, not as DuckDB tables. This allows users to create many intermediate results without polluting DuckDB's catalog.
+Query results from `DuckQuery` are stored in .NET memory, not as DuckDB tables. This allows users to create many intermediate results without polluting DuckDB's catalog.
 
 Storage structure:
 ```csharp
@@ -49,10 +49,10 @@ Parameters are passed as name/value pairs after the SQL string.
 
 ## Data Flow
 
-### Lazy Query (storing results)
+### Query Execution
 
 ```
-DuckQueryLazy("SELECT ...")
+DuckQuery("SELECT ...")
     → Execute in DuckDB
     → Read results into .NET memory
     → Generate handle
@@ -60,10 +60,10 @@ DuckQueryLazy("SELECT ...")
     → Return handle to cell
 ```
 
-### Query with References (consuming stored results)
+### Query with References
 
 ```
-DuckQuery("SELECT * FROM :src", "src", "duck://t/1234")
+DuckQuery("SELECT * FROM :src", "src", "duck://t/1")
     → Parse SQL for :placeholders
     → For each placeholder:
         → Look up handle in storage
@@ -71,7 +71,16 @@ DuckQuery("SELECT * FROM :src", "src", "duck://t/1234")
         → Replace :name with temp table name
     → Execute query in DuckDB
     → Drop temp tables
-    → Return results
+    → Store new result, return new handle
+```
+
+### Materialization
+
+```
+DuckQueryOut("duck://t/1")
+    → Look up handle in storage
+    → Convert to Excel array with headers
+    → Return as spilled array
 ```
 
 ### Why Temp Tables?
@@ -91,11 +100,12 @@ For typical spreadsheet use cases (thousands of rows, not millions), this overhe
 
 | Function | Purpose |
 |----------|---------|
-| `DuckQuery(sql, [n1, v1, n2, v2, n3, v3, n4, v4])` | Execute SQL, return single value. Up to 4 `:name` placeholders. |
-| `DuckQueryArray(sql, [n1, v1, ...])` | Execute SQL, return array with headers. Up to 4 `:name` placeholders. |
-| `DuckQueryLazy(sql)` | Execute SQL, store results, return handle. |
+| `DuckQuery(sql, [n1, v1, n2, v2, n3, v3, n4, v4])` | Execute SQL, return handle. Up to 4 `:name` placeholders. |
+| `DuckQueryOut(handle)` | Output stored result as spilled array with headers. |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
 | `DuckVersion()` | Return DuckDB version |
+
+All queries return handles. Use `DuckQueryOut` to materialize results to the sheet.
 
 ## Known Issues and Workarounds
 

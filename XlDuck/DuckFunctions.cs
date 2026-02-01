@@ -22,65 +22,8 @@ public static class DuckFunctions
         return _connection;
     }
 
-    [ExcelFunction(Description = "Test function - returns Hello")]
-    public static string XlDuckHello()
-    {
-        return "Hello from XlDuck!";
-    }
-
-    [ExcelFunction(Description = "Get the DuckDB version")]
-    public static string DuckVersion()
-    {
-        try
-        {
-            var conn = GetConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT version()";
-            return cmd.ExecuteScalar()?.ToString() ?? "Unknown";
-        }
-        catch (Exception ex)
-        {
-            return $"#ERROR: {ex.Message}";
-        }
-    }
-
-    [ExcelFunction(Description = "Execute a DuckDB SQL query and return the first result. Use :name placeholders with name/value pairs.")]
+    [ExcelFunction(Description = "Execute a DuckDB SQL query and return a handle. Use :name placeholders with name/value pairs.")]
     public static object DuckQuery(
-        [ExcelArgument(Description = "SQL query with optional :name placeholders")] string sql,
-        [ExcelArgument(Description = "First parameter name")] object name1 = null!,
-        [ExcelArgument(Description = "First parameter value")] object value1 = null!,
-        [ExcelArgument(Description = "Second parameter name")] object name2 = null!,
-        [ExcelArgument(Description = "Second parameter value")] object value2 = null!,
-        [ExcelArgument(Description = "Third parameter name")] object name3 = null!,
-        [ExcelArgument(Description = "Third parameter value")] object value3 = null!,
-        [ExcelArgument(Description = "Fourth parameter name")] object name4 = null!,
-        [ExcelArgument(Description = "Fourth parameter value")] object value4 = null!)
-    {
-        try
-        {
-            var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
-            var (resolvedSql, tempTables) = ResolveParameters(sql, args);
-            try
-            {
-                var conn = GetConnection();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = resolvedSql;
-                var result = cmd.ExecuteScalar();
-                return ConvertToExcelValue(result);
-            }
-            finally
-            {
-                CleanupTempTables(tempTables);
-            }
-        }
-        catch (Exception ex)
-        {
-            return $"#ERROR: {ex.Message}";
-        }
-    }
-
-    [ExcelFunction(Description = "Execute a DuckDB SQL query and return results as an array. Use :name placeholders with name/value pairs.")]
-    public static object[,] DuckQueryArray(
         [ExcelArgument(Description = "SQL query with optional :name placeholders")] string sql,
         [ExcelArgument(Description = "First parameter name")] object name1 = null!,
         [ExcelArgument(Description = "First parameter value")] object value1 = null!,
@@ -102,40 +45,30 @@ public static class DuckFunctions
                 cmd.CommandText = resolvedSql;
                 using var reader = cmd.ExecuteReader();
 
-                var rows = new List<object[]>();
                 var fieldCount = reader.FieldCount;
+                var columnNames = new string[fieldCount];
+                var columnTypes = new Type[fieldCount];
 
-                var headers = new object[fieldCount];
                 for (int i = 0; i < fieldCount; i++)
                 {
-                    headers[i] = reader.GetName(i);
+                    columnNames[i] = reader.GetName(i);
+                    columnTypes[i] = reader.GetFieldType(i);
                 }
-                rows.Add(headers);
 
+                var rows = new List<object?[]>();
                 while (reader.Read())
                 {
-                    var row = new object[fieldCount];
+                    var row = new object?[fieldCount];
                     for (int i = 0; i < fieldCount; i++)
                     {
-                        row[i] = reader.IsDBNull(i) ? ExcelEmpty.Value : ConvertToExcelValue(reader.GetValue(i));
+                        row[i] = reader.IsDBNull(i) ? null : reader.GetValue(i);
                     }
                     rows.Add(row);
                 }
 
-                if (rows.Count == 1)
-                {
-                    return new object[1, fieldCount];
-                }
-
-                var result = new object[rows.Count, fieldCount];
-                for (int i = 0; i < rows.Count; i++)
-                {
-                    for (int j = 0; j < fieldCount; j++)
-                    {
-                        result[i, j] = rows[i][j];
-                    }
-                }
-                return result;
+                var storedResult = new StoredResult(columnNames, columnTypes, rows);
+                var handle = ResultStore.Store(storedResult);
+                return handle;
             }
             finally
             {
@@ -144,49 +77,53 @@ public static class DuckFunctions
         }
         catch (Exception ex)
         {
-            return new object[,] { { $"#ERROR: {ex.Message}" } };
+            return $"#ERROR: {ex.Message}";
         }
     }
 
-    [ExcelFunction(Description = "Execute a DuckDB SQL query, store results, and return a handle for later reference.")]
-    public static object DuckQueryLazy(
-        [ExcelArgument(Description = "SQL query")] string sql)
+    [ExcelFunction(Description = "Output a query result as a spilled array with headers.")]
+    public static object[,] DuckQueryOut(
+        [ExcelArgument(Description = "Handle from DuckQuery (e.g. duck://t/1)")] string handle)
     {
         try
         {
-            var conn = GetConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = sql;
-            using var reader = cmd.ExecuteReader();
-
-            var fieldCount = reader.FieldCount;
-            var columnNames = new string[fieldCount];
-            var columnTypes = new Type[fieldCount];
-
-            for (int i = 0; i < fieldCount; i++)
+            var stored = ResultStore.Get(handle);
+            if (stored == null)
             {
-                columnNames[i] = reader.GetName(i);
-                columnTypes[i] = reader.GetFieldType(i);
+                return new object[,] { { $"#ERROR: Handle not found: {handle}" } };
             }
 
-            var rows = new List<object?[]>();
-            while (reader.Read())
+            var fieldCount = stored.ColumnNames.Length;
+            var rowCount = stored.Rows.Count;
+
+            if (fieldCount == 0)
             {
-                var row = new object?[fieldCount];
-                for (int i = 0; i < fieldCount; i++)
+                return new object[,] { { "#ERROR: No columns" } };
+            }
+
+            var result = new object[rowCount + 1, fieldCount];
+
+            // Header row
+            for (int j = 0; j < fieldCount; j++)
+            {
+                result[0, j] = stored.ColumnNames[j];
+            }
+
+            // Data rows
+            for (int i = 0; i < rowCount; i++)
+            {
+                var row = stored.Rows[i];
+                for (int j = 0; j < fieldCount; j++)
                 {
-                    row[i] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                    result[i + 1, j] = ConvertToExcelValue(row[j]);
                 }
-                rows.Add(row);
             }
 
-            var storedResult = new StoredResult(columnNames, columnTypes, rows);
-            var handle = ResultStore.Store(storedResult);
-            return handle;
+            return result;
         }
         catch (Exception ex)
         {
-            return $"#ERROR: {ex.Message}";
+            return new object[,] { { $"#ERROR: {ex.Message}" } };
         }
     }
 
@@ -201,6 +138,22 @@ public static class DuckFunctions
             cmd.CommandText = sql;
             var rowsAffected = cmd.ExecuteNonQuery();
             return $"OK ({rowsAffected} rows affected)";
+        }
+        catch (Exception ex)
+        {
+            return $"#ERROR: {ex.Message}";
+        }
+    }
+
+    [ExcelFunction(Description = "Get the DuckDB version")]
+    public static string DuckVersion()
+    {
+        try
+        {
+            var conn = GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT version()";
+            return cmd.ExecuteScalar()?.ToString() ?? "Unknown";
         }
         catch (Exception ex)
         {
