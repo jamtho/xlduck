@@ -28,11 +28,14 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | Function | Description |
 |----------|-------------|
 | `=DuckVersion()` | Returns DuckDB version |
-| `=DuckQuery("SELECT 1+1")` | Execute SQL, return single value |
-| `=DuckQueryArray("SELECT * FROM range(5)")` | Execute SQL, return array with headers |
-| `=DuckExecute("CREATE TABLE t(x INT)")` | Execute DDL/DML statements |
+| `=DuckQuery(sql, ...)` | Execute SQL, return single value |
+| `=DuckQueryArray(sql, ...)` | Execute SQL, return array with headers |
+| `=DuckQueryLazy(sql)` | Execute SQL, store result, return handle |
+| `=DuckExecute(sql)` | Execute DDL/DML statements |
 
 ## Examples
+
+### Basic Queries
 
 ```excel
 =DuckQuery("SELECT 42 * 2")
@@ -46,4 +49,27 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 
 =DuckExecute("CREATE TABLE test(id INT, name VARCHAR)")
 → OK (0 rows affected)
+```
+
+### Lazy Evaluation with Handles
+
+Store intermediate results and reference them in downstream queries:
+
+```excel
+A1: =DuckQueryLazy("SELECT * FROM range(5)")
+→ duck://t/1
+
+A2: =DuckQuery("SELECT SUM(range) FROM :src", "src", A1)
+→ 10
+
+A3: =DuckQueryArray("SELECT * FROM :data WHERE range > 2", "data", A1)
+→ | range |
+  | 3     |
+  | 4     |
+```
+
+Parameters use `:name` placeholders with name/value pairs (up to 4 pairs supported):
+
+```excel
+=DuckQuery("SELECT * FROM :t1 JOIN :t2 ON ...", "t1", A1, "t2", B1)
 ```
