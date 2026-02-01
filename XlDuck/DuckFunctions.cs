@@ -285,7 +285,7 @@ public static class DuckFunctions
     private static object ConvertToExcelValue(object? value)
     {
         if (value == null || value == DBNull.Value)
-            return ExcelEmpty.Value;
+            return "";  // Empty string displays as blank in spilled arrays
 
         // Handle BigInteger (used for HUGEINT)
         if (value is System.Numerics.BigInteger bigInt)

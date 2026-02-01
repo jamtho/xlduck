@@ -29,8 +29,39 @@ XlDuck/
 ## Development Workflow
 
 - Build: `dotnet build` from XlDuck directory
-- Test: Open XlDuck-AddIn64.xll directly (launches Excel with add-in)
+- Test: Run `tests/Run-Tests.ps1` (requires Excel with add-in loaded)
 - The 64-bit add-in includes native DuckDB; 32-bit does not
+
+## Testing
+
+### Automated Tests
+
+Tests use PowerShell COM automation to interact with Excel. Run:
+
+```powershell
+# First, launch Excel with the add-in
+Start-Process "XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll"
+
+# Then run tests (after dismissing any security dialogs)
+powershell -ExecutionPolicy Bypass -File tests/Run-Tests.ps1
+```
+
+### Key Testing Notes
+
+1. **Use `.Formula2` not `.Formula`** when writing formulas via COM. `.Formula` adds the `@` implicit intersection operator which prevents dynamic array spilling.
+
+2. **xl.exe (xl-cli) may not find Excel via ROT** - use direct PowerShell COM instead:
+   ```powershell
+   $excel = [Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application")
+   $sheet = $excel.ActiveWorkbook.ActiveSheet
+   ```
+
+3. **Security dialogs block automation** - dismiss the unsigned add-in warning manually before running tests.
+
+4. **Excel must have a workbook open** - create one via COM if needed:
+   ```powershell
+   $excel.Workbooks.Add() | Out-Null
+   ```
 
 ## DuckDB Notes
 
