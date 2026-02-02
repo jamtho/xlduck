@@ -84,12 +84,12 @@ function Test-DuckQueryBasic {
     # Test 1: Simple query returns handle
     Set-Formula "A1" '=DuckQuery("SELECT 1 as num")'
     $handle = Get-CellValue "A1"
-    Write-TestResult "Returns handle format" ($handle -match "^duck://t/\d+$") "Got: $handle"
+    Write-TestResult "Returns handle format" ($handle -match "^duck://t/\d+\|\d+x\d+$") "Got: $handle"
 
     # Test 2: range() function works
     Set-Formula "B1" '=DuckQuery("SELECT * FROM range(5)")'
     $handle2 = Get-CellValue "B1"
-    Write-TestResult "range() query works" ($handle2 -match "^duck://t/\d+$") "Got: $handle2"
+    Write-TestResult "range() query works" ($handle2 -match "^duck://t/\d+\|\d+x\d+$") "Got: $handle2"
 }
 
 function Test-DuckOut {

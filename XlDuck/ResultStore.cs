@@ -32,28 +32,39 @@ public static class ResultStore
     private static long _nextId = 1;
 
     /// <summary>
-    /// Store a result and return its handle.
+    /// Store a result and return its handle (with dimensions).
     /// </summary>
     public static string Store(StoredResult result)
     {
         lock (_lock)
         {
             var id = _nextId++;
-            var handle = $"duck://t/{id}";
-            _results[handle] = result;
-            return handle;
+            var baseHandle = $"duck://t/{id}";
+            _results[baseHandle] = result;
+            // Return handle with dimensions: duck://t/123|10x4
+            return $"{baseHandle}|{result.Rows.Count}x{result.ColumnNames.Length}";
         }
     }
 
     /// <summary>
-    /// Retrieve a stored result by handle.
+    /// Retrieve a stored result by handle (strips dimension suffix if present).
     /// </summary>
     public static StoredResult? Get(string handle)
     {
         lock (_lock)
         {
-            return _results.TryGetValue(handle, out var result) ? result : null;
+            var baseHandle = GetBaseHandle(handle);
+            return _results.TryGetValue(baseHandle, out var result) ? result : null;
         }
+    }
+
+    /// <summary>
+    /// Strip dimension suffix from handle (duck://t/123|10x4 -> duck://t/123).
+    /// </summary>
+    private static string GetBaseHandle(string handle)
+    {
+        var pipeIndex = handle.IndexOf('|');
+        return pipeIndex >= 0 ? handle[..pipeIndex] : handle;
     }
 
     /// <summary>
