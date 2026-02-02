@@ -6,6 +6,8 @@ namespace XlDuck;
 
 public static class DuckFunctions
 {
+    private const string Version = "0.1";
+
     private static DuckDBConnection? _connection;
     private static readonly object _connLock = new();
 
@@ -20,6 +22,28 @@ public static class DuckFunctions
             }
         }
         return _connection;
+    }
+
+    [ExcelFunction(Description = "Get the XlDuck add-in version")]
+    public static string DuckVersion()
+    {
+        return Version;
+    }
+
+    [ExcelFunction(Description = "Get the DuckDB library version")]
+    public static string DuckLibraryVersion()
+    {
+        try
+        {
+            var conn = GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT version()";
+            return cmd.ExecuteScalar()?.ToString() ?? "Unknown";
+        }
+        catch (Exception ex)
+        {
+            return $"#ERROR: {ex.Message}";
+        }
     }
 
     [ExcelFunction(Description = "Execute a DuckDB SQL query and return a handle. Use :name placeholders with name/value pairs.")]
@@ -37,43 +61,7 @@ public static class DuckFunctions
         try
         {
             var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
-            var (resolvedSql, tempTables) = ResolveParameters(sql, args);
-            try
-            {
-                var conn = GetConnection();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = resolvedSql;
-                using var reader = cmd.ExecuteReader();
-
-                var fieldCount = reader.FieldCount;
-                var columnNames = new string[fieldCount];
-                var columnTypes = new Type[fieldCount];
-
-                for (int i = 0; i < fieldCount; i++)
-                {
-                    columnNames[i] = reader.GetName(i);
-                    columnTypes[i] = reader.GetFieldType(i);
-                }
-
-                var rows = new List<object?[]>();
-                while (reader.Read())
-                {
-                    var row = new object?[fieldCount];
-                    for (int i = 0; i < fieldCount; i++)
-                    {
-                        row[i] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                    }
-                    rows.Add(row);
-                }
-
-                var storedResult = new StoredResult(columnNames, columnTypes, rows);
-                var handle = ResultStore.Store(storedResult);
-                return handle;
-            }
-            finally
-            {
-                CleanupTempTables(tempTables);
-            }
+            return ExecuteQueryAndStore(sql, args);
         }
         catch (Exception ex)
         {
@@ -81,8 +69,8 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Output a query result as a spilled array with headers.")]
-    public static object[,] DuckQueryOut(
+    [ExcelFunction(Description = "Output a handle as a spilled array with headers.")]
+    public static object[,] DuckOut(
         [ExcelArgument(Description = "Handle from DuckQuery (e.g. duck://t/1)")] string handle)
     {
         try
@@ -92,34 +80,42 @@ public static class DuckFunctions
             {
                 return new object[,] { { $"#ERROR: Handle not found: {handle}" } };
             }
+            return StoredResultToArray(stored);
+        }
+        catch (Exception ex)
+        {
+            return new object[,] { { $"#ERROR: {ex.Message}" } };
+        }
+    }
 
-            var fieldCount = stored.ColumnNames.Length;
-            var rowCount = stored.Rows.Count;
+    [ExcelFunction(Description = "Execute a DuckDB SQL query and output results as a spilled array. Use :name placeholders with name/value pairs.")]
+    public static object[,] DuckQueryOut(
+        [ExcelArgument(Description = "SQL query with optional :name placeholders")] string sql,
+        [ExcelArgument(Description = "First parameter name")] object name1 = null!,
+        [ExcelArgument(Description = "First parameter value")] object value1 = null!,
+        [ExcelArgument(Description = "Second parameter name")] object name2 = null!,
+        [ExcelArgument(Description = "Second parameter value")] object value2 = null!,
+        [ExcelArgument(Description = "Third parameter name")] object name3 = null!,
+        [ExcelArgument(Description = "Third parameter value")] object value3 = null!,
+        [ExcelArgument(Description = "Fourth parameter name")] object name4 = null!,
+        [ExcelArgument(Description = "Fourth parameter value")] object value4 = null!)
+    {
+        try
+        {
+            var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
+            var handle = ExecuteQueryAndStore(sql, args);
 
-            if (fieldCount == 0)
+            if (handle.StartsWith("#ERROR"))
             {
-                return new object[,] { { "#ERROR: No columns" } };
+                return new object[,] { { handle } };
             }
 
-            var result = new object[rowCount + 1, fieldCount];
-
-            // Header row
-            for (int j = 0; j < fieldCount; j++)
+            var stored = ResultStore.Get(handle);
+            if (stored == null)
             {
-                result[0, j] = stored.ColumnNames[j];
+                return new object[,] { { $"#ERROR: Handle not found: {handle}" } };
             }
-
-            // Data rows
-            for (int i = 0; i < rowCount; i++)
-            {
-                var row = stored.Rows[i];
-                for (int j = 0; j < fieldCount; j++)
-                {
-                    result[i + 1, j] = ConvertToExcelValue(row[j]);
-                }
-            }
-
-            return result;
+            return StoredResultToArray(stored);
         }
         catch (Exception ex)
         {
@@ -145,20 +141,81 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Get the DuckDB version")]
-    public static string DuckVersion()
+    /// <summary>
+    /// Execute a query, store the result, and return the handle.
+    /// </summary>
+    private static string ExecuteQueryAndStore(string sql, object[] args)
     {
+        var (resolvedSql, tempTables) = ResolveParameters(sql, args);
         try
         {
             var conn = GetConnection();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT version()";
-            return cmd.ExecuteScalar()?.ToString() ?? "Unknown";
+            cmd.CommandText = resolvedSql;
+            using var reader = cmd.ExecuteReader();
+
+            var fieldCount = reader.FieldCount;
+            var columnNames = new string[fieldCount];
+            var columnTypes = new Type[fieldCount];
+
+            for (int i = 0; i < fieldCount; i++)
+            {
+                columnNames[i] = reader.GetName(i);
+                columnTypes[i] = reader.GetFieldType(i);
+            }
+
+            var rows = new List<object?[]>();
+            while (reader.Read())
+            {
+                var row = new object?[fieldCount];
+                for (int i = 0; i < fieldCount; i++)
+                {
+                    row[i] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                }
+                rows.Add(row);
+            }
+
+            var storedResult = new StoredResult(columnNames, columnTypes, rows);
+            return ResultStore.Store(storedResult);
         }
-        catch (Exception ex)
+        finally
         {
-            return $"#ERROR: {ex.Message}";
+            CleanupTempTables(tempTables);
         }
+    }
+
+    /// <summary>
+    /// Convert a stored result to an Excel array with headers.
+    /// </summary>
+    private static object[,] StoredResultToArray(StoredResult stored)
+    {
+        var fieldCount = stored.ColumnNames.Length;
+        var rowCount = stored.Rows.Count;
+
+        if (fieldCount == 0)
+        {
+            return new object[,] { { "#ERROR: No columns" } };
+        }
+
+        var result = new object[rowCount + 1, fieldCount];
+
+        // Header row
+        for (int j = 0; j < fieldCount; j++)
+        {
+            result[0, j] = stored.ColumnNames[j];
+        }
+
+        // Data rows
+        for (int i = 0; i < rowCount; i++)
+        {
+            var row = stored.Rows[i];
+            for (int j = 0; j < fieldCount; j++)
+            {
+                result[i + 1, j] = ConvertToExcelValue(row[j]);
+            }
+        }
+
+        return result;
     }
 
     /// <summary>

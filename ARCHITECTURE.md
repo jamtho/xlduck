@@ -77,7 +77,7 @@ DuckQuery("SELECT * FROM :src", "src", "duck://t/1")
 ### Materialization
 
 ```
-DuckQueryOut("duck://t/1")
+DuckOut("duck://t/1")
     → Look up handle in storage
     → Convert to Excel array with headers
     → Return as spilled array
@@ -100,12 +100,14 @@ For typical spreadsheet use cases (thousands of rows, not millions), this overhe
 
 | Function | Purpose |
 |----------|---------|
-| `DuckQuery(sql, [n1, v1, n2, v2, n3, v3, n4, v4])` | Execute SQL, return handle. Up to 4 `:name` placeholders. |
-| `DuckQueryOut(handle)` | Output stored result as spilled array with headers. |
+| `DuckQuery(sql, [n1, v1, ...])` | Execute SQL, return handle. Up to 4 `:name` placeholders. |
+| `DuckOut(handle)` | Output stored result as spilled array with headers. |
+| `DuckQueryOut(sql, [n1, v1, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
-| `DuckVersion()` | Return DuckDB version |
+| `DuckVersion()` | Return add-in version (0.1) |
+| `DuckLibraryVersion()` | Return DuckDB library version |
 
-All queries return handles. Use `DuckQueryOut` to materialize results to the sheet.
+Use `DuckQuery` for intermediate results, `DuckOut` to materialize handles, or `DuckQueryOut` for direct output.
 
 ## Known Issues and Workarounds
 

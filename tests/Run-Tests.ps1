@@ -59,14 +59,17 @@ function Get-CellFormula {
 # Test Suites
 # ============================================
 
-function Test-DuckVersion {
-    Write-Host "`nTest Suite: DuckVersion" -ForegroundColor Cyan
+function Test-Versions {
+    Write-Host "`nTest Suite: Version Functions" -ForegroundColor Cyan
     Clear-TestRange
 
     Set-Formula "A1" "=DuckVersion()"
-    $result = Get-CellValue "A1"
+    $addinVersion = Get-CellValue "A1"
+    Write-TestResult "DuckVersion returns add-in version" ($addinVersion -eq "0.1") "Got: $addinVersion"
 
-    Write-TestResult "Returns version string" ($result -match "^v\d+\.\d+\.\d+$") "Got: $result"
+    Set-Formula "B1" "=DuckLibraryVersion()"
+    $libVersion = Get-CellValue "B1"
+    Write-TestResult "DuckLibraryVersion returns DuckDB version" ($libVersion -match "^v\d+\.\d+\.\d+$") "Got: $libVersion"
 }
 
 function Test-DuckQueryBasic {
@@ -84,8 +87,8 @@ function Test-DuckQueryBasic {
     Write-TestResult "range() query works" ($handle2 -match "^duck://t/\d+$") "Got: $handle2"
 }
 
-function Test-DuckQueryOut {
-    Write-Host "`nTest Suite: DuckQueryOut" -ForegroundColor Cyan
+function Test-DuckOut {
+    Write-Host "`nTest Suite: DuckOut" -ForegroundColor Cyan
     Clear-TestRange
 
     # Setup: Create a handle
@@ -93,7 +96,7 @@ function Test-DuckQueryOut {
     Start-Sleep -Milliseconds 300
 
     # Test 1: Spills array with header
-    Set-Formula "B1" "=DuckQueryOut(A1)"
+    Set-Formula "B1" "=DuckOut(A1)"
     $header = Get-CellValue "B1"
     $val1 = Get-CellValue "B2"
     $val2 = Get-CellValue "B3"
@@ -107,13 +110,40 @@ function Test-DuckQueryOut {
     # Test 2: Multi-column output
     Set-Formula "D1" '=DuckQuery("SELECT 1 as a, 2 as b, 3 as c")'
     Start-Sleep -Milliseconds 300
-    Set-Formula "E1" "=DuckQueryOut(D1)"
+    Set-Formula "E1" "=DuckOut(D1)"
 
     $colA = Get-CellValue "E1"
     $colB = Get-CellValue "F1"
     $colC = Get-CellValue "G1"
 
     Write-TestResult "Multi-column headers" ($colA -eq "a" -and $colB -eq "b" -and $colC -eq "c") "Got: $colA, $colB, $colC"
+}
+
+function Test-DuckQueryOut {
+    Write-Host "`nTest Suite: DuckQueryOut (combo function)" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Test 1: Direct query to output
+    Set-Formula "A1" '=DuckQueryOut("SELECT * FROM range(3)")'
+    $header = Get-CellValue "A1"
+    $val1 = Get-CellValue "A2"
+    $val2 = Get-CellValue "A3"
+    $val3 = Get-CellValue "A4"
+
+    Write-TestResult "Header row present" ($header -eq "range") "Got: $header"
+    Write-TestResult "First value correct" ($val1 -eq "0") "Got: $val1"
+    Write-TestResult "Second value correct" ($val2 -eq "1") "Got: $val2"
+    Write-TestResult "Third value correct" ($val3 -eq "2") "Got: $val3"
+
+    # Test 2: With parameter binding
+    Set-Formula "E1" '=DuckQuery("SELECT * FROM range(5)")'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "F1" '=DuckQueryOut("SELECT * FROM :src WHERE range > 2", "src", E1)'
+
+    $filtered1 = Get-CellValue "F2"
+    $filtered2 = Get-CellValue "F3"
+
+    Write-TestResult "Parameter binding works" ($filtered1 -eq "3" -and $filtered2 -eq "4") "Got: $filtered1, $filtered2"
 }
 
 function Test-ParameterBinding {
@@ -127,7 +157,7 @@ function Test-ParameterBinding {
     # Test 1: Single parameter
     Set-Formula "B1" '=DuckQuery("SELECT COUNT(*) as cnt FROM :src", "src", A1)'
     Start-Sleep -Milliseconds 300
-    Set-Formula "C1" "=DuckQueryOut(B1)"
+    Set-Formula "C1" "=DuckOut(B1)"
 
     $header = Get-CellValue "C1"
     $count = Get-CellValue "C2"
@@ -138,7 +168,7 @@ function Test-ParameterBinding {
     # Test 2: Filtered query
     Set-Formula "D1" '=DuckQuery("SELECT * FROM :data WHERE range > 2", "data", A1)'
     Start-Sleep -Milliseconds 300
-    Set-Formula "E1" "=DuckQueryOut(D1)"
+    Set-Formula "E1" "=DuckOut(D1)"
 
     $val1 = Get-CellValue "E2"
     $val2 = Get-CellValue "E3"
@@ -161,7 +191,7 @@ function Test-ChainedQueries {
     Set-Formula "C1" '=DuckQuery("SELECT SUM(range) as total FROM :filtered", "filtered", B1)'
     Start-Sleep -Milliseconds 300
 
-    Set-Formula "D1" "=DuckQueryOut(C1)"
+    Set-Formula "D1" "=DuckOut(C1)"
 
     $header = Get-CellValue "D1"
     $sum = Get-CellValue "D2"
@@ -178,7 +208,7 @@ function Test-TypeConversions {
     # Test 1: HUGEINT/SUM conversion
     Set-Formula "A1" '=DuckQuery("SELECT SUM(range) as total FROM range(100)")'
     Start-Sleep -Milliseconds 300
-    Set-Formula "B1" "=DuckQueryOut(A1)"
+    Set-Formula "B1" "=DuckOut(A1)"
 
     $sum = Get-CellValue "B2"
     # Sum of 0..99 = 4950
@@ -187,7 +217,7 @@ function Test-TypeConversions {
     # Test 2: String values
     Set-Formula "C1" "=DuckQuery(""SELECT 'hello' as greeting"")"
     Start-Sleep -Milliseconds 300
-    Set-Formula "D1" "=DuckQueryOut(C1)"
+    Set-Formula "D1" "=DuckOut(C1)"
 
     $str = Get-CellValue "D2"
     Write-TestResult "String values work" ($str -eq "hello") "Got: $str"
@@ -195,7 +225,7 @@ function Test-TypeConversions {
     # Test 3: NULL handling
     Set-Formula "E1" '=DuckQuery("SELECT NULL as empty")'
     Start-Sleep -Milliseconds 300
-    Set-Formula "F1" "=DuckQueryOut(E1)"
+    Set-Formula "F1" "=DuckOut(E1)"
 
     $null_val = Get-CellValue "F2"
     Write-TestResult "NULL becomes empty" ($null_val -eq "") "Got: '$null_val'"
@@ -211,7 +241,7 @@ function Test-ErrorHandling {
     Write-TestResult "Invalid table error" ($result -match "#ERROR") "Got: $result"
 
     # Test 2: Invalid handle
-    Set-Formula "B1" '=DuckQueryOut("duck://t/99999")'
+    Set-Formula "B1" '=DuckOut("duck://t/99999")'
     $result2 = Get-CellValue "B1"
     Write-TestResult "Invalid handle error" ($result2 -match "#ERROR") "Got: $result2"
 }
@@ -233,7 +263,7 @@ function Test-DuckExecute {
     # Test 3: Query the table
     Set-Formula "C1" '=DuckQuery("SELECT * FROM test_tbl ORDER BY id")'
     Start-Sleep -Milliseconds 300
-    Set-Formula "D1" "=DuckQueryOut(C1)"
+    Set-Formula "D1" "=DuckOut(C1)"
 
     $id1 = Get-CellValue "D2"
     $name1 = Get-CellValue "E2"
@@ -258,8 +288,9 @@ if (-not (Initialize-Excel)) {
 Write-Host "Connected to Excel: $($script:Excel.ActiveWorkbook.Name)" -ForegroundColor Gray
 
 # Run all test suites
-Test-DuckVersion
+Test-Versions
 Test-DuckQueryBasic
+Test-DuckOut
 Test-DuckQueryOut
 Test-ParameterBinding
 Test-ChainedQueries

@@ -28,19 +28,18 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | Function | Description |
 |----------|-------------|
 | `=DuckQuery(sql, ...)` | Execute SQL, return a handle |
-| `=DuckQueryOut(handle)` | Output a handle as a spilled array |
+| `=DuckOut(handle)` | Output a handle as a spilled array |
+| `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
 | `=DuckExecute(sql)` | Execute DDL/DML statements |
-| `=DuckVersion()` | Returns DuckDB version |
+| `=DuckVersion()` | XlDuck add-in version (0.1) |
+| `=DuckLibraryVersion()` | DuckDB library version |
 
 ## Examples
 
 ### Basic Usage
 
 ```excel
-A1: =DuckQuery("SELECT * FROM range(5)")
-→ duck://t/1
-
-A2: =DuckQueryOut(A1)
+A1: =DuckQueryOut("SELECT * FROM range(5)")
 → | range |
   | 0     |
   | 1     |
@@ -49,9 +48,7 @@ A2: =DuckQueryOut(A1)
   | 4     |
 ```
 
-### Chaining Queries with Handles
-
-Store intermediate results and reference them in downstream queries:
+### Using Handles for Chaining
 
 ```excel
 A1: =DuckQuery("SELECT * FROM range(10)")
@@ -63,7 +60,7 @@ B1: =DuckQuery("SELECT * FROM :src WHERE range > 5", "src", A1)
 C1: =DuckQuery("SELECT SUM(range) AS total FROM :data", "data", B1)
 → duck://t/3
 
-D1: =DuckQueryOut(C1)
+D1: =DuckOut(C1)
 → | total |
   | 30    |
 ```
