@@ -235,13 +235,19 @@ public static class DuckFunctions
     /// </summary>
     internal static string ExecuteQueryInternal(string sql, object[] args)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var (resolvedSql, tempTables) = ResolveParameters(sql, args, new HashSet<string>());
+        var resolveTime = sw.ElapsedMilliseconds;
+
         try
         {
             var conn = GetConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = resolvedSql;
+
+            sw.Restart();
             using var reader = cmd.ExecuteReader();
+            var executeTime = sw.ElapsedMilliseconds;
 
             var fieldCount = reader.FieldCount;
             var columnNames = new string[fieldCount];
@@ -253,6 +259,7 @@ public static class DuckFunctions
                 columnTypes[i] = reader.GetFieldType(i);
             }
 
+            sw.Restart();
             var rows = new List<object?[]>();
             while (reader.Read())
             {
@@ -263,9 +270,13 @@ public static class DuckFunctions
                 }
                 rows.Add(row);
             }
+            var readTime = sw.ElapsedMilliseconds;
 
             var storedResult = new StoredResult(columnNames, columnTypes, rows);
-            return ResultStore.Store(storedResult);
+            var handle = ResultStore.Store(storedResult);
+
+            System.Diagnostics.Debug.WriteLine($"[DuckQuery] resolve={resolveTime}ms execute={executeTime}ms read={readTime}ms rows={rows.Count}");
+            return handle;
         }
         finally
         {
@@ -302,6 +313,7 @@ public static class DuckFunctions
     /// </summary>
     private static object[,] StoredResultToArray(StoredResult stored)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var fieldCount = stored.ColumnNames.Length;
         var rowCount = stored.Rows.Count;
 
@@ -311,6 +323,7 @@ public static class DuckFunctions
         }
 
         var result = new object[rowCount + 1, fieldCount];
+        var allocTime = sw.ElapsedMilliseconds;
 
         // Header row
         for (int j = 0; j < fieldCount; j++)
@@ -319,6 +332,7 @@ public static class DuckFunctions
         }
 
         // Data rows
+        sw.Restart();
         for (int i = 0; i < rowCount; i++)
         {
             var row = stored.Rows[i];
@@ -327,7 +341,9 @@ public static class DuckFunctions
                 result[i + 1, j] = ConvertToExcelValue(row[j]);
             }
         }
+        var copyTime = sw.ElapsedMilliseconds;
 
+        System.Diagnostics.Debug.WriteLine($"[DuckOut] alloc={allocTime}ms copy={copyTime}ms rows={rowCount} cols={fieldCount}");
         return result;
     }
 
@@ -455,20 +471,16 @@ public static class DuckFunctions
 
         if (stored.Rows.Count > 0)
         {
-            var placeholders = string.Join(", ", Enumerable.Range(0, stored.ColumnNames.Length).Select(i => $"${i + 1}"));
-            var insertSql = $"INSERT INTO \"{tableName}\" VALUES ({placeholders})";
-
+            // Use DuckDB Appender for fast bulk inserts
+            using var appender = ((DuckDB.NET.Data.DuckDBConnection)conn).CreateAppender(tableName);
             foreach (var row in stored.Rows)
             {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = insertSql;
-                for (int i = 0; i < row.Length; i++)
+                var appenderRow = appender.CreateRow();
+                foreach (var value in row)
                 {
-                    var param = cmd.CreateParameter();
-                    param.Value = row[i] ?? DBNull.Value;
-                    cmd.Parameters.Add(param);
+                    AppendTypedValue(appenderRow, value);
                 }
-                cmd.ExecuteNonQuery();
+                appenderRow.EndRow();
             }
         }
 
@@ -507,6 +519,50 @@ public static class DuckFunctions
         }
 
         return value;
+    }
+
+    /// <summary>
+    /// Append a value to a DuckDB appender row, handling type dispatch.
+    /// </summary>
+    private static void AppendTypedValue(DuckDB.NET.Data.IDuckDBAppenderRow row, object? value)
+    {
+        if (value == null || value == DBNull.Value)
+        {
+            row.AppendNullValue();
+            return;
+        }
+
+        switch (value)
+        {
+            case bool b: row.AppendValue(b); break;
+            case byte b: row.AppendValue(b); break;
+            case sbyte sb: row.AppendValue(sb); break;
+            case short s: row.AppendValue(s); break;
+            case ushort us: row.AppendValue(us); break;
+            case int i: row.AppendValue(i); break;
+            case uint ui: row.AppendValue(ui); break;
+            case long l: row.AppendValue(l); break;
+            case ulong ul: row.AppendValue(ul); break;
+            case float f: row.AppendValue(f); break;
+            case double d: row.AppendValue(d); break;
+            case decimal dec: row.AppendValue(dec); break;
+            case string str: row.AppendValue(str); break;
+            case DateTime dt: row.AppendValue(dt); break;
+            case DateOnly date: row.AppendValue(date); break;
+            case TimeOnly time: row.AppendValue(time); break;
+            case byte[] bytes: row.AppendValue(bytes); break;
+            case System.Numerics.BigInteger bigInt:
+                // Convert BigInteger to long or double
+                if (bigInt >= long.MinValue && bigInt <= long.MaxValue)
+                    row.AppendValue((long)bigInt);
+                else
+                    row.AppendValue((double)bigInt);
+                break;
+            default:
+                // Fallback: convert to string
+                row.AppendValue(value.ToString() ?? "");
+                break;
+        }
     }
 
     /// <summary>
