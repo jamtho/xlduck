@@ -155,7 +155,7 @@ public static class DuckFunctions
 
     [ExcelFunction(Description = "Output a handle as a spilled array with headers.")]
     public static object[,] DuckOut(
-        [ExcelArgument(Description = "Handle from DuckQuery or DuckFrag (e.g. duck://t/1 or duck://f/1)")] string handle)
+        [ExcelArgument(Description = "Handle from DuckQuery or DuckFrag (e.g. duck://table/1 or duck://frag/1)")] string handle)
     {
         try
         {

@@ -40,9 +40,9 @@ public static class ResultStore
         lock (_lock)
         {
             var id = _nextId++;
-            var baseHandle = $"duck://t/{id}";
+            var baseHandle = $"duck://table/{id}";
             _results[baseHandle] = result;
-            // Return handle with dimensions: duck://t/123|10x4
+            // Return handle with dimensions: duck://table/123|10x4
             return $"{baseHandle}|{result.Rows.Count}x{result.ColumnNames.Length}";
         }
     }
@@ -60,7 +60,7 @@ public static class ResultStore
     }
 
     /// <summary>
-    /// Strip dimension suffix from handle (duck://t/123|10x4 -> duck://t/123).
+    /// Strip dimension suffix from handle (duck://table/123|10x4 -> duck://table/123).
     /// </summary>
     internal static string GetBaseHandle(string handle)
     {
@@ -73,7 +73,7 @@ public static class ResultStore
     /// </summary>
     internal static bool IsHandle(string value)
     {
-        return value.StartsWith("duck://t/");
+        return value.StartsWith("duck://table/");
     }
 
     /// <summary>

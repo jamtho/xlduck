@@ -38,7 +38,7 @@ public static class FragmentStore
         lock (_lock)
         {
             var id = _nextId++;
-            var handle = $"duck://f/{id}";
+            var handle = $"duck://frag/{id}";
             _fragments[handle] = fragment;
             return handle;
         }
@@ -60,7 +60,7 @@ public static class FragmentStore
     /// </summary>
     internal static bool IsHandle(string? value)
     {
-        return value?.StartsWith("duck://f/") == true;
+        return value?.StartsWith("duck://frag/") == true;
     }
 
     /// <summary>

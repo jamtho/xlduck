@@ -27,8 +27,8 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 
 | Function | Description |
 |----------|-------------|
-| `=DuckQuery(sql, ...)` | Execute SQL, return a table handle (`duck://t/1\|10x4` = 10 rows, 4 cols) |
-| `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://f/...`) |
+| `=DuckQuery(sql, ...)` | Execute SQL, return a table handle (`duck://table/1\|10x4` = 10 rows, 4 cols) |
+| `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://frag/...`) |
 | `=DuckOut(handle)` | Output a handle as a spilled array |
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
 | `=DuckExecute(sql)` | Execute DDL/DML statements |
@@ -53,13 +53,13 @@ A1: =DuckQueryOut("SELECT * FROM range(5)")
 
 ```excel
 A1: =DuckQuery("SELECT * FROM range(10)")
-→ duck://t/1|10x1
+→ duck://table/1|10x1
 
 B1: =DuckQuery("SELECT * FROM :src WHERE range > 5", "src", A1)
-→ duck://t/2|4x1
+→ duck://table/2|4x1
 
 C1: =DuckQuery("SELECT SUM(range) AS total FROM :data", "data", B1)
-→ duck://t/3|1x1
+→ duck://table/3|1x1
 
 D1: =DuckOut(C1)
 → | total |
@@ -76,14 +76,14 @@ Use `:name` placeholders with name/value pairs (up to 4 pairs):
 
 ### Lazy Evaluation with Fragments
 
-Fragments (`duck://f/...`) defer SQL execution - the SQL is inlined as a subquery when used:
+Fragments (`duck://frag/...`) defer SQL execution - the SQL is inlined as a subquery when used:
 
 ```excel
 A1: =DuckFrag("SELECT * FROM range(10)")
-→ duck://f/1
+→ duck://frag/1
 
 B1: =DuckFrag("SELECT * FROM :src WHERE range >= 5", "src", A1)
-→ duck://f/2
+→ duck://frag/2
 
 C1: =DuckOut(B1)
 → | range |

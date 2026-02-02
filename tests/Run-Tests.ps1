@@ -84,12 +84,12 @@ function Test-DuckQueryBasic {
     # Test 1: Simple query returns handle
     Set-Formula "A1" '=DuckQuery("SELECT 1 as num")'
     $handle = Get-CellValue "A1"
-    Write-TestResult "Returns handle format" ($handle -match "^duck://t/\d+\|\d+x\d+$") "Got: $handle"
+    Write-TestResult "Returns handle format" ($handle -match "^duck://table/\d+\|\d+x\d+$") "Got: $handle"
 
     # Test 2: range() function works
     Set-Formula "B1" '=DuckQuery("SELECT * FROM range(5)")'
     $handle2 = Get-CellValue "B1"
-    Write-TestResult "range() query works" ($handle2 -match "^duck://t/\d+\|\d+x\d+$") "Got: $handle2"
+    Write-TestResult "range() query works" ($handle2 -match "^duck://table/\d+\|\d+x\d+$") "Got: $handle2"
 }
 
 function Test-DuckOut {
@@ -246,7 +246,7 @@ function Test-ErrorHandling {
     Write-TestResult "Invalid table error (notfound)" ($result -match "#duck://error/notfound\|") "Got: $result"
 
     # Test 2: Invalid handle - should be notfound category
-    Set-Formula "B1" '=DuckOut("duck://t/99999")'
+    Set-Formula "B1" '=DuckOut("duck://table/99999")'
     $result2 = Get-CellValue "B1"
     Write-TestResult "Invalid handle error (notfound)" ($result2 -match "#duck://error/notfound\|") "Got: $result2"
 
@@ -301,7 +301,7 @@ function Test-DuckFragBasic {
     # Test 1: Simple fragment returns handle
     Set-Formula "A1" '=DuckFrag("SELECT * FROM range(5)")'
     $handle = Get-CellValue "A1"
-    Write-TestResult "Returns fragment handle format" ($handle -match "^duck://f/\d+$") "Got: $handle"
+    Write-TestResult "Returns fragment handle format" ($handle -match "^duck://frag/\d+$") "Got: $handle"
 
     # Test 2: Fragment with invalid SQL returns error at creation time
     Set-Formula "B1" '=DuckFrag("SELECT * FROM nonexistent_table")'

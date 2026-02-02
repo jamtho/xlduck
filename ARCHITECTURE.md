@@ -10,8 +10,8 @@ XlDuck is an Excel add-in that exposes DuckDB's SQL engine to spreadsheet users.
 
 A handle is a string reference to stored data or deferred SQL, formatted as:
 ```
-duck://t/1234|10x4    (table handle - materialized data with dimensions)
-duck://f/1234         (fragment handle - deferred SQL)
+duck://table/1234|10x4    (table handle - materialized data with dimensions)
+duck://frag/1234         (fragment handle - deferred SQL)
 ```
 
 Where:
@@ -72,7 +72,7 @@ When a query references a stored result, users specify placeholders with `:name`
 =DuckQuery("SELECT * FROM :sales WHERE region = 'EU'", "sales", A1)
 ```
 
-Where A1 contains a handle like `duck://t/1234`.
+Where A1 contains a handle like `duck://table/1234`.
 
 Parameters are passed as name/value pairs after the SQL string.
 
@@ -92,7 +92,7 @@ DuckQuery("SELECT ...")
 ### Query with References
 
 ```
-DuckQuery("SELECT * FROM :src", "src", "duck://t/1")
+DuckQuery("SELECT * FROM :src", "src", "duck://table/1")
     → Parse SQL for :placeholders
     → For each placeholder:
         → If table handle (t): create temp table from stored rows
@@ -119,7 +119,7 @@ DuckFrag("SELECT * FROM :src WHERE x > 5", "src", A1)
 When a fragment is used as a parameter, it's resolved recursively:
 
 ```
-DuckQuery("SELECT * FROM :data", "data", "duck://f/1")
+DuckQuery("SELECT * FROM :data", "data", "duck://frag/1")
     → Look up fragment f/1
     → Resolve fragment's own parameters recursively
     → Inline resolved SQL as: (SELECT ...)
@@ -131,7 +131,7 @@ Circular references (fragment A → B → A) are detected and raise an error.
 ### Materialization
 
 ```
-DuckOut("duck://t/1")
+DuckOut("duck://table/1")
     → Look up handle in storage
     → Convert to Excel array with headers
     → Return as spilled array
