@@ -126,3 +126,18 @@ B1: =DuckQueryOut("SELECT region, SUM(amount) FROM :sales GROUP BY region", "sal
 ```
 
 DuckDB can also read from URLs and S3 - see [DuckDB documentation](https://duckdb.org/docs/data/overview) for details.
+
+### Pivot Tables
+
+DuckDB has built-in PIVOT support for reshaping data:
+
+```excel
+A1: =DuckFrag("SELECT * FROM (VALUES ('Q1','North',100), ('Q1','South',150), ('Q2','North',200), ('Q2','South',250)) AS sales(quarter, region, amount)")
+
+B1: =DuckQueryOut("PIVOT :data ON region USING SUM(amount)", "data", A1)
+→ | quarter | North | South |
+  | Q1      | 100   | 150   |
+  | Q2      | 200   | 250   |
+```
+
+See [DuckDB PIVOT documentation](https://duckdb.org/docs/sql/statements/pivot) for more examples.

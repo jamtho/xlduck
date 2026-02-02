@@ -385,6 +385,31 @@ function Test-DuckOutWithFragment {
     Write-TestResult "DuckOut fragment - third value" ($val3 -eq "2") "Got: $val3"
 }
 
+function Test-Pivot {
+    Write-Host "`nTest Suite: PIVOT" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Create source data
+    Set-Formula "A1" "=DuckFrag(""SELECT * FROM (VALUES ('Q1','North',100), ('Q1','South',150), ('Q2','North',200), ('Q2','South',250)) AS sales(quarter, region, amount)"")"
+    Start-Sleep -Milliseconds 300
+
+    # Pivot the data
+    Set-Formula "B1" '=DuckQueryOut("PIVOT :data ON region USING SUM(amount) ORDER BY quarter", "data", A1)'
+
+    $header1 = Get-CellValue "B1"
+    $header2 = Get-CellValue "C1"
+    $header3 = Get-CellValue "D1"
+
+    Write-TestResult "PIVOT headers" ($header1 -eq "quarter" -and $header2 -eq "North" -and $header3 -eq "South") "Got: $header1, $header2, $header3"
+
+    $q1North = Get-CellValue "C2"
+    $q1South = Get-CellValue "D2"
+    $q2North = Get-CellValue "C3"
+    $q2South = Get-CellValue "D3"
+
+    Write-TestResult "PIVOT values" ($q1North -eq "100" -and $q1South -eq "150" -and $q2North -eq "200" -and $q2South -eq "250") "Got: Q1=($q1North,$q1South), Q2=($q2North,$q2South)"
+}
+
 function Test-ReadCSV {
     Write-Host "`nTest Suite: Read CSV Files" -ForegroundColor Cyan
     Clear-TestRange
@@ -446,6 +471,7 @@ Test-DuckFragInQuery
 Test-DuckFragChained
 Test-DuckFragWithTableHandle
 Test-DuckOutWithFragment
+Test-Pivot
 Test-ReadCSV
 
 # Summary
