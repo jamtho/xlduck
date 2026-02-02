@@ -111,7 +111,7 @@ public class DuckRtdServer : ExcelRtdServer
                 }
                 else
                 {
-                    result = $"#ERROR: Unknown query type: {queryType}";
+                    result = DuckFunctions.FormatError("internal", $"Unknown query type: {queryType}");
                 }
             }
             catch (Exception ex)
@@ -139,14 +139,14 @@ public class DuckRtdServer : ExcelRtdServer
             {
                 info.IsComplete = true;
                 newValues = true;
-                return $"#ERROR: {error.Message}";
+                return DuckFunctions.FormatException(error);
             }
 
             info.Handle = result;
             info.IsComplete = true;
 
             // Increment refcount if we got a valid handle
-            if (result != null && !result.StartsWith("#ERROR"))
+            if (result != null && !DuckFunctions.IsErrorOrBlocked(result))
             {
                 if (queryType == "query")
                     ResultStore.IncrementRefCount(result);
@@ -156,7 +156,7 @@ public class DuckRtdServer : ExcelRtdServer
 
             newValues = true;
             System.Diagnostics.Debug.WriteLine($"[DuckRTD] Completed in budget: {result}");
-            return result ?? "#ERROR: No result";
+            return result ?? DuckFunctions.FormatError("internal", "No result");
         }
         else
         {
@@ -173,18 +173,18 @@ public class DuckRtdServer : ExcelRtdServer
                 string finalResult;
                 if (error != null)
                 {
-                    finalResult = $"#ERROR: {error.Message}";
+                    finalResult = DuckFunctions.FormatException(error);
                 }
                 else
                 {
-                    finalResult = result ?? "#ERROR: No result";
+                    finalResult = result ?? DuckFunctions.FormatError("internal", "No result");
                 }
 
                 info.Handle = finalResult;
                 info.IsComplete = true;
 
                 // Increment refcount if we got a valid handle
-                if (!finalResult.StartsWith("#ERROR"))
+                if (!DuckFunctions.IsErrorOrBlocked(finalResult))
                 {
                     if (queryType == "query")
                         ResultStore.IncrementRefCount(finalResult);
@@ -223,7 +223,7 @@ public class DuckRtdServer : ExcelRtdServer
             }
             else
             {
-                result = $"#ERROR: Unknown query type: {info.QueryType}";
+                result = DuckFunctions.FormatError("internal", $"Unknown query type: {info.QueryType}");
             }
         }
         catch (Exception ex)
@@ -234,18 +234,18 @@ public class DuckRtdServer : ExcelRtdServer
         string finalResult;
         if (error != null)
         {
-            finalResult = $"#ERROR: {error.Message}";
+            finalResult = DuckFunctions.FormatException(error);
         }
         else
         {
-            finalResult = result ?? "#ERROR: No result";
+            finalResult = result ?? DuckFunctions.FormatError("internal", "No result");
         }
 
         info.Handle = finalResult;
         info.IsComplete = true;
 
         // Increment refcount if we got a valid handle
-        if (!finalResult.StartsWith("#ERROR"))
+        if (!DuckFunctions.IsErrorOrBlocked(finalResult))
         {
             if (info.QueryType == "query")
                 ResultStore.IncrementRefCount(finalResult);
@@ -264,7 +264,7 @@ public class DuckRtdServer : ExcelRtdServer
         if (_topics.TryRemove(topic.TopicId, out var info))
         {
             // Decrement refcount if we had a valid handle
-            if (info.Handle != null && !info.Handle.StartsWith("#ERROR"))
+            if (info.Handle != null && !DuckFunctions.IsErrorOrBlocked(info.Handle))
             {
                 if (ResultStore.IsHandle(info.Handle))
                     ResultStore.DecrementRefCount(info.Handle);

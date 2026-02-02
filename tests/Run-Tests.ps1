@@ -243,12 +243,12 @@ function Test-ErrorHandling {
     # Test 1: Invalid SQL
     Set-Formula "A1" '=DuckQuery("SELECT * FROM nonexistent_table")'
     $result = Get-CellValue "A1"
-    Write-TestResult "Invalid table error" ($result -match "#ERROR") "Got: $result"
+    Write-TestResult "Invalid table error" ($result -match "#duck://error/") "Got: $result"
 
     # Test 2: Invalid handle
     Set-Formula "B1" '=DuckOut("duck://t/99999")'
     $result2 = Get-CellValue "B1"
-    Write-TestResult "Invalid handle error" ($result2 -match "#ERROR") "Got: $result2"
+    Write-TestResult "Invalid handle error" ($result2 -match "#duck://error/") "Got: $result2"
 }
 
 function Test-DuckExecute {
@@ -291,7 +291,7 @@ function Test-DuckFragBasic {
     # Test 2: Fragment with invalid SQL returns error at creation time
     Set-Formula "B1" '=DuckFrag("SELECT * FROM nonexistent_table")'
     $result = Get-CellValue "B1"
-    Write-TestResult "Invalid SQL detected at creation" ($result -match "#ERROR") "Got: $result"
+    Write-TestResult "Invalid SQL detected at creation" ($result -match "#duck://error/") "Got: $result"
 }
 
 function Test-DuckFragInQuery {

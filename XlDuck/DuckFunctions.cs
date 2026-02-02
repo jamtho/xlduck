@@ -38,9 +38,50 @@ public static class DuckFunctions
     // Sentinel value that marks a query as requiring config
     internal const string ConfigSentinel = "@config";
 
-    // Status URL prefix for blocked queries (# prefix follows Excel convention)
+    // Status URL prefixes (# prefix follows Excel convention)
     internal const string BlockedPrefix = "#duck://blocked/";
+    internal const string ErrorPrefix = "#duck://error/";
     internal const string ConfigBlockedStatus = "#duck://blocked/config|Waiting for DuckConfigReady()";
+
+    /// <summary>
+    /// Format an error message as a duck:// URL.
+    /// </summary>
+    internal static string FormatError(string category, string message)
+    {
+        // Truncate long messages and remove newlines
+        var cleanMessage = message.Replace("\r", "").Replace("\n", " ");
+        if (cleanMessage.Length > 200)
+            cleanMessage = cleanMessage.Substring(0, 197) + "...";
+        return $"{ErrorPrefix}{category}|{cleanMessage}";
+    }
+
+    /// <summary>
+    /// Format an exception as a duck:// error URL with auto-categorization.
+    /// </summary>
+    internal static string FormatException(Exception ex)
+    {
+        var msg = ex.Message;
+        string category;
+
+        if (msg.Contains("Parser Error") || msg.Contains("syntax error"))
+            category = "syntax";
+        else if (msg.Contains("does not exist") || msg.Contains("not found"))
+            category = "notfound";
+        else if (msg.Contains("HTTP"))
+            category = "http";
+        else
+            category = "query";
+
+        return FormatError(category, msg);
+    }
+
+    /// <summary>
+    /// Check if a value is a duck:// error or blocked status.
+    /// </summary>
+    internal static bool IsErrorOrBlocked(string? value)
+    {
+        return value != null && (value.StartsWith(ErrorPrefix) || value.StartsWith(BlockedPrefix));
+    }
 
     private static DuckDBConnection GetConnection()
     {
@@ -81,7 +122,7 @@ public static class DuckFunctions
         }
         catch (Exception ex)
         {
-            return $"#ERROR: {ex.Message}";
+            return FormatException(ex);
         }
     }
 
@@ -108,7 +149,7 @@ public static class DuckFunctions
         }
         catch (Exception ex)
         {
-            return $"#ERROR: {ex.Message}";
+            return FormatException(ex);
         }
     }
 
@@ -123,7 +164,7 @@ public static class DuckFunctions
                 var stored = ResultStore.Get(handle);
                 if (stored == null)
                 {
-                    return new object[,] { { $"#ERROR: Handle not found: {handle}" } };
+                    return new object[,] { { FormatError("notfound", $"Handle not found: {handle}") } };
                 }
                 return StoredResultToArray(stored);
             }
@@ -133,7 +174,7 @@ public static class DuckFunctions
                 var fragment = FragmentStore.Get(handle);
                 if (fragment == null)
                 {
-                    return new object[,] { { $"#ERROR: Fragment not found: {handle}" } };
+                    return new object[,] { { FormatError("notfound", $"Fragment not found: {handle}") } };
                 }
 
                 var (resolvedSql, tempTables) = ResolveParameters(fragment.Sql, fragment.Args, new HashSet<string> { handle });
@@ -175,7 +216,7 @@ public static class DuckFunctions
             }
             else
             {
-                return new object[,] { { $"#ERROR: Invalid handle format: {handle}" } };
+                return new object[,] { { FormatError("invalid", $"Invalid handle format: {handle}") } };
             }
         }
         catch (Exception ex)
@@ -201,7 +242,7 @@ public static class DuckFunctions
             var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
             var handle = ExecuteQueryInternal(sql, args);
 
-            if (handle.StartsWith("#ERROR"))
+            if (IsErrorOrBlocked(handle))
             {
                 return new object[,] { { handle } };
             }
@@ -209,7 +250,7 @@ public static class DuckFunctions
             var stored = ResultStore.Get(handle);
             if (stored == null)
             {
-                return new object[,] { { $"#ERROR: Handle not found: {handle}" } };
+                return new object[,] { { FormatError("notfound", $"Handle not found: {handle}") } };
             }
             return StoredResultToArray(stored);
         }
@@ -236,7 +277,7 @@ public static class DuckFunctions
         }
         catch (Exception ex)
         {
-            return $"#ERROR: {ex.Message}";
+            return FormatException(ex);
         }
     }
 
@@ -263,7 +304,7 @@ public static class DuckFunctions
         }
         catch (Exception ex)
         {
-            return $"#ERROR: {ex.Message}";
+            return FormatException(ex);
         }
     }
 
@@ -356,7 +397,7 @@ public static class DuckFunctions
 
         if (fieldCount == 0)
         {
-            return new object[,] { { "#ERROR: No columns" } };
+            return new object[,] { { FormatError("query", "No columns") } };
         }
 
         var result = new object[rowCount + 1, fieldCount];
