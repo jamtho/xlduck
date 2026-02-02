@@ -13,15 +13,21 @@ namespace XlDuck;
 /// </summary>
 public class DuckRtdServer : ExcelRtdServer
 {
+    // Time budget for synchronous execution before showing "Loading..."
+    private const int TimeoutBudgetMs = 200;
+
     // Track active topics and their associated handles
     private readonly ConcurrentDictionary<int, TopicInfo> _topics = new();
 
     private class TopicInfo
     {
+        public Topic? Topic { get; set; }
+        public string QueryType { get; set; } = "";
         public string? Handle { get; set; }
         public string Sql { get; set; } = "";
         public object[] Args { get; set; } = Array.Empty<object>();
         public bool IsComplete { get; set; }
+        public ManualResetEventSlim? CompletionEvent { get; set; }
     }
 
     protected override bool ServerStart()
@@ -47,31 +53,71 @@ public class DuckRtdServer : ExcelRtdServer
         var sql = topicInfo[1];
         var args = topicInfo.Skip(2).Select(s => (object)s).ToArray();
 
-        var info = new TopicInfo { Sql = sql, Args = args };
+        var completionEvent = new ManualResetEventSlim(false);
+        var info = new TopicInfo
+        {
+            Topic = topic,
+            QueryType = queryType,
+            Sql = sql,
+            Args = args,
+            CompletionEvent = completionEvent
+        };
         _topics[topic.TopicId] = info;
 
-        // Execute query synchronously for now (we'll add timeout budget later)
-        try
+        // Start query on background thread
+        string? result = null;
+        Exception? error = null;
+
+        var queryThread = new Thread(() =>
         {
-            string result;
-            if (queryType == "query")
+            try
             {
-                result = QueryExecutor.ExecuteQuery(sql, args);
+                if (queryType == "query")
+                {
+                    result = QueryExecutor.ExecuteQuery(sql, args);
+                }
+                else if (queryType == "frag")
+                {
+                    result = QueryExecutor.CreateFragment(sql, args);
+                }
+                else
+                {
+                    result = $"#ERROR: Unknown query type: {queryType}";
+                }
             }
-            else if (queryType == "frag")
+            catch (Exception ex)
             {
-                result = QueryExecutor.CreateFragment(sql, args);
+                error = ex;
             }
-            else
+            finally
             {
-                result = $"#ERROR: Unknown query type: {queryType}";
+                completionEvent.Set();
+            }
+        });
+        queryThread.IsBackground = true;
+        queryThread.Start();
+
+        // Wait for completion with timeout budget
+        bool completedInTime = completionEvent.Wait(TimeoutBudgetMs);
+
+        if (completedInTime)
+        {
+            // Query finished within budget - return result directly
+            completionEvent.Dispose();
+            info.CompletionEvent = null;
+
+            if (error != null)
+            {
+                info.IsComplete = true;
+                newValues = true;
+                return $"#ERROR: {error.Message}";
             }
 
             info.Handle = result;
             info.IsComplete = true;
 
             // Increment refcount if we got a valid handle
-            if (!result.StartsWith("#ERROR"))
+            if (result != null && !result.StartsWith("#ERROR"))
             {
                 if (queryType == "query")
                     ResultStore.IncrementRefCount(result);
@@ -80,13 +126,50 @@ public class DuckRtdServer : ExcelRtdServer
             }
 
             newValues = true;
-            return result;
+            System.Diagnostics.Debug.WriteLine($"[DuckRTD] Completed in budget: {result}");
+            return result ?? "#ERROR: No result";
         }
-        catch (Exception ex)
+        else
         {
-            info.IsComplete = true;
+            // Query still running - return placeholder and complete async
+            System.Diagnostics.Debug.WriteLine($"[DuckRTD] Timeout, showing Loading...");
+
+            // Continue waiting on another thread and update when done
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                completionEvent.Wait(); // Wait for completion
+                completionEvent.Dispose();
+                info.CompletionEvent = null;
+
+                string finalResult;
+                if (error != null)
+                {
+                    finalResult = $"#ERROR: {error.Message}";
+                }
+                else
+                {
+                    finalResult = result ?? "#ERROR: No result";
+                }
+
+                info.Handle = finalResult;
+                info.IsComplete = true;
+
+                // Increment refcount if we got a valid handle
+                if (!finalResult.StartsWith("#ERROR"))
+                {
+                    if (queryType == "query")
+                        ResultStore.IncrementRefCount(finalResult);
+                    else if (queryType == "frag")
+                        FragmentStore.IncrementRefCount(finalResult);
+                }
+
+                // Update the topic with the result
+                System.Diagnostics.Debug.WriteLine($"[DuckRTD] Async complete: {finalResult}");
+                topic.UpdateValue(finalResult);
+            });
+
             newValues = true;
-            return $"#ERROR: {ex.Message}";
+            return "Loading...";
         }
     }
 
