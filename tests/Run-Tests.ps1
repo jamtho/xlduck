@@ -274,6 +274,112 @@ function Test-DuckExecute {
     Set-Formula "E1" '=DuckExecute("DROP TABLE test_tbl")'
 }
 
+function Test-DuckFragBasic {
+    Write-Host "`nTest Suite: DuckFrag Basic" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Test 1: Simple fragment returns handle
+    Set-Formula "A1" '=DuckFrag("SELECT * FROM range(5)")'
+    $handle = Get-CellValue "A1"
+    Write-TestResult "Returns fragment handle format" ($handle -match "^duck://f/\d+$") "Got: $handle"
+
+    # Test 2: Fragment with invalid SQL returns error at creation time
+    Set-Formula "B1" '=DuckFrag("SELECT * FROM nonexistent_table")'
+    $result = Get-CellValue "B1"
+    Write-TestResult "Invalid SQL detected at creation" ($result -match "#ERROR") "Got: $result"
+}
+
+function Test-DuckFragInQuery {
+    Write-Host "`nTest Suite: DuckFrag in DuckQuery" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Test 1: Fragment used as table source
+    Set-Formula "A1" '=DuckFrag("SELECT * FROM range(5)")'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "B1" '=DuckQuery("SELECT * FROM :src WHERE range > 2", "src", A1)'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "C1" "=DuckOut(B1)"
+
+    $val1 = Get-CellValue "C2"
+    $val2 = Get-CellValue "C3"
+
+    Write-TestResult "Fragment in query - first value" ($val1 -eq "3") "Got: $val1"
+    Write-TestResult "Fragment in query - second value" ($val2 -eq "4") "Got: $val2"
+
+    # Test 2: Fragment with aggregation
+    Set-Formula "D1" '=DuckFrag("SELECT * FROM range(10)")'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "E1" '=DuckQuery("SELECT SUM(range) as total FROM :data", "data", D1)'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "F1" "=DuckOut(E1)"
+
+    $sum = Get-CellValue "F2"
+    # Sum of 0..9 = 45
+    Write-TestResult "Fragment aggregation works" ($sum -eq "45") "Got: $sum"
+}
+
+function Test-DuckFragChained {
+    Write-Host "`nTest Suite: DuckFrag Chaining" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Chain: A1 (frag) -> B1 (frag) -> C1 (query)
+    Set-Formula "A1" '=DuckFrag("SELECT * FROM range(10)")'
+    Start-Sleep -Milliseconds 300
+
+    Set-Formula "B1" '=DuckFrag("SELECT * FROM :src WHERE range >= 5", "src", A1)'
+    Start-Sleep -Milliseconds 300
+
+    Set-Formula "C1" '=DuckQuery("SELECT SUM(range) as total FROM :filtered", "filtered", B1)'
+    Start-Sleep -Milliseconds 300
+
+    Set-Formula "D1" "=DuckOut(C1)"
+
+    $sum = Get-CellValue "D2"
+    # Sum of 5+6+7+8+9 = 35
+    Write-TestResult "Chained fragments - sum" ($sum -eq "35") "Got: $sum (expected 35)"
+}
+
+function Test-DuckFragWithTableHandle {
+    Write-Host "`nTest Suite: DuckFrag with Table Handle" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Create a table handle first
+    Set-Formula "A1" '=DuckQuery("SELECT * FROM range(5)")'
+    Start-Sleep -Milliseconds 300
+
+    # Fragment references the table handle
+    Set-Formula "B1" '=DuckFrag("SELECT * FROM :tbl WHERE range > 2", "tbl", A1)'
+    Start-Sleep -Milliseconds 300
+
+    # Query the fragment
+    Set-Formula "C1" '=DuckQuery("SELECT COUNT(*) as cnt FROM :frag", "frag", B1)'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "D1" "=DuckOut(C1)"
+
+    $count = Get-CellValue "D2"
+    Write-TestResult "Fragment with table handle" ($count -eq "2") "Got: $count (expected 2 rows: 3, 4)"
+}
+
+function Test-DuckOutWithFragment {
+    Write-Host "`nTest Suite: DuckOut with Fragment Handle" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # DuckOut can directly output a fragment
+    Set-Formula "A1" '=DuckFrag("SELECT * FROM range(3)")'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "B1" "=DuckOut(A1)"
+
+    $header = Get-CellValue "B1"
+    $val1 = Get-CellValue "B2"
+    $val2 = Get-CellValue "B3"
+    $val3 = Get-CellValue "B4"
+
+    Write-TestResult "DuckOut fragment - header" ($header -eq "range") "Got: $header"
+    Write-TestResult "DuckOut fragment - first value" ($val1 -eq "0") "Got: $val1"
+    Write-TestResult "DuckOut fragment - second value" ($val2 -eq "1") "Got: $val2"
+    Write-TestResult "DuckOut fragment - third value" ($val3 -eq "2") "Got: $val3"
+}
+
 # ============================================
 # Main
 # ============================================
@@ -297,6 +403,11 @@ Test-ChainedQueries
 Test-TypeConversions
 Test-ErrorHandling
 Test-DuckExecute
+Test-DuckFragBasic
+Test-DuckFragInQuery
+Test-DuckFragChained
+Test-DuckFragWithTableHandle
+Test-DuckOutWithFragment
 
 # Summary
 Write-Host "`n========================" -ForegroundColor White

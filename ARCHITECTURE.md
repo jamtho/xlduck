@@ -8,14 +8,15 @@ XlDuck is an Excel add-in that exposes DuckDB's SQL engine to spreadsheet users.
 
 ### Handles
 
-A handle is a string reference to a stored query result, formatted as:
+A handle is a string reference to stored data or deferred SQL, formatted as:
 ```
-duck://t/1234
+duck://t/1234    (table handle - materialized data)
+duck://f/1234    (fragment handle - deferred SQL)
 ```
 
 Where:
 - `duck://` - protocol prefix
-- `t` - type identifier (currently `t` for table/result set)
+- `t` or `f` - type identifier (`t` for table/result set, `f` for SQL fragment)
 - `1234` - auto-generated numeric ID
 
 Handles are displayed in cells and can be passed to other functions as table references.
@@ -34,6 +35,19 @@ class StoredResult {
 ```
 
 Results are kept in a `Dictionary<string, StoredResult>` keyed by handle.
+
+### Fragment Storage
+
+SQL fragments from `DuckFrag` are stored as deferred SQL text, not executed results:
+
+```csharp
+class StoredFragment {
+    string Sql;
+    object[] Args;  // Bound parameters for recursive resolution
+}
+```
+
+Fragments enable lazy evaluation - the SQL is validated (via EXPLAIN) at creation time but not executed until used.
 
 ### Query Parameter Binding
 
@@ -66,13 +80,38 @@ DuckQuery("SELECT ...")
 DuckQuery("SELECT * FROM :src", "src", "duck://t/1")
     → Parse SQL for :placeholders
     → For each placeholder:
-        → Look up handle in storage
-        → Create temp DuckDB table from stored rows
-        → Replace :name with temp table name
+        → If table handle (t): create temp table from stored rows
+        → If fragment handle (f): recursively resolve and inline as subquery
+        → Replace :name with temp table name or (subquery SQL)
     → Execute query in DuckDB
     → Drop temp tables
     → Store new result, return new handle
 ```
+
+### Fragment Creation
+
+```
+DuckFrag("SELECT * FROM :src WHERE x > 5", "src", A1)
+    → Resolve parameters (for validation only)
+    → Run EXPLAIN to validate SQL
+    → Drop any temp tables created for validation
+    → Store original SQL + args
+    → Return fragment handle
+```
+
+### Fragment Resolution
+
+When a fragment is used as a parameter, it's resolved recursively:
+
+```
+DuckQuery("SELECT * FROM :data", "data", "duck://f/1")
+    → Look up fragment f/1
+    → Resolve fragment's own parameters recursively
+    → Inline resolved SQL as: (SELECT ...)
+    → Continue with outer query resolution
+```
+
+Circular references (fragment A → B → A) are detected and raise an error.
 
 ### Materialization
 
@@ -100,14 +139,19 @@ For typical spreadsheet use cases (thousands of rows, not millions), this overhe
 
 | Function | Purpose |
 |----------|---------|
-| `DuckQuery(sql, [n1, v1, ...])` | Execute SQL, return handle. Up to 4 `:name` placeholders. |
-| `DuckOut(handle)` | Output stored result as spilled array with headers. |
+| `DuckQuery(sql, [n1, v1, ...])` | Execute SQL, return table handle (`t`). Up to 4 `:name` placeholders. |
+| `DuckFrag(sql, [n1, v1, ...])` | Create SQL fragment for lazy evaluation (`f`). Validated but not executed. |
+| `DuckOut(handle)` | Output handle (`t` or `f`) as spilled array with headers. |
 | `DuckQueryOut(sql, [n1, v1, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
 | `DuckVersion()` | Return add-in version (0.1) |
 | `DuckLibraryVersion()` | Return DuckDB library version |
 
-Use `DuckQuery` for intermediate results, `DuckOut` to materialize handles, or `DuckQueryOut` for direct output.
+**When to use which:**
+- `DuckQuery` - Materialize and cache results (good for expensive queries used multiple times)
+- `DuckFrag` - Defer execution, allow query optimization across composed fragments
+- `DuckOut` - Display results from either handle type
+- `DuckQueryOut` - One-off queries where you just want the output
 
 ## Known Issues and Workarounds
 

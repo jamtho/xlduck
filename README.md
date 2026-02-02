@@ -27,7 +27,8 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 
 | Function | Description |
 |----------|-------------|
-| `=DuckQuery(sql, ...)` | Execute SQL, return a handle |
+| `=DuckQuery(sql, ...)` | Execute SQL, return a table handle (`duck://t/...`) |
+| `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://f/...`) |
 | `=DuckOut(handle)` | Output a handle as a spilled array |
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
 | `=DuckExecute(sql)` | Execute DDL/DML statements |
@@ -72,3 +73,35 @@ Use `:name` placeholders with name/value pairs (up to 4 pairs):
 ```excel
 =DuckQuery("SELECT * FROM :t1 JOIN :t2 ON t1.id = t2.id", "t1", A1, "t2", B1)
 ```
+
+### Lazy Evaluation with Fragments
+
+Fragments (`duck://f/...`) defer SQL execution - the SQL is inlined as a subquery when used:
+
+```excel
+A1: =DuckFrag("SELECT * FROM range(10)")
+→ duck://f/1
+
+B1: =DuckFrag("SELECT * FROM :src WHERE range >= 5", "src", A1)
+→ duck://f/2
+
+C1: =DuckOut(B1)
+→ | range |
+  | 5     |
+  | 6     |
+  | 7     |
+  | 8     |
+  | 9     |
+```
+
+When `DuckOut(B1)` executes, it builds and runs:
+```sql
+SELECT * FROM (SELECT * FROM (SELECT * FROM range(10)) WHERE range >= 5)
+```
+
+Fragments are validated at creation time (EXPLAIN), so SQL errors appear early.
+
+Use fragments for:
+- Building query pipelines without materializing intermediate results
+- Allowing DuckDB to optimize the entire composed query
+- Reducing memory usage for complex transformations

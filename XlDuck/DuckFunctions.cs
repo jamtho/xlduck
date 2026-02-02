@@ -71,16 +71,69 @@ public static class DuckFunctions
 
     [ExcelFunction(Description = "Output a handle as a spilled array with headers.")]
     public static object[,] DuckOut(
-        [ExcelArgument(Description = "Handle from DuckQuery (e.g. duck://t/1)")] string handle)
+        [ExcelArgument(Description = "Handle from DuckQuery or DuckFrag (e.g. duck://t/1 or duck://f/1)")] string handle)
     {
         try
         {
-            var stored = ResultStore.Get(handle);
-            if (stored == null)
+            if (ResultStore.IsHandle(handle))
             {
-                return new object[,] { { $"#ERROR: Handle not found: {handle}" } };
+                var stored = ResultStore.Get(handle);
+                if (stored == null)
+                {
+                    return new object[,] { { $"#ERROR: Handle not found: {handle}" } };
+                }
+                return StoredResultToArray(stored);
             }
-            return StoredResultToArray(stored);
+            else if (FragmentStore.IsHandle(handle))
+            {
+                // Execute the fragment and output results
+                var fragment = FragmentStore.Get(handle);
+                if (fragment == null)
+                {
+                    return new object[,] { { $"#ERROR: Fragment not found: {handle}" } };
+                }
+
+                var (resolvedSql, tempTables) = ResolveParameters(fragment.Sql, fragment.Args, new HashSet<string> { handle });
+                try
+                {
+                    var conn = GetConnection();
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = resolvedSql;
+                    using var reader = cmd.ExecuteReader();
+
+                    var fieldCount = reader.FieldCount;
+                    var columnNames = new string[fieldCount];
+                    var columnTypes = new Type[fieldCount];
+
+                    for (int i = 0; i < fieldCount; i++)
+                    {
+                        columnNames[i] = reader.GetName(i);
+                        columnTypes[i] = reader.GetFieldType(i);
+                    }
+
+                    var rows = new List<object?[]>();
+                    while (reader.Read())
+                    {
+                        var row = new object?[fieldCount];
+                        for (int i = 0; i < fieldCount; i++)
+                        {
+                            row[i] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                        }
+                        rows.Add(row);
+                    }
+
+                    var stored = new StoredResult(columnNames, columnTypes, rows);
+                    return StoredResultToArray(stored);
+                }
+                finally
+                {
+                    CleanupTempTables(tempTables);
+                }
+            }
+            else
+            {
+                return new object[,] { { $"#ERROR: Invalid handle format: {handle}" } };
+            }
         }
         catch (Exception ex)
         {
@@ -141,12 +194,52 @@ public static class DuckFunctions
         }
     }
 
+    [ExcelFunction(Description = "Create a SQL fragment for lazy evaluation. Use :name placeholders with name/value pairs.")]
+    public static object DuckFrag(
+        [ExcelArgument(Description = "SQL query (SELECT or PIVOT) with optional :name placeholders")] string sql,
+        [ExcelArgument(Description = "First parameter name")] object name1 = null!,
+        [ExcelArgument(Description = "First parameter value")] object value1 = null!,
+        [ExcelArgument(Description = "Second parameter name")] object name2 = null!,
+        [ExcelArgument(Description = "Second parameter value")] object value2 = null!,
+        [ExcelArgument(Description = "Third parameter name")] object name3 = null!,
+        [ExcelArgument(Description = "Third parameter value")] object value3 = null!,
+        [ExcelArgument(Description = "Fourth parameter name")] object name4 = null!,
+        [ExcelArgument(Description = "Fourth parameter value")] object value4 = null!)
+    {
+        try
+        {
+            var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
+
+            // Validate the SQL by resolving parameters and running EXPLAIN
+            var (resolvedSql, tempTables) = ResolveParameters(sql, args, new HashSet<string>());
+            try
+            {
+                var conn = GetConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"EXPLAIN {resolvedSql}";
+                cmd.ExecuteNonQuery();
+            }
+            finally
+            {
+                CleanupTempTables(tempTables);
+            }
+
+            // Store the fragment with original SQL and args
+            var fragment = new StoredFragment(sql, args);
+            return FragmentStore.Store(fragment);
+        }
+        catch (Exception ex)
+        {
+            return $"#ERROR: {ex.Message}";
+        }
+    }
+
     /// <summary>
     /// Execute a query, store the result, and return the handle.
     /// </summary>
     private static string ExecuteQueryAndStore(string sql, object[] args)
     {
-        var (resolvedSql, tempTables) = ResolveParameters(sql, args);
+        var (resolvedSql, tempTables) = ResolveParameters(sql, args, new HashSet<string>());
         try
         {
             var conn = GetConnection();
@@ -242,9 +335,12 @@ public static class DuckFunctions
     }
 
     /// <summary>
-    /// Parse SQL for :name placeholders, look up handles, create temp tables, and return resolved SQL.
+    /// Parse SQL for :name placeholders, look up handles, create temp tables or inline fragments, and return resolved SQL.
     /// </summary>
-    private static (string resolvedSql, List<string> tempTables) ResolveParameters(string sql, object[] args)
+    /// <param name="sql">SQL with :name placeholders</param>
+    /// <param name="args">Name/value pairs for parameter binding</param>
+    /// <param name="visitedFragments">Set of fragment handles currently being resolved (for cycle detection)</param>
+    private static (string resolvedSql, List<string> tempTables) ResolveParameters(string sql, object[] args, HashSet<string> visitedFragments)
     {
         var tempTables = new List<string>();
 
@@ -266,10 +362,32 @@ public static class DuckFunctions
 
             if (ResultStore.IsHandle(value))
             {
+                // Table handle: create temp table from stored data
                 var stored = ResultStore.Get(value) ?? throw new ArgumentException($"Handle not found: {value}");
                 var tempTableName = CreateTempTable(stored);
                 tempTables.Add(tempTableName);
                 parameters[name] = tempTableName;
+            }
+            else if (FragmentStore.IsHandle(value))
+            {
+                // Fragment handle: resolve recursively and inline as subquery
+                if (visitedFragments.Contains(value))
+                {
+                    throw new ArgumentException($"Circular fragment reference detected: {value}");
+                }
+
+                var fragment = FragmentStore.Get(value) ?? throw new ArgumentException($"Fragment not found: {value}");
+
+                // Add to visited set before recursing
+                visitedFragments.Add(value);
+                var (resolvedFragmentSql, fragmentTempTables) = ResolveParameters(fragment.Sql, fragment.Args, visitedFragments);
+                visitedFragments.Remove(value);
+
+                // Collect any temp tables created during fragment resolution
+                tempTables.AddRange(fragmentTempTables);
+
+                // Wrap fragment SQL in parentheses as a subquery
+                parameters[name] = $"({resolvedFragmentSql})";
             }
             else
             {

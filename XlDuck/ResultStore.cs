@@ -54,7 +54,7 @@ public static class ResultStore
     /// <summary>
     /// Check if a string is a valid handle format.
     /// </summary>
-    public static bool IsHandle(string value)
+    internal static bool IsHandle(string value)
     {
         return value.StartsWith("duck://t/");
     }
