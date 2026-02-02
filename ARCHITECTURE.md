@@ -10,16 +10,31 @@ XlDuck is an Excel add-in that exposes DuckDB's SQL engine to spreadsheet users.
 
 A handle is a string reference to stored data or deferred SQL, formatted as:
 ```
-duck://t/1234    (table handle - materialized data)
-duck://f/1234    (fragment handle - deferred SQL)
+duck://t/1234|10x4    (table handle - materialized data with dimensions)
+duck://f/1234         (fragment handle - deferred SQL)
 ```
 
 Where:
 - `duck://` - protocol prefix
 - `t` or `f` - type identifier (`t` for table/result set, `f` for SQL fragment)
 - `1234` - auto-generated numeric ID
+- `|10x4` - (table handles only) row x column dimensions
 
 Handles are displayed in cells and can be passed to other functions as table references.
+
+### Status URLs
+
+Special cell values use a `#duck://` URL format:
+```
+#duck://blocked/config|Waiting for DuckConfigReady()   (waiting for config)
+#duck://error/syntax|SQL syntax error near...          (syntax error)
+#duck://error/notfound|Table 'foo' does not exist      (not found error)
+#duck://error/http|HTTP 403 on S3 bucket               (HTTP error)
+#duck://error/query|...                                (general query error)
+#duck://error/internal|...                             (internal error)
+```
+
+The `#` prefix follows Excel's convention for special status values.
 
 ### Result Storage
 
@@ -139,11 +154,12 @@ For typical spreadsheet use cases (thousands of rows, not millions), this overhe
 
 | Function | Purpose |
 |----------|---------|
-| `DuckQuery(sql, [n1, v1, ...])` | Execute SQL, return table handle (`t`). Up to 4 `:name` placeholders. |
-| `DuckFrag(sql, [n1, v1, ...])` | Create SQL fragment for lazy evaluation (`f`). Validated but not executed. |
+| `DuckQuery(sql, [n1, v1, ...])` | Execute SQL, return table handle (`t`). Up to 4 `:name` placeholders. Add `"@config"` to wait for config. |
+| `DuckFrag(sql, [n1, v1, ...])` | Create SQL fragment for lazy evaluation (`f`). Validated but not executed. Add `"@config"` to wait for config. |
 | `DuckOut(handle)` | Output handle (`t` or `f`) as spilled array with headers. |
 | `DuckQueryOut(sql, [n1, v1, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
+| `DuckConfigReady()` | Signal that configuration is complete. Queries with `@config` wait for this. |
 | `DuckVersion()` | Return add-in version (0.1) |
 | `DuckLibraryVersion()` | Return DuckDB library version |
 
@@ -163,16 +179,58 @@ DuckDB's aggregate functions (SUM, etc.) return HUGEINT/INT128 types that .NET a
 
 Excel-DNA doesn't support `params` arrays in UDFs. Instead, we use explicit optional parameters, limiting queries to 4 name/value pairs (8 parameters). This covers most use cases; complex joins needing more can use subqueries or intermediate handles.
 
+## RTD and Lifecycle Management
+
+### RTD-Based Functions
+
+`DuckQuery` and `DuckFrag` use Excel's RTD (Real-Time Data) mechanism for lifecycle tracking. This enables:
+
+1. **Reference counting**: Handles are automatically cleaned up when no longer referenced by any cell
+2. **Cell lifecycle awareness**: When a cell is deleted or its formula changes, the handle's reference count decrements
+3. **Automatic cleanup**: Handles with zero references are evicted from storage
+
+### Timeout Budget
+
+To avoid RTD's 2-second throttle delay, queries use a timeout budget:
+
+- Queries completing within **200ms** return results directly (synchronous)
+- Slower queries return "Loading..." immediately, then update asynchronously
+
+This provides responsive UX for fast queries while supporting long-running operations.
+
+### Configuration Gate (@config)
+
+Queries needing runtime configuration (e.g., S3 endpoints) can wait for setup:
+
+```excel
+=DuckFrag("SELECT * FROM read_parquet(:url)", "url", A1, "@config")
+```
+
+The `@config` sentinel causes the query to wait until `DuckConfigReady()` is called, typically from VBA `Auto_Open`:
+
+```vba
+Sub Auto_Open()
+    Application.Run "DuckExecute", "SET s3_endpoint = '127.0.0.1:9000'"
+    Application.Run "DuckConfigReady"
+End Sub
+```
+
+Downstream queries that depend on a blocked query (input starts with `#duck://blocked/`) also wait automatically.
+
+### Bulk Insert Optimization
+
+When materializing table handles into temp tables, the add-in uses DuckDB's Appender API for ~300x faster bulk inserts compared to row-by-row INSERT statements.
+
 ## Session Lifecycle
 
 - All stored results persist for the Excel session
 - Closing Excel clears all handles
 - No persistence to disk (yet)
 - DuckDB runs in-memory mode
+- Reference counting automatically cleans up unused handles
 
 ## Future Considerations
 
 - **Arrow optimization**: Avoid temp table round-trip by using Arrow memory directly
 - **Handle comments**: Allow user annotations on handles for readability
 - **Persistence**: Save/load handle stores to disk
-- **Handle cleanup**: Manual or automatic garbage collection of unused handles
