@@ -148,7 +148,7 @@ DuckDB.NET doesn't expose a direct way to query Arrow memory or register externa
 
 This involves copying data twice (DuckDB → .NET → DuckDB), which is inefficient for large datasets. Future optimization could use Arrow format with DuckDB's `arrow_scan()` if DuckDB.NET exposes the necessary bindings.
 
-For typical spreadsheet use cases (thousands of rows, not millions), this overhead is acceptable.
+The goal is to support millions of rows efficiently. The current temp table approach works but will need optimization (likely via Arrow) for large-scale use.
 
 ## Excel Functions
 
