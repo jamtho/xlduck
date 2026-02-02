@@ -380,6 +380,39 @@ function Test-DuckOutWithFragment {
     Write-TestResult "DuckOut fragment - third value" ($val3 -eq "2") "Got: $val3"
 }
 
+function Test-ReadCSV {
+    Write-Host "`nTest Suite: Read CSV Files" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Get the path to the test CSV (relative to repo root)
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $csvPath = Join-Path $repoRoot "tests\data\sample.csv"
+    $csvPath = $csvPath -replace '\\', '/'  # DuckDB prefers forward slashes
+
+    # Test 1: Read CSV with read_csv_auto
+    Set-Formula "A1" "=DuckQueryOut(""SELECT * FROM read_csv_auto('$csvPath')"")"
+
+    $header1 = Get-CellValue "A1"
+    $header2 = Get-CellValue "B1"
+    $header3 = Get-CellValue "C1"
+
+    Write-TestResult "CSV headers detected" ($header1 -eq "id" -and $header2 -eq "name" -and $header3 -eq "value") "Got: $header1, $header2, $header3"
+
+    $name1 = Get-CellValue "B2"
+    $name2 = Get-CellValue "B3"
+    $name3 = Get-CellValue "B4"
+
+    Write-TestResult "CSV data rows" ($name1 -eq "alice" -and $name2 -eq "bob" -and $name3 -eq "charlie") "Got: $name1, $name2, $name3"
+
+    # Test 2: Query CSV with filter
+    Set-Formula "E1" "=DuckQueryOut(""SELECT name, value FROM read_csv_auto('$csvPath') WHERE value > 150"")"
+
+    $filteredName = Get-CellValue "E2"
+    $filteredValue = Get-CellValue "F2"
+
+    Write-TestResult "CSV filtered query" ($filteredName -eq "bob" -and $filteredValue -eq "200") "Got: name=$filteredName, value=$filteredValue"
+}
+
 # ============================================
 # Main
 # ============================================
@@ -408,6 +441,7 @@ Test-DuckFragInQuery
 Test-DuckFragChained
 Test-DuckFragWithTableHandle
 Test-DuckOutWithFragment
+Test-ReadCSV
 
 # Summary
 Write-Host "`n========================" -ForegroundColor White
