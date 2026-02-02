@@ -105,3 +105,24 @@ Use fragments for:
 - Building query pipelines without materializing intermediate results
 - Allowing DuckDB to optimize the entire composed query
 - Reducing memory usage for complex transformations
+
+### Reading Files
+
+DuckDB can read CSV, Parquet, JSON, and other file formats directly:
+
+```excel
+=DuckQueryOut("SELECT * FROM read_csv_auto('C:/data/sales.csv')")
+
+=DuckQueryOut("SELECT * FROM read_parquet('C:/data/events.parquet') WHERE date > '2024-01-01'")
+
+=DuckQueryOut("SELECT * FROM read_json_auto('C:/data/config.json')")
+```
+
+Combine with fragments for reusable data sources:
+
+```excel
+A1: =DuckFrag("SELECT * FROM read_csv_auto('C:/data/sales.csv')")
+B1: =DuckQueryOut("SELECT region, SUM(amount) FROM :sales GROUP BY region", "sales", A1)
+```
+
+DuckDB can also read from URLs and S3 - see [DuckDB documentation](https://duckdb.org/docs/data/overview) for details.
