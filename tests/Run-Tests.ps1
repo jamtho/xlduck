@@ -260,10 +260,17 @@ function Test-DuckConfigReady {
     Write-Host "`nTest Suite: DuckConfigReady" -ForegroundColor Cyan
     Clear-TestRange
 
-    # Test: DuckConfigReady returns OK
+    # Test 1: DuckConfigReady returns OK
     Set-Formula "A1" '=DuckConfigReady()'
     $result = Get-CellValue "A1"
     Write-TestResult "DuckConfigReady returns OK" ($result -eq "OK") "Got: $result"
+
+    # Test 2: @config sentinel works alongside real parameters
+    Set-Formula "B1" '=DuckQuery("SELECT * FROM range(3)")'
+    Start-Sleep -Milliseconds 500
+    Set-Formula "C1" '=DuckFrag("SELECT * FROM :src", "src", B1, "@config")'
+    $result2 = Get-CellValue "C1"
+    Write-TestResult "@config with params returns handle" ($result2 -match "^duck://frag/\d+$") "Got: $result2"
 }
 
 function Test-DuckExecute {

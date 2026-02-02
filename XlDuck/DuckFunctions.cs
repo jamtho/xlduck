@@ -427,6 +427,7 @@ public static class DuckFunctions
 
     /// <summary>
     /// Collect optional name/value pairs into an array, filtering out missing values.
+    /// The @config sentinel is treated specially - added standalone without a value.
     /// </summary>
     private static object[] CollectArgs(params object[] pairs)
     {
@@ -441,6 +442,13 @@ public static class DuckFunctions
                 break;
             if (name is string s && string.IsNullOrEmpty(s))
                 break;
+
+            // @config sentinel is standalone - don't add its (empty) value
+            if (name is string nameStr && nameStr == ConfigSentinel)
+            {
+                result.Add(name);
+                continue;
+            }
 
             result.Add(name);
             result.Add(value);
