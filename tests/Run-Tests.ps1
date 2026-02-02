@@ -240,15 +240,30 @@ function Test-ErrorHandling {
     Write-Host "`nTest Suite: Error Handling" -ForegroundColor Cyan
     Clear-TestRange
 
-    # Test 1: Invalid SQL
+    # Test 1: Invalid table - should be notfound category
     Set-Formula "A1" '=DuckQuery("SELECT * FROM nonexistent_table")'
     $result = Get-CellValue "A1"
-    Write-TestResult "Invalid table error" ($result -match "#duck://error/") "Got: $result"
+    Write-TestResult "Invalid table error (notfound)" ($result -match "#duck://error/notfound\|") "Got: $result"
 
-    # Test 2: Invalid handle
+    # Test 2: Invalid handle - should be notfound category
     Set-Formula "B1" '=DuckOut("duck://t/99999")'
     $result2 = Get-CellValue "B1"
-    Write-TestResult "Invalid handle error" ($result2 -match "#duck://error/") "Got: $result2"
+    Write-TestResult "Invalid handle error (notfound)" ($result2 -match "#duck://error/notfound\|") "Got: $result2"
+
+    # Test 3: Syntax error
+    Set-Formula "C1" '=DuckQuery("SELEC * FORM table")'
+    $result3 = Get-CellValue "C1"
+    Write-TestResult "Syntax error category" ($result3 -match "#duck://error/syntax\|") "Got: $result3"
+}
+
+function Test-DuckConfigReady {
+    Write-Host "`nTest Suite: DuckConfigReady" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Test: DuckConfigReady returns OK
+    Set-Formula "A1" '=DuckConfigReady()'
+    $result = Get-CellValue "A1"
+    Write-TestResult "DuckConfigReady returns OK" ($result -eq "OK") "Got: $result"
 }
 
 function Test-DuckExecute {
@@ -475,6 +490,7 @@ Test-ParameterBinding
 Test-ChainedQueries
 Test-TypeConversions
 Test-ErrorHandling
+Test-DuckConfigReady
 Test-DuckExecute
 Test-DuckFragBasic
 Test-DuckFragInQuery
