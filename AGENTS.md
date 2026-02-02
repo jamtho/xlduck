@@ -46,6 +46,10 @@ Start-Process "XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll"
 powershell -ExecutionPolicy Bypass -File tests/Run-Tests.ps1
 ```
 
+### Regression Tests
+
+When fixing a bug, add a test that reproduces the bug unless you have a very good reason not to. This prevents the same bug from returning later. The test should fail before the fix and pass after.
+
 ### Key Testing Notes
 
 1. **Use `.Formula2` not `.Formula`** when writing formulas via COM. `.Formula` adds the `@` implicit intersection operator which prevents dynamic array spilling.
