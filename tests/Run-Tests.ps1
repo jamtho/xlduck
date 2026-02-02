@@ -441,6 +441,16 @@ function Test-ReadCSV {
     $filteredValue = Get-CellValue "F2"
 
     Write-TestResult "CSV filtered query" ($filteredName -eq "bob" -and $filteredValue -eq "200") "Got: name=$filteredName, value=$filteredValue"
+
+    # Test 3: String parameter binding (path as parameter)
+    Clear-TestRange
+    $script:Sheet.Range("A1").Value2 = $csvPath
+    Set-Formula "B1" '=DuckFrag("SELECT * FROM read_csv_auto(:path)", "path", A1)'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "C1" '=DuckQueryOut("SELECT name FROM :data WHERE id = 1", "data", B1)'
+
+    $name = Get-CellValue "C2"
+    Write-TestResult "String param in read_csv_auto" ($name -eq "alice") "Got: $name"
 }
 
 # ============================================

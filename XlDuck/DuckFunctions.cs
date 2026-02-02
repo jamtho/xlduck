@@ -411,7 +411,9 @@ public static class DuckFunctions
             }
             else
             {
-                parameters[name] = value;
+                // Quote string values for SQL (escape single quotes)
+                var escaped = value.Replace("'", "''");
+                parameters[name] = $"'{escaped}'";
             }
         }
 
