@@ -16,7 +16,7 @@ duck://frag/1234         (fragment handle - deferred SQL)
 
 Where:
 - `duck://` - protocol prefix
-- `t` or `f` - type identifier (`t` for table/result set, `f` for SQL fragment)
+- `table` or `frag` - type identifier
 - `1234` - auto-generated numeric ID
 - `|10x4` - (table handles only) row x column dimensions
 
@@ -154,9 +154,9 @@ The goal is to support millions of rows efficiently. The current temp table appr
 
 | Function | Purpose |
 |----------|---------|
-| `DuckQuery(sql, [n1, v1, ...])` | Execute SQL, return table handle (`t`). Up to 4 `:name` placeholders. Add `"@config"` to wait for config. |
-| `DuckFrag(sql, [n1, v1, ...])` | Create SQL fragment for lazy evaluation (`f`). Validated but not executed. Add `"@config"` to wait for config. |
-| `DuckOut(handle)` | Output handle (`t` or `f`) as spilled array with headers. |
+| `DuckQuery(sql, [n1, v1, ...])` | Execute SQL, return table handle. Up to 4 `:name` placeholders. Add `"@config"` to wait for config. |
+| `DuckFrag(sql, [n1, v1, ...])` | Create SQL fragment for lazy evaluation. Validated but not executed. Add `"@config"` to wait for config. |
+| `DuckOut(handle)` | Output handle (table or frag) as spilled array with headers. |
 | `DuckQueryOut(sql, [n1, v1, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
 | `DuckConfigReady()` | Signal that configuration is complete. Queries with `@config` wait for this. |
