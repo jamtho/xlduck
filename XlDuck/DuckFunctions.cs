@@ -9,12 +9,38 @@ using DuckDB.NET.Data;
 
 namespace XlDuck;
 
+/// <summary>
+/// Add-in lifecycle handler.
+/// </summary>
+public class AddIn : IExcelAddIn
+{
+    public void AutoOpen()
+    {
+        System.Diagnostics.Debug.WriteLine("[XlDuck] Add-in loaded");
+    }
+
+    public void AutoClose()
+    {
+        System.Diagnostics.Debug.WriteLine("[XlDuck] Add-in unloaded");
+    }
+}
+
 public static class DuckFunctions
 {
     private const string Version = "0.1";
 
     private static DuckDBConnection? _connection;
     private static readonly object _connLock = new();
+
+    // Ready flag - queries with "@config" sentinel wait until DuckConfigReady() is called
+    internal static bool IsReady { get; private set; } = false;
+
+    // Sentinel value that marks a query as requiring config
+    internal const string ConfigSentinel = "@config";
+
+    // Status URL prefix for blocked queries (# prefix follows Excel convention)
+    internal const string BlockedPrefix = "#duck://blocked/";
+    internal const string ConfigBlockedStatus = "#duck://blocked/config|Waiting for DuckConfigReady()";
 
     private static DuckDBConnection GetConnection()
     {
@@ -33,6 +59,14 @@ public static class DuckFunctions
     public static string DuckVersion()
     {
         return Version;
+    }
+
+    [ExcelFunction(Description = "Signal that configuration is complete. Queries with @config wait until this is called.")]
+    public static string DuckConfigReady()
+    {
+        System.Diagnostics.Debug.WriteLine("[XlDuck] DuckConfigReady called");
+        IsReady = true;
+        return "OK";
     }
 
     [ExcelFunction(Description = "Get the DuckDB library version")]
@@ -189,12 +223,15 @@ public static class DuckFunctions
     public static object DuckExecute(
         [ExcelArgument(Description = "SQL statement")] string sql)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var conn = GetConnection();
+            var connTime = sw.ElapsedMilliseconds;
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
             var rowsAffected = cmd.ExecuteNonQuery();
+            System.Diagnostics.Debug.WriteLine($"[DuckExecute] conn={connTime}ms exec={sw.ElapsedMilliseconds - connTime}ms sql={sql.Substring(0, Math.Min(50, sql.Length))}");
             return $"OK ({rowsAffected} rows affected)";
         }
         catch (Exception ex)

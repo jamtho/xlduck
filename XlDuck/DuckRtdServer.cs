@@ -43,7 +43,7 @@ public class DuckRtdServer : ExcelRtdServer
 
     protected override object ConnectData(Topic topic, IList<string> topicInfo, ref bool newValues)
     {
-        System.Diagnostics.Debug.WriteLine($"[DuckRTD] ConnectData: TopicId={topic.TopicId}, Info=[{string.Join(", ", topicInfo)}]");
+        System.Diagnostics.Debug.WriteLine($"[DuckRTD] ConnectData: TopicId={topic.TopicId}, IsReady={DuckFunctions.IsReady}, Info=[{string.Join(", ", topicInfo)}]");
 
         // topicInfo[0] = "query" or "frag"
         // topicInfo[1] = sql
@@ -63,6 +63,35 @@ public class DuckRtdServer : ExcelRtdServer
             CompletionEvent = completionEvent
         };
         _topics[topic.TopicId] = info;
+
+        // Check if query has @config sentinel OR depends on a blocked query - if so, wait for DuckConfigReady()
+        bool requiresConfig = args.Any(a => a?.ToString() == DuckFunctions.ConfigSentinel);
+        bool dependsOnBlocked = args.Any(a => a?.ToString()?.StartsWith(DuckFunctions.BlockedPrefix) == true);
+        if ((requiresConfig || dependsOnBlocked) && !DuckFunctions.IsReady)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DuckRTD] @config sentinel found, waiting for DuckConfigReady()...");
+            newValues = true;
+
+            // Poll for ready flag in background, then execute query
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                while (!DuckFunctions.IsReady)
+                {
+                    Thread.Sleep(100);
+                }
+                System.Diagnostics.Debug.WriteLine($"[DuckRTD] DuckConfigReady() called, executing deferred query");
+                ExecuteQuery(topic, info);
+            });
+
+            return DuckFunctions.ConfigBlockedStatus;
+        }
+
+        // Filter out sentinel from args before execution
+        if (requiresConfig)
+        {
+            args = args.Where(a => a?.ToString() != DuckFunctions.ConfigSentinel).ToArray();
+            info.Args = args;
+        }
 
         // Start query on background thread
         string? result = null;
@@ -171,6 +200,61 @@ public class DuckRtdServer : ExcelRtdServer
             newValues = true;
             return "Loading...";
         }
+    }
+
+    /// <summary>
+    /// Execute a query asynchronously and update the topic when done.
+    /// Used for deferred execution after DuckReady() is called.
+    /// </summary>
+    private void ExecuteQuery(Topic topic, TopicInfo info)
+    {
+        string? result = null;
+        Exception? error = null;
+
+        try
+        {
+            if (info.QueryType == "query")
+            {
+                result = QueryExecutor.ExecuteQuery(info.Sql, info.Args);
+            }
+            else if (info.QueryType == "frag")
+            {
+                result = QueryExecutor.CreateFragment(info.Sql, info.Args);
+            }
+            else
+            {
+                result = $"#ERROR: Unknown query type: {info.QueryType}";
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex;
+        }
+
+        string finalResult;
+        if (error != null)
+        {
+            finalResult = $"#ERROR: {error.Message}";
+        }
+        else
+        {
+            finalResult = result ?? "#ERROR: No result";
+        }
+
+        info.Handle = finalResult;
+        info.IsComplete = true;
+
+        // Increment refcount if we got a valid handle
+        if (!finalResult.StartsWith("#ERROR"))
+        {
+            if (info.QueryType == "query")
+                ResultStore.IncrementRefCount(finalResult);
+            else if (info.QueryType == "frag")
+                FragmentStore.IncrementRefCount(finalResult);
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[DuckRTD] Deferred complete: {finalResult}");
+        topic.UpdateValue(finalResult);
     }
 
     protected override void DisconnectData(Topic topic)
