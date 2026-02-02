@@ -141,3 +141,7 @@ B1: =DuckQueryOut("PIVOT :data ON region USING SUM(amount)", "data", A1)
 ```
 
 See [DuckDB PIVOT documentation](https://duckdb.org/docs/sql/statements/pivot) for more examples.
+
+## Credits
+
+Several design ideas take inspiration from the superb [PyXLL add-in](https://www.pyxll.com), which you should check out immediately if you've ever considered integrating Python code with your sheets.
