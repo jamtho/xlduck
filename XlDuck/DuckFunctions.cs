@@ -66,7 +66,11 @@ public static class DuckFunctions
         try
         {
             var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
-            return ExecuteQueryAndStore(sql, args);
+            // Build topic info: ["query", sql, arg1, arg2, ...]
+            var topicInfo = new List<string> { "query", sql };
+            topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
+
+            return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
         }
         catch (Exception ex)
         {
@@ -161,7 +165,7 @@ public static class DuckFunctions
         try
         {
             var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
-            var handle = ExecuteQueryAndStore(sql, args);
+            var handle = ExecuteQueryInternal(sql, args);
 
             if (handle.StartsWith("#ERROR"))
             {
@@ -214,24 +218,11 @@ public static class DuckFunctions
         try
         {
             var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
+            // Build topic info: ["frag", sql, arg1, arg2, ...]
+            var topicInfo = new List<string> { "frag", sql };
+            topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
 
-            // Validate the SQL by resolving parameters and running EXPLAIN
-            var (resolvedSql, tempTables) = ResolveParameters(sql, args, new HashSet<string>());
-            try
-            {
-                var conn = GetConnection();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"EXPLAIN {resolvedSql}";
-                cmd.ExecuteNonQuery();
-            }
-            finally
-            {
-                CleanupTempTables(tempTables);
-            }
-
-            // Store the fragment with original SQL and args
-            var fragment = new StoredFragment(sql, args);
-            return FragmentStore.Store(fragment);
+            return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
         }
         catch (Exception ex)
         {
@@ -240,9 +231,9 @@ public static class DuckFunctions
     }
 
     /// <summary>
-    /// Execute a query, store the result, and return the handle.
+    /// Execute a query, store the result, and return the handle. Called by RTD server.
     /// </summary>
-    private static string ExecuteQueryAndStore(string sql, object[] args)
+    internal static string ExecuteQueryInternal(string sql, object[] args)
     {
         var (resolvedSql, tempTables) = ResolveParameters(sql, args, new HashSet<string>());
         try
@@ -280,6 +271,30 @@ public static class DuckFunctions
         {
             CleanupTempTables(tempTables);
         }
+    }
+
+    /// <summary>
+    /// Create a fragment, validate it, and return the handle. Called by RTD server.
+    /// </summary>
+    internal static string CreateFragmentInternal(string sql, object[] args)
+    {
+        // Validate the SQL by resolving parameters and running EXPLAIN
+        var (resolvedSql, tempTables) = ResolveParameters(sql, args, new HashSet<string>());
+        try
+        {
+            var conn = GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"EXPLAIN {resolvedSql}";
+            cmd.ExecuteNonQuery();
+        }
+        finally
+        {
+            CleanupTempTables(tempTables);
+        }
+
+        // Store the fragment with original SQL and args
+        var fragment = new StoredFragment(sql, args);
+        return FragmentStore.Store(fragment);
     }
 
     /// <summary>

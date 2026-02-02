@@ -28,6 +28,7 @@ public class StoredResult
 public static class ResultStore
 {
     private static readonly Dictionary<string, StoredResult> _results = new();
+    private static readonly Dictionary<string, int> _refCounts = new();
     private static readonly object _lock = new();
     private static long _nextId = 1;
 
@@ -61,7 +62,7 @@ public static class ResultStore
     /// <summary>
     /// Strip dimension suffix from handle (duck://t/123|10x4 -> duck://t/123).
     /// </summary>
-    private static string GetBaseHandle(string handle)
+    internal static string GetBaseHandle(string handle)
     {
         var pipeIndex = handle.IndexOf('|');
         return pipeIndex >= 0 ? handle[..pipeIndex] : handle;
@@ -73,5 +74,58 @@ public static class ResultStore
     internal static bool IsHandle(string value)
     {
         return value.StartsWith("duck://t/");
+    }
+
+    /// <summary>
+    /// Increment reference count for a handle.
+    /// </summary>
+    internal static void IncrementRefCount(string handle)
+    {
+        lock (_lock)
+        {
+            var baseHandle = GetBaseHandle(handle);
+            _refCounts.TryGetValue(baseHandle, out var count);
+            _refCounts[baseHandle] = count + 1;
+            System.Diagnostics.Debug.WriteLine($"[ResultStore] RefCount++ {baseHandle}: {count + 1}");
+        }
+    }
+
+    /// <summary>
+    /// Decrement reference count for a handle. Removes result when count reaches zero.
+    /// </summary>
+    internal static void DecrementRefCount(string handle)
+    {
+        lock (_lock)
+        {
+            var baseHandle = GetBaseHandle(handle);
+            if (_refCounts.TryGetValue(baseHandle, out var count))
+            {
+                count--;
+                System.Diagnostics.Debug.WriteLine($"[ResultStore] RefCount-- {baseHandle}: {count}");
+
+                if (count <= 0)
+                {
+                    _refCounts.Remove(baseHandle);
+                    _results.Remove(baseHandle);
+                    System.Diagnostics.Debug.WriteLine($"[ResultStore] Evicted {baseHandle}");
+                }
+                else
+                {
+                    _refCounts[baseHandle] = count;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get current reference count for a handle (for debugging).
+    /// </summary>
+    internal static int GetRefCount(string handle)
+    {
+        lock (_lock)
+        {
+            var baseHandle = GetBaseHandle(handle);
+            return _refCounts.TryGetValue(baseHandle, out var count) ? count : 0;
+        }
     }
 }

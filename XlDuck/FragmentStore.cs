@@ -26,6 +26,7 @@ public class StoredFragment
 public static class FragmentStore
 {
     private static readonly Dictionary<string, StoredFragment> _fragments = new();
+    private static readonly Dictionary<string, int> _refCounts = new();
     private static readonly object _lock = new();
     private static long _nextId = 1;
 
@@ -60,5 +61,44 @@ public static class FragmentStore
     internal static bool IsHandle(string? value)
     {
         return value?.StartsWith("duck://f/") == true;
+    }
+
+    /// <summary>
+    /// Increment reference count for a handle.
+    /// </summary>
+    internal static void IncrementRefCount(string handle)
+    {
+        lock (_lock)
+        {
+            _refCounts.TryGetValue(handle, out var count);
+            _refCounts[handle] = count + 1;
+            System.Diagnostics.Debug.WriteLine($"[FragmentStore] RefCount++ {handle}: {count + 1}");
+        }
+    }
+
+    /// <summary>
+    /// Decrement reference count for a handle. Removes fragment when count reaches zero.
+    /// </summary>
+    internal static void DecrementRefCount(string handle)
+    {
+        lock (_lock)
+        {
+            if (_refCounts.TryGetValue(handle, out var count))
+            {
+                count--;
+                System.Diagnostics.Debug.WriteLine($"[FragmentStore] RefCount-- {handle}: {count}");
+
+                if (count <= 0)
+                {
+                    _refCounts.Remove(handle);
+                    _fragments.Remove(handle);
+                    System.Diagnostics.Debug.WriteLine($"[FragmentStore] Evicted {handle}");
+                }
+                else
+                {
+                    _refCounts[handle] = count;
+                }
+            }
+        }
     }
 }
