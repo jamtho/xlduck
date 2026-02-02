@@ -27,7 +27,7 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 
 | Function | Description |
 |----------|-------------|
-| `=DuckQuery(sql, ...)` | Execute SQL, return a table handle (`duck://t/...`) |
+| `=DuckQuery(sql, ...)` | Execute SQL, return a table handle (`duck://t/1\|10x4` = 10 rows, 4 cols) |
 | `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://f/...`) |
 | `=DuckOut(handle)` | Output a handle as a spilled array |
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
@@ -53,13 +53,13 @@ A1: =DuckQueryOut("SELECT * FROM range(5)")
 
 ```excel
 A1: =DuckQuery("SELECT * FROM range(10)")
-→ duck://t/1
+→ duck://t/1|10x1
 
 B1: =DuckQuery("SELECT * FROM :src WHERE range > 5", "src", A1)
-→ duck://t/2
+→ duck://t/2|4x1
 
 C1: =DuckQuery("SELECT SUM(range) AS total FROM :data", "data", B1)
-→ duck://t/3
+→ duck://t/3|1x1
 
 D1: =DuckOut(C1)
 → | total |
