@@ -229,6 +229,14 @@ When materializing table handles into temp tables, the add-in uses DuckDB's Appe
 - DuckDB runs in-memory mode
 - Reference counting automatically cleans up unused handles
 
+## Concurrency Model
+
+The add-in uses a single shared DuckDB connection protected by locks. RTD callbacks and Excel function calls may occur on different threads.
+
+Current approach: simple locking around connection access. This works but has limitations.
+
+**Future consideration**: A dedicated worker thread (actor pattern) that owns the DuckDB connection would be cleaner. All database operations would be queued to this worker, eliminating lock contention and ensuring operations like temp table drops don't race with queries. Deferred for now as current locking is sufficient, but may be needed as complexity grows.
+
 ## Future Considerations
 
 - **Arrow optimization**: Avoid temp table round-trip by using Arrow memory directly
