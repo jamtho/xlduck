@@ -67,6 +67,14 @@ public class DuckRtdServer : ExcelRtdServer
         // Check if query has @config sentinel OR depends on a blocked query - if so, wait for DuckConfigReady()
         bool requiresConfig = args.Any(a => a?.ToString() == DuckFunctions.ConfigSentinel);
         bool dependsOnBlocked = args.Any(a => a?.ToString()?.StartsWith(DuckFunctions.BlockedPrefix) == true);
+
+        // Filter out sentinel from args before any execution path
+        if (requiresConfig)
+        {
+            args = args.Where(a => a?.ToString() != DuckFunctions.ConfigSentinel).ToArray();
+            info.Args = args;
+        }
+
         if ((requiresConfig || dependsOnBlocked) && !DuckFunctions.IsReady)
         {
             System.Diagnostics.Debug.WriteLine($"[DuckRTD] @config sentinel found, waiting for DuckConfigReady()...");
@@ -84,13 +92,6 @@ public class DuckRtdServer : ExcelRtdServer
             });
 
             return DuckFunctions.ConfigBlockedStatus;
-        }
-
-        // Filter out sentinel from args before execution
-        if (requiresConfig)
-        {
-            args = args.Where(a => a?.ToString() != DuckFunctions.ConfigSentinel).ToArray();
-            info.Args = args;
         }
 
         // Start query on background thread
