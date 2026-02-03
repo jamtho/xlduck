@@ -28,23 +28,33 @@ XlDuck/
 
 ## Development Workflow
 
-- Build: `dotnet build` from XlDuck directory
-- Test: Run `tests/Run-Tests.ps1` (requires Excel with add-in loaded)
-- The 64-bit add-in includes native DuckDB; 32-bit does not
+The 64-bit add-in includes native DuckDB; 32-bit does not.
+
+### TDD Cycle
+
+After making code changes, use the reload script to rebuild and restart Excel with the add-in:
+
+```powershell
+# Closes Excel, rebuilds, relaunches with add-in loaded
+powershell -ExecutionPolicy Bypass -File scripts/reload-addin.ps1
+
+# Run the test suite
+powershell -ExecutionPolicy Bypass -File tests/Run-Tests.ps1
+```
+
+The reload script:
+1. Cleanly closes Excel via COM (no save prompts)
+2. Runs `dotnet build`
+3. Launches Excel with a blank workbook
+4. Registers the XLL add-in
+
+Use `-NoBuild` to skip the build step if you only need to restart Excel.
 
 ## Testing
 
 ### Automated Tests
 
-Tests use PowerShell COM automation to interact with Excel. Run:
-
-```powershell
-# First, launch Excel with the add-in
-Start-Process "XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll"
-
-# Then run tests (after dismissing any security dialogs)
-powershell -ExecutionPolicy Bypass -File tests/Run-Tests.ps1
-```
+Tests use PowerShell COM automation to interact with Excel. The test suite requires Excel to be running with the add-in loaded and a workbook open - use `scripts/reload-addin.ps1` to set this up.
 
 ### Regression Tests
 
