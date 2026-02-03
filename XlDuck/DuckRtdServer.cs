@@ -14,7 +14,7 @@ namespace XlDuck;
 public class DuckRtdServer : ExcelRtdServer
 {
     // Time budget for synchronous execution before showing "Loading..."
-    private const int TimeoutBudgetMs = 200;
+    private const int TimeoutBudgetMs = 1000;
 
     // Track active topics and their associated handles
     private readonly ConcurrentDictionary<int, TopicInfo> _topics = new();
