@@ -195,7 +195,7 @@ public static class DuckFunctions
                         columnTypes[i] = reader.GetFieldType(i);
                     }
 
-                    var rows = new List<object?[]>();
+                    var rows = new List<object?[]>(100000);
                     while (reader.Read())
                     {
                         var row = new object?[fieldCount];
@@ -338,7 +338,7 @@ public static class DuckFunctions
             }
 
             sw.Restart();
-            var rows = new List<object?[]>();
+            var rows = new List<object?[]>(100000); // Pre-allocate for typical large result
             while (reader.Read())
             {
                 var row = new object?[fieldCount];
