@@ -234,6 +234,26 @@ function Test-TypeConversions {
 
     $null_val = Get-CellValue "F2"
     Write-TestResult "NULL becomes empty" ($null_val -eq "") "Got: '$null_val'"
+
+    # Test 4: TINYINT (sbyte) handling - must work through temp table creation
+    Set-Formula "G1" '=DuckQuery("SELECT 1::TINYINT as val")'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "H1" '=DuckQuery("SELECT val + 1 as result FROM :t", "t", G1)'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "I1" "=DuckOut(H1)"
+
+    $tinyint_val = Get-CellValue "I2"
+    Write-TestResult "TINYINT (sbyte) works" ($tinyint_val -eq "2") "Got: $tinyint_val"
+
+    # Test 5: COUNT(DISTINCT) through temp table
+    Set-Formula "J1" '=DuckQuery("SELECT * FROM (VALUES (1), (2), (2), (3), (3), (3)) AS t(id)")'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "K1" '=DuckQuery("SELECT COUNT(DISTINCT id) as cnt FROM :t", "t", J1)'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "L1" "=DuckOut(K1)"
+
+    $cnt = Get-CellValue "L2"
+    Write-TestResult "COUNT(DISTINCT) works" ($cnt -eq "3") "Got: $cnt"
 }
 
 function Test-ErrorHandling {

@@ -657,9 +657,13 @@ public static class DuckFunctions
     private static string MapTypeToDuckDB(Type type)
     {
         if (type == typeof(int) || type == typeof(int?)) return "INTEGER";
+        if (type == typeof(uint) || type == typeof(uint?)) return "UINTEGER";
         if (type == typeof(long) || type == typeof(long?)) return "BIGINT";
+        if (type == typeof(ulong) || type == typeof(ulong?)) return "UBIGINT";
         if (type == typeof(short) || type == typeof(short?)) return "SMALLINT";
-        if (type == typeof(byte) || type == typeof(byte?)) return "TINYINT";
+        if (type == typeof(ushort) || type == typeof(ushort?)) return "USMALLINT";
+        if (type == typeof(sbyte) || type == typeof(sbyte?)) return "TINYINT";
+        if (type == typeof(byte) || type == typeof(byte?)) return "UTINYINT";
         if (type == typeof(float) || type == typeof(float?)) return "FLOAT";
         if (type == typeof(double) || type == typeof(double?)) return "DOUBLE";
         if (type == typeof(decimal) || type == typeof(decimal?)) return "DECIMAL";
