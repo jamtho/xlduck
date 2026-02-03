@@ -38,18 +38,17 @@ The `#` prefix follows Excel's convention for special status values.
 
 ### Result Storage
 
-Query results from `DuckQuery` are stored in .NET memory, not as DuckDB tables. This allows users to create many intermediate results without polluting DuckDB's catalog.
+Query results from `DuckQuery` are stored as DuckDB temp tables. The .NET layer keeps metadata (table name, column names, row count) for each handle:
 
-Storage structure:
 ```csharp
 class StoredResult {
+    string DuckTableName;   // e.g. "_xlduck_res_abc123..."
     string[] ColumnNames;
-    Type[] ColumnTypes;
-    List<object[]> Rows;
+    long RowCount;
 }
 ```
 
-Results are kept in a `Dictionary<string, StoredResult>` keyed by handle.
+Metadata is kept in a `Dictionary<string, StoredResult>` keyed by handle. The actual data stays in DuckDB, avoiding memory copies between .NET and DuckDB.
 
 ### Fragment Storage
 
@@ -82,10 +81,10 @@ Parameters are passed as name/value pairs after the SQL string.
 
 ```
 DuckQuery("SELECT ...")
-    → Execute in DuckDB
-    → Read results into .NET memory
-    → Generate handle
-    → Store in dictionary
+    → CREATE TEMP TABLE _xlduck_res_xxx AS SELECT ...
+    → Get schema via PRAGMA table_info
+    → Get row count via SELECT COUNT(*)
+    → Store metadata (table name, columns, count)
     → Return handle to cell
 ```
 
@@ -95,12 +94,13 @@ DuckQuery("SELECT ...")
 DuckQuery("SELECT * FROM :src", "src", "duck://table/1")
     → Parse SQL for :placeholders
     → For each placeholder:
-        → If table handle (t): create temp table from stored rows
-        → If fragment handle (f): recursively resolve and inline as subquery
-        → Replace :name with temp table name or (subquery SQL)
-    → Execute query in DuckDB
-    → Drop temp tables
-    → Store new result, return new handle
+        → If table handle: substitute DuckDB table name directly
+        → If fragment handle: recursively resolve and inline as subquery
+        → Replace :name with table name or (subquery SQL)
+    → Increment refcount on referenced tables (prevents drop during query)
+    → CREATE TEMP TABLE _xlduck_res_xxx AS [resolved SQL]
+    → Decrement refcounts (may trigger table drops if count reaches zero)
+    → Store metadata, return new handle
 ```
 
 ### Fragment Creation
@@ -109,7 +109,7 @@ DuckQuery("SELECT * FROM :src", "src", "duck://table/1")
 DuckFrag("SELECT * FROM :src WHERE x > 5", "src", A1)
     → Resolve parameters (for validation only)
     → Run EXPLAIN to validate SQL
-    → Drop any temp tables created for validation
+    → Decrement refcounts on any referenced tables
     → Store original SQL + args
     → Return fragment handle
 ```
@@ -132,23 +132,24 @@ Circular references (fragment A → B → A) are detected and raise an error.
 
 ```
 DuckOut("duck://table/1")
-    → Look up handle in storage
+    → Look up handle metadata
+    → SELECT * FROM temp_table LIMIT 200001
     → Convert to Excel array with headers
+    → Add truncation footer if >200K rows
     → Return as spilled array
 ```
 
+**Output Limit**: DuckOut caps output at 200,000 rows to prevent Excel from becoming unresponsive. A footer row indicates when truncation occurs.
+
 ### Why Temp Tables?
 
-DuckDB.NET doesn't expose a direct way to query Arrow memory or register external data sources from .NET. The workaround is:
+Query results are stored as DuckDB temp tables rather than in .NET memory. This approach:
 
-1. Store results in .NET memory
-2. When referenced, hydrate into a DuckDB temp table (INSERT rows)
-3. Query the temp table
-4. Drop it after
+1. **Avoids memory copies**: Data stays in DuckDB; no copying to .NET and back
+2. **Supports large datasets**: Can handle millions of rows efficiently
+3. **Enables zero-copy references**: When a query references a table handle, it uses the existing temp table directly
 
-This involves copying data twice (DuckDB → .NET → DuckDB), which is inefficient for large datasets. Future optimization could use Arrow format with DuckDB's `arrow_scan()` if DuckDB.NET exposes the necessary bindings.
-
-The goal is to support millions of rows efficiently. The current temp table approach works but will need optimization (likely via Arrow) for large-scale use.
+The trade-off is that all intermediate results consume DuckDB memory until their handles are no longer referenced. Reference counting ensures tables are dropped when no longer needed.
 
 ## Excel Functions
 
@@ -187,13 +188,13 @@ Excel-DNA doesn't support `params` arrays in UDFs. Instead, we use explicit opti
 
 1. **Reference counting**: Handles are automatically cleaned up when no longer referenced by any cell
 2. **Cell lifecycle awareness**: When a cell is deleted or its formula changes, the handle's reference count decrements
-3. **Automatic cleanup**: Handles with zero references are evicted from storage
+3. **Automatic cleanup**: Handles with zero references are evicted; their DuckDB temp tables are dropped
 
 ### Timeout Budget
 
 To avoid RTD's 2-second throttle delay, queries use a timeout budget:
 
-- Queries completing within **200ms** return results directly (synchronous)
+- Queries completing within **1 second** return results directly (synchronous)
 - Slower queries return "Loading..." immediately, then update asynchronously
 
 This provides responsive UX for fast queries while supporting long-running operations.
@@ -217,17 +218,13 @@ End Sub
 
 Downstream queries that depend on a blocked query (input starts with `#duck://blocked/`) also wait automatically.
 
-### Bulk Insert Optimization
-
-When materializing table handles into temp tables, the add-in uses DuckDB's Appender API for ~300x faster bulk inserts compared to row-by-row INSERT statements.
-
 ## Session Lifecycle
 
-- All stored results persist for the Excel session
-- Closing Excel clears all handles
+- Results (DuckDB temp tables) persist for the Excel session
+- Closing Excel clears all handles and temp tables
 - No persistence to disk (yet)
 - DuckDB runs in-memory mode
-- Reference counting automatically cleans up unused handles
+- Reference counting automatically cleans up unused handles and drops their temp tables
 
 ## Concurrency Model
 
@@ -239,6 +236,5 @@ Current approach: simple locking around connection access. This works but has li
 
 ## Future Considerations
 
-- **Arrow optimization**: Avoid temp table round-trip by using Arrow memory directly
 - **Handle comments**: Allow user annotations on handles for readability
 - **Persistence**: Save/load handle stores to disk

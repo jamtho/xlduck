@@ -268,7 +268,14 @@ public class DuckRtdServer : ExcelRtdServer
             if (info.Handle != null && !DuckFunctions.IsErrorOrBlocked(info.Handle))
             {
                 if (ResultStore.IsHandle(info.Handle))
-                    ResultStore.DecrementRefCount(info.Handle);
+                {
+                    var evicted = ResultStore.DecrementRefCount(info.Handle);
+                    if (evicted != null)
+                    {
+                        // Drop the DuckDB temp table now that it's no longer referenced
+                        DuckFunctions.DropTempTable(evicted.DuckTableName);
+                    }
+                }
                 else if (FragmentStore.IsHandle(info.Handle))
                     FragmentStore.DecrementRefCount(info.Handle);
             }

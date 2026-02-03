@@ -6,19 +6,19 @@
 namespace XlDuck;
 
 /// <summary>
-/// Represents a stored query result in memory.
+/// Represents a stored query result as a DuckDB temp table.
 /// </summary>
 public class StoredResult
 {
+    public string DuckTableName { get; }
     public string[] ColumnNames { get; }
-    public Type[] ColumnTypes { get; }
-    public List<object?[]> Rows { get; }
+    public long RowCount { get; }
 
-    public StoredResult(string[] columnNames, Type[] columnTypes, List<object?[]> rows)
+    public StoredResult(string duckTableName, string[] columnNames, long rowCount)
     {
+        DuckTableName = duckTableName;
         ColumnNames = columnNames;
-        ColumnTypes = columnTypes;
-        Rows = rows;
+        RowCount = rowCount;
     }
 }
 
@@ -43,7 +43,7 @@ public static class ResultStore
             var baseHandle = $"duck://table/{id}";
             _results[baseHandle] = result;
             // Return handle with dimensions: duck://table/123|10x4
-            return $"{baseHandle}|{result.Rows.Count}x{result.ColumnNames.Length}";
+            return $"{baseHandle}|{result.RowCount}x{result.ColumnNames.Length}";
         }
     }
 
@@ -91,9 +91,10 @@ public static class ResultStore
     }
 
     /// <summary>
-    /// Decrement reference count for a handle. Removes result when count reaches zero.
+    /// Decrement reference count for a handle. Returns the evicted StoredResult if count reaches zero, null otherwise.
+    /// Caller is responsible for dropping the DuckDB temp table.
     /// </summary>
-    internal static void DecrementRefCount(string handle)
+    internal static StoredResult? DecrementRefCount(string handle)
     {
         lock (_lock)
         {
@@ -106,14 +107,16 @@ public static class ResultStore
                 if (count <= 0)
                 {
                     _refCounts.Remove(baseHandle);
-                    _results.Remove(baseHandle);
+                    _results.Remove(baseHandle, out var evicted);
                     System.Diagnostics.Debug.WriteLine($"[ResultStore] Evicted {baseHandle}");
+                    return evicted;
                 }
                 else
                 {
                     _refCounts[baseHandle] = count;
                 }
             }
+            return null;
         }
     }
 

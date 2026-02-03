@@ -28,6 +28,7 @@ public class AddIn : IExcelAddIn
 public static class DuckFunctions
 {
     private const string Version = "0.1";
+    private const int DuckOutMaxRows = 200_000;
 
     private static DuckDBConnection? _connection;
     private static readonly object _connLock = new();
@@ -83,7 +84,7 @@ public static class DuckFunctions
         return value != null && (value.StartsWith(ErrorPrefix) || value.StartsWith(BlockedPrefix));
     }
 
-    private static DuckDBConnection GetConnection()
+    internal static DuckDBConnection GetConnection()
     {
         if (_connection == null)
         {
@@ -94,6 +95,25 @@ public static class DuckFunctions
             }
         }
         return _connection;
+    }
+
+    /// <summary>
+    /// Drop a DuckDB temp table. Called when a handle is evicted from ResultStore.
+    /// </summary>
+    internal static void DropTempTable(string tableName)
+    {
+        try
+        {
+            var conn = GetConnection();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"DROP TABLE IF EXISTS \"{tableName}\"";
+            cmd.ExecuteNonQuery();
+            System.Diagnostics.Debug.WriteLine($"[XlDuck] Dropped temp table: {tableName}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[XlDuck] Error dropping table {tableName}: {ex.Message}");
+        }
     }
 
     [ExcelFunction(Description = "Get the XlDuck add-in version")]
@@ -166,52 +186,25 @@ public static class DuckFunctions
                 {
                     return new object[,] { { FormatError("notfound", $"Handle not found: {handle}") } };
                 }
-                return StoredResultToArray(stored);
+                return QueryTableToArray(stored);
             }
             else if (FragmentStore.IsHandle(handle))
             {
-                // Execute the fragment and output results
+                // Execute the fragment and output results directly (no temp table needed)
                 var fragment = FragmentStore.Get(handle);
                 if (fragment == null)
                 {
                     return new object[,] { { FormatError("notfound", $"Fragment not found: {handle}") } };
                 }
 
-                var (resolvedSql, tempTables) = ResolveParameters(fragment.Sql, fragment.Args, new HashSet<string> { handle });
+                var (resolvedSql, referencedHandles) = ResolveParameters(fragment.Sql, fragment.Args, new HashSet<string> { handle });
                 try
                 {
-                    var conn = GetConnection();
-                    using var cmd = conn.CreateCommand();
-                    cmd.CommandText = resolvedSql;
-                    using var reader = cmd.ExecuteReader();
-
-                    var fieldCount = reader.FieldCount;
-                    var columnNames = new string[fieldCount];
-                    var columnTypes = new Type[fieldCount];
-
-                    for (int i = 0; i < fieldCount; i++)
-                    {
-                        columnNames[i] = reader.GetName(i);
-                        columnTypes[i] = reader.GetFieldType(i);
-                    }
-
-                    var rows = new List<object?[]>(100000);
-                    while (reader.Read())
-                    {
-                        var row = new object?[fieldCount];
-                        for (int i = 0; i < fieldCount; i++)
-                        {
-                            row[i] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                        }
-                        rows.Add(row);
-                    }
-
-                    var stored = new StoredResult(columnNames, columnTypes, rows);
-                    return StoredResultToArray(stored);
+                    return ExecuteAndReturnArray(resolvedSql);
                 }
                 finally
                 {
-                    CleanupTempTables(tempTables);
+                    DecrementHandleRefCounts(referencedHandles);
                 }
             }
             else
@@ -221,7 +214,7 @@ public static class DuckFunctions
         }
         catch (Exception ex)
         {
-            return new object[,] { { $"#ERROR: {ex.Message}" } };
+            return new object[,] { { FormatException(ex) } };
         }
     }
 
@@ -240,23 +233,19 @@ public static class DuckFunctions
         try
         {
             var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
-            var handle = ExecuteQueryInternal(sql, args);
-
-            if (IsErrorOrBlocked(handle))
+            var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
+            try
             {
-                return new object[,] { { handle } };
+                return ExecuteAndReturnArray(resolvedSql);
             }
-
-            var stored = ResultStore.Get(handle);
-            if (stored == null)
+            finally
             {
-                return new object[,] { { FormatError("notfound", $"Handle not found: {handle}") } };
+                DecrementHandleRefCounts(referencedHandles);
             }
-            return StoredResultToArray(stored);
         }
         catch (Exception ex)
         {
-            return new object[,] { { $"#ERROR: {ex.Message}" } };
+            return new object[,] { { FormatException(ex) } };
         }
     }
 
@@ -309,56 +298,50 @@ public static class DuckFunctions
     }
 
     /// <summary>
-    /// Execute a query, store the result, and return the handle. Called by RTD server.
+    /// Execute a query, store the result as a DuckDB temp table, and return the handle. Called by RTD server.
     /// </summary>
     internal static string ExecuteQueryInternal(string sql, object[] args)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var (resolvedSql, tempTables) = ResolveParameters(sql, args, new HashSet<string>());
+        var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
         var resolveTime = sw.ElapsedMilliseconds;
 
         try
         {
             var conn = GetConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = resolvedSql;
+            var duckTableName = $"_xlduck_res_{Guid.NewGuid():N}";
 
+            // Create temp table with query results
             sw.Restart();
-            using var reader = cmd.ExecuteReader();
-            var executeTime = sw.ElapsedMilliseconds;
-
-            var fieldCount = reader.FieldCount;
-            var columnNames = new string[fieldCount];
-            var columnTypes = new Type[fieldCount];
-
-            for (int i = 0; i < fieldCount; i++)
+            using (var cmd = conn.CreateCommand())
             {
-                columnNames[i] = reader.GetName(i);
-                columnTypes[i] = reader.GetFieldType(i);
+                cmd.CommandText = $"CREATE TEMP TABLE \"{duckTableName}\" AS {resolvedSql}";
+                cmd.ExecuteNonQuery();
             }
+            var createTime = sw.ElapsedMilliseconds;
 
+            // Get schema from PRAGMA table_info
+            var columnNames = GetTableColumnNames(conn, duckTableName);
+
+            // Get row count
             sw.Restart();
-            var rows = new List<object?[]>(100000); // Pre-allocate for typical large result
-            while (reader.Read())
+            long rowCount;
+            using (var cmd = conn.CreateCommand())
             {
-                var row = new object?[fieldCount];
-                for (int i = 0; i < fieldCount; i++)
-                {
-                    row[i] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                }
-                rows.Add(row);
+                cmd.CommandText = $"SELECT COUNT(*) FROM \"{duckTableName}\"";
+                rowCount = Convert.ToInt64(cmd.ExecuteScalar());
             }
-            var readTime = sw.ElapsedMilliseconds;
+            var countTime = sw.ElapsedMilliseconds;
 
-            var storedResult = new StoredResult(columnNames, columnTypes, rows);
-            var handle = ResultStore.Store(storedResult);
+            var stored = new StoredResult(duckTableName, columnNames, rowCount);
+            var handle = ResultStore.Store(stored);
 
-            System.Diagnostics.Debug.WriteLine($"[DuckQuery] resolve={resolveTime}ms execute={executeTime}ms read={readTime}ms rows={rows.Count}");
+            System.Diagnostics.Debug.WriteLine($"[DuckQuery] resolve={resolveTime}ms create={createTime}ms count={countTime}ms rows={rowCount} cols={columnNames.Length}");
             return handle;
         }
         finally
         {
-            CleanupTempTables(tempTables);
+            DecrementHandleRefCounts(referencedHandles);
         }
     }
 
@@ -368,7 +351,7 @@ public static class DuckFunctions
     internal static string CreateFragmentInternal(string sql, object[] args)
     {
         // Validate the SQL by resolving parameters and running EXPLAIN
-        var (resolvedSql, tempTables) = ResolveParameters(sql, args, new HashSet<string>());
+        var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
         try
         {
             var conn = GetConnection();
@@ -378,7 +361,7 @@ public static class DuckFunctions
         }
         finally
         {
-            CleanupTempTables(tempTables);
+            DecrementHandleRefCounts(referencedHandles);
         }
 
         // Store the fragment with original SQL and args
@@ -387,41 +370,157 @@ public static class DuckFunctions
     }
 
     /// <summary>
-    /// Convert a stored result to an Excel array with headers.
+    /// Get column names from a table using PRAGMA table_info.
     /// </summary>
-    private static object[,] StoredResultToArray(StoredResult stored)
+    private static string[] GetTableColumnNames(DuckDBConnection conn, string tableName)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info('{tableName}')";
+        using var reader = cmd.ExecuteReader();
+
+        var names = new List<string>();
+        while (reader.Read())
+        {
+            names.Add(reader.GetString(reader.GetOrdinal("name")));
+        }
+        return names.ToArray();
+    }
+
+    /// <summary>
+    /// Query a stored result table and return as Excel array with limit and truncation footer.
+    /// </summary>
+    private static object[,] QueryTableToArray(StoredResult stored)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var fieldCount = stored.ColumnNames.Length;
-        var rowCount = stored.Rows.Count;
+        var conn = GetConnection();
 
-        if (fieldCount == 0)
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT * FROM \"{stored.DuckTableName}\" LIMIT {DuckOutMaxRows + 1}";
+        using var reader = cmd.ExecuteReader();
+
+        var cols = stored.ColumnNames.Length;
+        if (cols == 0)
         {
             return new object[,] { { FormatError("query", "No columns") } };
         }
 
-        var result = new object[rowCount + 1, fieldCount];
-        var allocTime = sw.ElapsedMilliseconds;
+        var rows = new List<object?[]>(Math.Min((int)stored.RowCount + 1, DuckOutMaxRows + 1));
+        while (reader.Read())
+        {
+            var row = new object?[cols];
+            for (int j = 0; j < cols; j++)
+            {
+                row[j] = reader.IsDBNull(j) ? null : reader.GetValue(j);
+            }
+            rows.Add(row);
+        }
+        var readTime = sw.ElapsedMilliseconds;
+
+        var truncated = rows.Count > DuckOutMaxRows;
+        var dataRowsToEmit = truncated ? DuckOutMaxRows : rows.Count;
+
+        // +1 for header, +1 for footer if truncated
+        var outRows = 1 + dataRowsToEmit + (truncated ? 1 : 0);
+        var result = new object[outRows, cols];
 
         // Header row
-        for (int j = 0; j < fieldCount; j++)
+        for (int j = 0; j < cols; j++)
         {
             result[0, j] = stored.ColumnNames[j];
         }
 
         // Data rows
-        sw.Restart();
-        for (int i = 0; i < rowCount; i++)
+        for (int i = 0; i < dataRowsToEmit; i++)
         {
-            var row = stored.Rows[i];
-            for (int j = 0; j < fieldCount; j++)
+            for (int j = 0; j < cols; j++)
             {
-                result[i + 1, j] = ConvertToExcelValue(row[j]);
+                result[i + 1, j] = ConvertToExcelValue(rows[i]![j]);
             }
         }
-        var copyTime = sw.ElapsedMilliseconds;
 
-        System.Diagnostics.Debug.WriteLine($"[DuckOut] alloc={allocTime}ms copy={copyTime}ms rows={rowCount} cols={fieldCount}");
+        // Footer if truncated
+        if (truncated)
+        {
+            result[1 + dataRowsToEmit, 0] = $"(Truncated) Showing first {DuckOutMaxRows:N0} of {stored.RowCount:N0} rows";
+            for (int j = 1; j < cols; j++)
+            {
+                result[1 + dataRowsToEmit, j] = "";
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[DuckOut] read={readTime}ms rows={dataRowsToEmit} cols={cols} truncated={truncated}");
+        return result;
+    }
+
+    /// <summary>
+    /// Execute a query and return results directly as an Excel array (for DuckQueryOut and fragment execution).
+    /// </summary>
+    private static object[,] ExecuteAndReturnArray(string sql)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var conn = GetConnection();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        using var reader = cmd.ExecuteReader();
+
+        var fieldCount = reader.FieldCount;
+        if (fieldCount == 0)
+        {
+            return new object[,] { { FormatError("query", "No columns") } };
+        }
+
+        var columnNames = new string[fieldCount];
+        for (int i = 0; i < fieldCount; i++)
+        {
+            columnNames[i] = reader.GetName(i);
+        }
+
+        var rows = new List<object?[]>(DuckOutMaxRows + 1);
+        while (reader.Read() && rows.Count <= DuckOutMaxRows)
+        {
+            var row = new object?[fieldCount];
+            for (int j = 0; j < fieldCount; j++)
+            {
+                row[j] = reader.IsDBNull(j) ? null : reader.GetValue(j);
+            }
+            rows.Add(row);
+        }
+        var readTime = sw.ElapsedMilliseconds;
+
+        // Check if there are more rows (we read maxRows + 1 to detect truncation)
+        var truncated = rows.Count > DuckOutMaxRows;
+        var dataRowsToEmit = truncated ? DuckOutMaxRows : rows.Count;
+
+        var outRows = 1 + dataRowsToEmit + (truncated ? 1 : 0);
+        var result = new object[outRows, fieldCount];
+
+        // Header row
+        for (int j = 0; j < fieldCount; j++)
+        {
+            result[0, j] = columnNames[j];
+        }
+
+        // Data rows
+        for (int i = 0; i < dataRowsToEmit; i++)
+        {
+            for (int j = 0; j < fieldCount; j++)
+            {
+                result[i + 1, j] = ConvertToExcelValue(rows[i]![j]);
+            }
+        }
+
+        // Footer if truncated
+        if (truncated)
+        {
+            result[1 + dataRowsToEmit, 0] = $"(Truncated) Showing first {DuckOutMaxRows:N0} rows";
+            for (int j = 1; j < fieldCount; j++)
+            {
+                result[1 + dataRowsToEmit, j] = "";
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[DuckQueryOut] read={readTime}ms rows={dataRowsToEmit} cols={fieldCount} truncated={truncated}");
         return result;
     }
 
@@ -457,18 +556,18 @@ public static class DuckFunctions
     }
 
     /// <summary>
-    /// Parse SQL for :name placeholders, look up handles, create temp tables or inline fragments, and return resolved SQL.
+    /// Parse SQL for :name placeholders, look up handles, and return resolved SQL.
+    /// Table handles are resolved to their DuckDB table names.
+    /// Fragment handles are resolved recursively and inlined as subqueries.
+    /// Returns list of table handles that were referenced (their refcounts were incremented).
     /// </summary>
-    /// <param name="sql">SQL with :name placeholders</param>
-    /// <param name="args">Name/value pairs for parameter binding</param>
-    /// <param name="visitedFragments">Set of fragment handles currently being resolved (for cycle detection)</param>
-    private static (string resolvedSql, List<string> tempTables) ResolveParameters(string sql, object[] args, HashSet<string> visitedFragments)
+    private static (string resolvedSql, List<string> referencedHandles) ResolveParameters(string sql, object[] args, HashSet<string> visitedFragments)
     {
-        var tempTables = new List<string>();
+        var referencedHandles = new List<string>();
 
         if (args.Length == 0)
         {
-            return (sql, tempTables);
+            return (sql, referencedHandles);
         }
 
         if (args.Length % 2 != 0)
@@ -484,11 +583,14 @@ public static class DuckFunctions
 
             if (ResultStore.IsHandle(value))
             {
-                // Table handle: create temp table from stored data
+                // Table handle: reference the existing DuckDB temp table directly
                 var stored = ResultStore.Get(value) ?? throw new ArgumentException($"Handle not found: {value}");
-                var tempTableName = CreateTempTable(stored);
-                tempTables.Add(tempTableName);
-                parameters[name] = tempTableName;
+
+                // Increment refcount to prevent table from being dropped during query
+                ResultStore.IncrementRefCount(value);
+                referencedHandles.Add(value);
+
+                parameters[name] = $"\"{stored.DuckTableName}\"";
             }
             else if (FragmentStore.IsHandle(value))
             {
@@ -502,11 +604,11 @@ public static class DuckFunctions
 
                 // Add to visited set before recursing
                 visitedFragments.Add(value);
-                var (resolvedFragmentSql, fragmentTempTables) = ResolveParameters(fragment.Sql, fragment.Args, visitedFragments);
+                var (resolvedFragmentSql, fragmentReferencedHandles) = ResolveParameters(fragment.Sql, fragment.Args, visitedFragments);
                 visitedFragments.Remove(value);
 
-                // Collect any temp tables created during fragment resolution
-                tempTables.AddRange(fragmentTempTables);
+                // Collect any referenced handles from fragment resolution
+                referencedHandles.AddRange(fragmentReferencedHandles);
 
                 // Wrap fragment SQL in parentheses as a subquery
                 parameters[name] = $"({resolvedFragmentSql})";
@@ -529,48 +631,22 @@ public static class DuckFunctions
             return match.Value;
         });
 
-        return (resolvedSql, tempTables);
+        return (resolvedSql, referencedHandles);
     }
 
     /// <summary>
-    /// Create a temp table from a stored result and return its name.
+    /// Decrement refcounts for handles that were referenced during a query.
     /// </summary>
-    private static string CreateTempTable(StoredResult stored)
+    private static void DecrementHandleRefCounts(List<string> handles)
     {
-        var conn = GetConnection();
-        var tableName = $"_xlduck_temp_{Guid.NewGuid():N}";
-
-        var columnDefs = new List<string>();
-        for (int i = 0; i < stored.ColumnNames.Length; i++)
+        foreach (var handle in handles)
         {
-            var colName = stored.ColumnNames[i];
-            var colType = MapTypeToDuckDB(stored.ColumnTypes[i]);
-            columnDefs.Add($"\"{colName}\" {colType}");
-        }
-
-        var createSql = $"CREATE TEMP TABLE \"{tableName}\" ({string.Join(", ", columnDefs)})";
-        using (var cmd = conn.CreateCommand())
-        {
-            cmd.CommandText = createSql;
-            cmd.ExecuteNonQuery();
-        }
-
-        if (stored.Rows.Count > 0)
-        {
-            // Use DuckDB Appender for fast bulk inserts
-            using var appender = ((DuckDB.NET.Data.DuckDBConnection)conn).CreateAppender(tableName);
-            foreach (var row in stored.Rows)
+            var evicted = ResultStore.DecrementRefCount(handle);
+            if (evicted != null)
             {
-                var appenderRow = appender.CreateRow();
-                foreach (var value in row)
-                {
-                    AppendTypedValue(appenderRow, value);
-                }
-                appenderRow.EndRow();
+                DropTempTable(evicted.DuckTableName);
             }
         }
-
-        return tableName;
     }
 
     /// <summary>
@@ -605,95 +681,5 @@ public static class DuckFunctions
         }
 
         return value;
-    }
-
-    /// <summary>
-    /// Append a value to a DuckDB appender row, handling type dispatch.
-    /// </summary>
-    private static void AppendTypedValue(DuckDB.NET.Data.IDuckDBAppenderRow row, object? value)
-    {
-        if (value == null || value == DBNull.Value)
-        {
-            row.AppendNullValue();
-            return;
-        }
-
-        switch (value)
-        {
-            case bool b: row.AppendValue(b); break;
-            case byte b: row.AppendValue(b); break;
-            case sbyte sb: row.AppendValue(sb); break;
-            case short s: row.AppendValue(s); break;
-            case ushort us: row.AppendValue(us); break;
-            case int i: row.AppendValue(i); break;
-            case uint ui: row.AppendValue(ui); break;
-            case long l: row.AppendValue(l); break;
-            case ulong ul: row.AppendValue(ul); break;
-            case float f: row.AppendValue(f); break;
-            case double d: row.AppendValue(d); break;
-            case decimal dec: row.AppendValue(dec); break;
-            case string str: row.AppendValue(str); break;
-            case DateTime dt: row.AppendValue(dt); break;
-            case DateOnly date: row.AppendValue(date); break;
-            case TimeOnly time: row.AppendValue(time); break;
-            case byte[] bytes: row.AppendValue(bytes); break;
-            case System.Numerics.BigInteger bigInt:
-                // Convert BigInteger to long or double
-                if (bigInt >= long.MinValue && bigInt <= long.MaxValue)
-                    row.AppendValue((long)bigInt);
-                else
-                    row.AppendValue((double)bigInt);
-                break;
-            default:
-                // Fallback: convert to string
-                row.AppendValue(value.ToString() ?? "");
-                break;
-        }
-    }
-
-    /// <summary>
-    /// Map .NET types to DuckDB column types.
-    /// </summary>
-    private static string MapTypeToDuckDB(Type type)
-    {
-        if (type == typeof(int) || type == typeof(int?)) return "INTEGER";
-        if (type == typeof(uint) || type == typeof(uint?)) return "UINTEGER";
-        if (type == typeof(long) || type == typeof(long?)) return "BIGINT";
-        if (type == typeof(ulong) || type == typeof(ulong?)) return "UBIGINT";
-        if (type == typeof(short) || type == typeof(short?)) return "SMALLINT";
-        if (type == typeof(ushort) || type == typeof(ushort?)) return "USMALLINT";
-        if (type == typeof(sbyte) || type == typeof(sbyte?)) return "TINYINT";
-        if (type == typeof(byte) || type == typeof(byte?)) return "UTINYINT";
-        if (type == typeof(float) || type == typeof(float?)) return "FLOAT";
-        if (type == typeof(double) || type == typeof(double?)) return "DOUBLE";
-        if (type == typeof(decimal) || type == typeof(decimal?)) return "DECIMAL";
-        if (type == typeof(bool) || type == typeof(bool?)) return "BOOLEAN";
-        if (type == typeof(string)) return "VARCHAR";
-        if (type == typeof(DateTime) || type == typeof(DateTime?)) return "TIMESTAMP";
-        if (type == typeof(DateOnly) || type == typeof(DateOnly?)) return "DATE";
-        if (type == typeof(TimeOnly) || type == typeof(TimeOnly?)) return "TIME";
-        if (type == typeof(byte[])) return "BLOB";
-        return "VARCHAR";
-    }
-
-    /// <summary>
-    /// Drop temp tables created during query resolution.
-    /// </summary>
-    private static void CleanupTempTables(List<string> tempTables)
-    {
-        var conn = GetConnection();
-        foreach (var tableName in tempTables)
-        {
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"DROP TABLE IF EXISTS \"{tableName}\"";
-                cmd.ExecuteNonQuery();
-            }
-            catch
-            {
-                // Ignore cleanup errors
-            }
-        }
     }
 }
