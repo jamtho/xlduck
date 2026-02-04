@@ -16,11 +16,13 @@ public class AddIn : IExcelAddIn
 {
     public void AutoOpen()
     {
+        Log.Write("[AddIn] AutoOpen called - add-in loading");
         System.Diagnostics.Debug.WriteLine("[XlDuck] Add-in loaded");
     }
 
     public void AutoClose()
     {
+        Log.Write("[AddIn] AutoClose called - add-in unloading");
         System.Diagnostics.Debug.WriteLine("[XlDuck] Add-in unloaded");
     }
 }
@@ -119,6 +121,7 @@ public static class DuckFunctions
     [ExcelFunction(Description = "Get the XlDuck add-in version")]
     public static string DuckVersion()
     {
+        Log.Write("[DuckVersion] Called");
         return Version;
     }
 

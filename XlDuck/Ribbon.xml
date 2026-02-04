@@ -1,0 +1,27 @@
+<customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui" onLoad="OnRibbonLoad">
+  <ribbon>
+    <tabs>
+      <tab id="XlDuckTab" label="XlDuck">
+        <group id="PreviewGroup" label="Preview">
+          <toggleButton id="PreviewPaneToggle"
+                        label="Preview Pane"
+                        size="large"
+                        imageMso="ViewTaskPane"
+                        onAction="OnPreviewPaneToggle"
+                        getPressed="GetPreviewPanePressed"
+                        screentip="Toggle Preview Pane"
+                        supertip="Show or hide the preview pane that displays handle contents." />
+        </group>
+        <group id="InfoGroup" label="Info">
+          <button id="VersionButton"
+                  label="Version"
+                  size="normal"
+                  imageMso="Info"
+                  onAction="OnVersionClick"
+                  screentip="Show XlDuck Version"
+                  supertip="Display the XlDuck add-in and DuckDB library versions." />
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>
