@@ -234,6 +234,83 @@ Current approach: simple locking around connection access. This works but has li
 
 **Future consideration**: A dedicated worker thread (actor pattern) that owns the DuckDB connection would be cleaner. All database operations would be queued to this worker, eliminating lock contention and ensuring operations like temp table drops don't race with queries. Deferred for now as current locking is sufficient, but may be needed as complexity grows.
 
+## Preview Pane
+
+The XlDuck ribbon tab includes a "Preview Pane" toggle button that opens a task pane for inspecting handles.
+
+### Architecture
+
+```
+Excel Selection Change
+    → PreviewPaneManager (singleton)
+    → Debounce (500ms)
+    → PreviewController (serial queue)
+    → PreviewDataProvider (data access)
+    → PreviewPane (WebView2 host)
+    → JavaScript UI
+```
+
+**Key components:**
+
+| File | Purpose |
+|------|---------|
+| `PreviewPane.cs` | WinForms UserControl hosting WebView2, exposed via COM for CustomTaskPane |
+| `PreviewPaneManager.cs` | Singleton managing panes per Excel window, handles selection events |
+| `PreviewController.cs` | Debounce and serial queue to avoid UI thrashing |
+| `PreviewDataProvider.cs` | Extracts preview data from ResultStore/FragmentStore |
+| `PreviewModels.cs` | JSON-serializable models for WebView2 communication |
+| `preview.html` | Embedded HTML/CSS/JS UI for rendering previews |
+
+### COM Interop for .NET 8
+
+CustomTaskPane requires a COM-visible control. .NET 6+ requires the `[ComDefaultInterface]` pattern:
+
+```csharp
+[ComVisible(true)]
+[InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+public interface IPreviewPane { }
+
+[ComVisible(true)]
+[ComDefaultInterface(typeof(IPreviewPane))]
+[ClassInterface(ClassInterfaceType.None)]
+public class PreviewPane : UserControl, IPreviewPane
+```
+
+Without this pattern, Excel throws "Unable to create specified ActiveX control".
+
+### Preview Types
+
+**Table handles** show:
+- Schema table: column names and DuckDB types
+- Data grid: first 200 rows of data
+- Row/column counts in the title
+
+**Fragment handles** show:
+- SQL text
+- Bound parameters as name/value pairs
+
+**Error handles** show:
+- Error category and message
+
+### WebView2 Integration
+
+The pane uses Microsoft Edge WebView2 for rich HTML rendering:
+
+- User data folder: `%LOCALAPPDATA%\XlDuck\WebView2` (avoids permission issues)
+- Communication: JSON via `PostWebMessageAsString` / `window.chrome.webview.addEventListener`
+- Graceful fallback to Label control if WebView2 runtime not installed
+
+### JSON Serialization
+
+Uses source-generated `JsonSerializerContext` for AOT compatibility. All row data is converted to `string?[]` because source-gen JSON cannot serialize boxed primitives in `object[]`.
+
+### Debounce and Serial Queue
+
+Selection changes fire rapidly. The controller:
+1. Debounces for 500ms before processing
+2. Queues requests serially to avoid race conditions
+3. Cancels pending work when new selection arrives
+
 ## Future Considerations
 
 - **Handle comments**: Allow user annotations on handles for readability

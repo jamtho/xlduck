@@ -7,6 +7,7 @@ Excel add-in wrapping DuckDB for in-cell SQL queries.
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (required for Excel add-ins)
 - Microsoft Excel (64-bit)
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (optional, for preview pane)
 
 ## Build
 
@@ -141,6 +142,16 @@ B1: =DuckQueryOut("PIVOT :data ON region USING SUM(amount)", "data", A1)
 ```
 
 See [DuckDB PIVOT documentation](https://duckdb.org/docs/sql/statements/pivot) for more examples.
+
+## Preview Pane
+
+The XlDuck ribbon tab includes a toggle to open a preview pane on the right side of the window. When you select a cell containing a handle:
+
+- **Table handles**: Shows column schema and the first 200 rows of data
+- **Fragment handles**: Shows the SQL text and bound parameters
+- **Error handles**: Shows the error category and message
+
+Requires WebView2 Runtime (falls back to plain text if not installed).
 
 ## Credits
 

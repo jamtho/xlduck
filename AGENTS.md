@@ -20,6 +20,16 @@
 XlDuck/
 ├── XlDuck.csproj          # Project file with Excel-DNA and DuckDB refs
 ├── DuckFunctions.cs       # Excel UDFs
+├── RibbonController.cs    # XlDuck ribbon tab callbacks
+├── Ribbon.xml             # Ribbon UI definition
+├── Log.cs                 # File logger to %LOCALAPPDATA%\XlDuck
+├── Preview/
+│   ├── PreviewPane.cs           # WebView2 host (COM-visible UserControl)
+│   ├── PreviewPaneManager.cs    # Singleton managing panes per window
+│   ├── PreviewController.cs     # Debounce and serial queue
+│   ├── PreviewDataProvider.cs   # Data access for preview
+│   ├── PreviewModels.cs         # JSON models for WebView2
+│   └── preview.html             # Embedded HTML UI
 └── bin/Debug/net8.0-windows/
     ├── XlDuck-AddIn64.xll # Development add-in (use this)
     └── publish/
