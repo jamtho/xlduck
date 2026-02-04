@@ -147,7 +147,7 @@ public static class PreviewDataProvider
                 var fieldCount = reader.FieldCount;
                 while (reader.Read())
                 {
-                    var row = new object?[fieldCount];
+                    var row = new string?[fieldCount];
                     for (int i = 0; i < fieldCount; i++)
                     {
                         row[i] = reader.IsDBNull(i) ? null : ConvertForJson(reader.GetValue(i));
@@ -222,49 +222,18 @@ public static class PreviewDataProvider
     }
 
     /// <summary>
-    /// Convert a DuckDB value to a JSON-safe representation.
+    /// Convert a DuckDB value to a string for JSON serialization.
     /// </summary>
-    private static object? ConvertForJson(object value)
+    private static string ConvertForJson(object value)
     {
-        if (value == null || value == DBNull.Value)
-            return null;
-
-        // Handle BigInteger (HUGEINT)
-        if (value is System.Numerics.BigInteger bigInt)
-            return bigInt.ToString();
-
-        // Handle DateTime
-        if (value is DateTime dt)
-            return dt.ToString("O"); // ISO 8601
-
-        // Handle DateTimeOffset
-        if (value is DateTimeOffset dto)
-            return dto.ToString("O");
-
-        // Handle TimeSpan
-        if (value is TimeSpan ts)
-            return ts.ToString();
-
-        // Handle decimal (preserve precision as string)
-        if (value is decimal dec)
-            return dec.ToString();
-
-        // Handle byte arrays (blobs)
-        if (value is byte[] bytes)
-            return $"(blob, {bytes.Length} bytes)";
-
-        // Handle Guid
-        if (value is Guid guid)
-            return guid.ToString();
-
-        // Primitive types pass through
-        if (value is string || value is bool ||
-            value is int || value is long || value is short || value is byte ||
-            value is uint || value is ulong || value is ushort || value is sbyte ||
-            value is float || value is double)
-            return value;
-
-        // Fallback: convert to string
-        return value.ToString();
+        // Special formatting for certain types
+        return value switch
+        {
+            bool b => b ? "true" : "false",
+            DateTime dt => dt.ToString("O"),
+            DateTimeOffset dto => dto.ToString("O"),
+            byte[] bytes => $"(blob, {bytes.Length} bytes)",
+            _ => value.ToString() ?? ""
+        };
     }
 }

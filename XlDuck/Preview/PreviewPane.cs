@@ -6,6 +6,8 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 
 namespace XlDuck.Preview;
 
@@ -18,7 +20,7 @@ namespace XlDuck.Preview;
 public interface IPreviewPane { }
 
 /// <summary>
-/// UserControl for preview display. Currently uses simple WinForms controls.
+/// UserControl hosting WebView2 for preview display.
 /// </summary>
 [ComVisible(true)]
 [Guid("E8F4D7B2-3A1C-4E9F-8B5D-2C7A6F0E1D3B")]
@@ -27,9 +29,10 @@ public interface IPreviewPane { }
 [ClassInterface(ClassInterfaceType.None)]
 public class PreviewPane : UserControl, IPreviewPane
 {
-    private Label _titleLabel = null!;
-    private Label _handleLabel = null!;
-    private TextBox _contentBox = null!;
+    private WebView2? _webView;
+    private Label? _fallbackLabel;
+    private bool _isWebViewReady;
+    private string? _pendingJson;
 
     public PreviewPane()
     {
@@ -44,131 +47,152 @@ public class PreviewPane : UserControl, IPreviewPane
 
         BackColor = System.Drawing.Color.White;
         Dock = DockStyle.Fill;
-        Padding = new Padding(8);
-
-        // Title label
-        _titleLabel = new Label
-        {
-            Text = "XlDuck Preview",
-            Dock = DockStyle.Top,
-            Font = new System.Drawing.Font("Segoe UI", 11, System.Drawing.FontStyle.Bold),
-            Height = 30,
-            ForeColor = System.Drawing.Color.FromArgb(30, 30, 30)
-        };
-
-        // Handle label
-        _handleLabel = new Label
-        {
-            Text = "",
-            Dock = DockStyle.Top,
-            Font = new System.Drawing.Font("Consolas", 9),
-            Height = 20,
-            ForeColor = System.Drawing.Color.Gray
-        };
-
-        // Content text box
-        _contentBox = new TextBox
-        {
-            Multiline = true,
-            ReadOnly = true,
-            Dock = DockStyle.Fill,
-            Font = new System.Drawing.Font("Consolas", 9),
-            ScrollBars = ScrollBars.Both,
-            BackColor = System.Drawing.Color.FromArgb(250, 250, 250),
-            Text = "Select a cell containing a handle to preview"
-        };
-
-        // Add controls in reverse order (bottom to top for Dock)
-        Controls.Add(_contentBox);
-        Controls.Add(_handleLabel);
-        Controls.Add(_titleLabel);
 
         ResumeLayout(false);
         Log.Write("[PreviewPane] InitializeComponent done");
     }
 
+    protected override async void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        Log.Write("[PreviewPane] OnLoad");
+
+        if (DesignMode) return;
+
+        await InitializeWebViewAsync();
+    }
+
+    private async Task InitializeWebViewAsync()
+    {
+        Log.Write("[PreviewPane] InitializeWebViewAsync starting");
+        try
+        {
+            _webView = new WebView2
+            {
+                Dock = DockStyle.Fill
+            };
+            Controls.Add(_webView);
+
+            // Use a custom user data folder in %LOCALAPPDATA% to avoid permission issues
+            var userDataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "XlDuck", "WebView2");
+            Directory.CreateDirectory(userDataFolder);
+
+            Log.Write($"[PreviewPane] Using WebView2 user data folder: {userDataFolder}");
+            var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+
+            Log.Write("[PreviewPane] Calling EnsureCoreWebView2Async");
+            await _webView.EnsureCoreWebView2Async(env);
+            Log.Write("[PreviewPane] WebView2 core initialized");
+
+            // Load embedded HTML
+            var html = LoadEmbeddedHtml();
+            _webView.NavigateToString(html);
+
+            _webView.NavigationCompleted += OnNavigationCompleted;
+        }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            Log.Write("[PreviewPane] WebView2 runtime not found");
+            ShowFallbackMessage(
+                "WebView2 Runtime not installed.\n\n" +
+                "Download from:\nhttps://developer.microsoft.com/microsoft-edge/webview2/");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("PreviewPane.InitializeWebViewAsync", ex);
+            ShowFallbackMessage($"Failed to initialize preview:\n{ex.Message}");
+        }
+    }
+
+    private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    {
+        Log.Write($"[PreviewPane] NavigationCompleted, success={e.IsSuccess}");
+        _isWebViewReady = true;
+
+        // Send any pending state
+        if (_pendingJson != null)
+        {
+            PostMessage(_pendingJson);
+            _pendingJson = null;
+        }
+    }
+
     /// <summary>
-    /// Set the preview state.
+    /// Set the preview state (sends JSON to WebView2).
     /// </summary>
     public void SetState(PreviewModel model)
     {
         Log.Write($"[PreviewPane] SetState: {model.Kind}");
 
-        _titleLabel.Text = model.Title ?? "Preview";
-        _handleLabel.Text = model.Handle ?? "";
+        var json = model.ToJson();
 
-        switch (model)
+        if (_isWebViewReady && _webView?.CoreWebView2 != null)
         {
-            case EmptyPreviewModel empty:
-                _contentBox.Text = empty.Message ?? "Select a handle to preview";
-                break;
-
-            case ErrorPreviewModel error:
-                _contentBox.Text = $"ERROR: {error.Message}";
-                _contentBox.ForeColor = System.Drawing.Color.DarkRed;
-                break;
-
-            case TablePreviewModel table:
-                _contentBox.ForeColor = System.Drawing.Color.Black;
-                _contentBox.Text = FormatTablePreview(table.Table);
-                break;
-
-            case FragPreviewModel frag:
-                _contentBox.ForeColor = System.Drawing.Color.Black;
-                _contentBox.Text = FormatFragPreview(frag.Frag);
-                break;
-
-            default:
-                _contentBox.Text = $"Unknown: {model.Kind}";
-                break;
+            PostMessage(json);
+        }
+        else
+        {
+            // Queue for when WebView2 is ready
+            _pendingJson = json;
         }
     }
 
-    private static string FormatTablePreview(TablePreviewData table)
+    private void PostMessage(string json)
     {
-        var sb = new System.Text.StringBuilder();
-
-        sb.AppendLine($"Rows: {table.RowCount:N0}  Columns: {table.ColCount}");
-        sb.AppendLine();
-        sb.AppendLine("=== Schema ===");
-        foreach (var col in table.Columns)
+        try
         {
-            sb.AppendLine($"  {col.Name}: {col.Type}");
+            _webView?.CoreWebView2?.PostWebMessageAsString(json);
         }
-
-        sb.AppendLine();
-        sb.AppendLine($"=== Data (first {table.PreviewRowCount} rows) ===");
-
-        // Header
-        sb.AppendLine(string.Join("\t", table.Columns.Select(c => c.Name)));
-        sb.AppendLine(new string('-', 40));
-
-        // Rows
-        foreach (var row in table.Rows)
+        catch (Exception ex)
         {
-            sb.AppendLine(string.Join("\t", row.Select(v => v?.ToString() ?? "NULL")));
+            Log.Error("PreviewPane.PostMessage", ex);
         }
-
-        return sb.ToString();
     }
 
-    private static string FormatFragPreview(FragPreviewData frag)
+    private void ShowFallbackMessage(string message)
     {
-        var sb = new System.Text.StringBuilder();
+        if (_fallbackLabel != null) return;
 
-        sb.AppendLine("=== SQL ===");
-        sb.AppendLine(frag.Sql);
+        _webView?.Dispose();
+        _webView = null;
+        Controls.Clear();
 
-        if (frag.Args.Count > 0)
+        _fallbackLabel = new Label
         {
-            sb.AppendLine();
-            sb.AppendLine("=== Parameters ===");
-            foreach (var arg in frag.Args)
-            {
-                sb.AppendLine($"  :{arg.Name} = {arg.Value}");
-            }
+            Text = message,
+            Dock = DockStyle.Fill,
+            TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
+            ForeColor = System.Drawing.Color.FromArgb(180, 0, 0),
+            BackColor = System.Drawing.Color.FromArgb(255, 248, 248),
+            Padding = new Padding(20),
+            Font = new System.Drawing.Font("Segoe UI", 10)
+        };
+        Controls.Add(_fallbackLabel);
+    }
+
+    private static string LoadEmbeddedHtml()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var resourceName = "XlDuck.Preview.preview.html";
+
+        using var stream = assembly.GetManifestResourceStream(resourceName);
+        if (stream == null)
+        {
+            throw new InvalidOperationException($"Embedded resource not found: {resourceName}");
         }
 
-        return sb.ToString();
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _webView?.Dispose();
+        }
+        base.Dispose(disposing);
     }
 }

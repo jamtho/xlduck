@@ -77,7 +77,7 @@ public class TablePreviewData
     public List<ColumnInfo> Columns { get; set; } = new();
 
     [JsonPropertyName("rows")]
-    public List<object?[]> Rows { get; set; } = new();
+    public List<string?[]> Rows { get; set; } = new();
 
     [JsonPropertyName("previewRowCount")]
     public int PreviewRowCount { get; set; }
