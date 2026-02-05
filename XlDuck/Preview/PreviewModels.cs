@@ -130,6 +130,44 @@ public class FragPreviewModel : PreviewModel
 }
 
 /// <summary>
+/// Plot preview data.
+/// </summary>
+public class PlotPreviewData
+{
+    [JsonPropertyName("template")]
+    public string Template { get; set; } = "";
+
+    [JsonPropertyName("columns")]
+    public List<string> Columns { get; set; } = new();
+
+    [JsonPropertyName("types")]
+    public List<string> Types { get; set; } = new();
+
+    [JsonPropertyName("rows")]
+    public List<string?[]> Rows { get; set; } = new();
+
+    [JsonPropertyName("overrides")]
+    public Dictionary<string, string> Overrides { get; set; } = new();
+
+    [JsonPropertyName("rowCount")]
+    public long RowCount { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+}
+
+/// <summary>
+/// Preview model for plot handles.
+/// </summary>
+public class PlotPreviewModel : PreviewModel
+{
+    public override string Kind => "plot";
+
+    [JsonPropertyName("plot")]
+    public PlotPreviewData Plot { get; set; } = new();
+}
+
+/// <summary>
 /// JSON serialization context for preview models (AOT-friendly).
 /// </summary>
 [JsonSourceGenerationOptions(
@@ -139,6 +177,7 @@ public class FragPreviewModel : PreviewModel
 [JsonSerializable(typeof(ErrorPreviewModel))]
 [JsonSerializable(typeof(TablePreviewModel))]
 [JsonSerializable(typeof(FragPreviewModel))]
+[JsonSerializable(typeof(PlotPreviewModel))]
 internal partial class PreviewJsonContext : JsonSerializerContext
 {
 }

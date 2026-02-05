@@ -110,6 +110,13 @@ public class DuckRtdServer : ExcelRtdServer
                 {
                     result = QueryExecutor.CreateFragment(sql, args);
                 }
+                else if (queryType == "plot")
+                {
+                    // For plot: sql is data handle, args[0] is template, rest are overrides
+                    var template = args.Length > 0 ? args[0]?.ToString() ?? "" : "";
+                    var overrideArgs = args.Length > 1 ? args.Skip(1).ToArray() : Array.Empty<object>();
+                    result = QueryExecutor.CreatePlot(sql, template, overrideArgs);
+                }
                 else
                 {
                     result = DuckFunctions.FormatError("internal", $"Unknown query type: {queryType}");
@@ -153,6 +160,8 @@ public class DuckRtdServer : ExcelRtdServer
                     ResultStore.IncrementRefCount(result);
                 else if (queryType == "frag")
                     FragmentStore.IncrementRefCount(result);
+                else if (queryType == "plot")
+                    PlotStore.IncrementRefCount(result);
             }
 
             newValues = true;
@@ -191,6 +200,8 @@ public class DuckRtdServer : ExcelRtdServer
                         ResultStore.IncrementRefCount(finalResult);
                     else if (queryType == "frag")
                         FragmentStore.IncrementRefCount(finalResult);
+                    else if (queryType == "plot")
+                        PlotStore.IncrementRefCount(finalResult);
                 }
 
                 // Update the topic with the result
@@ -222,6 +233,13 @@ public class DuckRtdServer : ExcelRtdServer
             {
                 result = QueryExecutor.CreateFragment(info.Sql, info.Args);
             }
+            else if (info.QueryType == "plot")
+            {
+                // For plot: Sql is data handle, Args[0] is template, rest are overrides
+                var template = info.Args.Length > 0 ? info.Args[0]?.ToString() ?? "" : "";
+                var overrideArgs = info.Args.Length > 1 ? info.Args.Skip(1).ToArray() : Array.Empty<object>();
+                result = QueryExecutor.CreatePlot(info.Sql, template, overrideArgs);
+            }
             else
             {
                 result = DuckFunctions.FormatError("internal", $"Unknown query type: {info.QueryType}");
@@ -252,6 +270,8 @@ public class DuckRtdServer : ExcelRtdServer
                 ResultStore.IncrementRefCount(finalResult);
             else if (info.QueryType == "frag")
                 FragmentStore.IncrementRefCount(finalResult);
+            else if (info.QueryType == "plot")
+                PlotStore.IncrementRefCount(finalResult);
         }
 
         System.Diagnostics.Debug.WriteLine($"[DuckRTD] Deferred complete: {finalResult}");
@@ -278,6 +298,8 @@ public class DuckRtdServer : ExcelRtdServer
                 }
                 else if (FragmentStore.IsHandle(info.Handle))
                     FragmentStore.DecrementRefCount(info.Handle);
+                else if (PlotStore.IsHandle(info.Handle))
+                    PlotStore.DecrementRefCount(info.Handle);
             }
         }
     }
@@ -296,5 +318,10 @@ public static class QueryExecutor
     public static string CreateFragment(string sql, object[] args)
     {
         return DuckFunctions.CreateFragmentInternal(sql, args);
+    }
+
+    public static string CreatePlot(string dataHandle, string template, object[] args)
+    {
+        return DuckFunctions.CreatePlotInternal(dataHandle, template, args);
     }
 }

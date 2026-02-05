@@ -289,6 +289,11 @@ Without this pattern, Excel throws "Unable to create specified ActiveX control".
 - SQL text
 - Bound parameters as name/value pairs
 
+**Plot handles** show:
+- Interactive Vega-Lite chart
+- Template name and row count
+- Field bindings (x, y, color, title)
+
 **Error handles** show:
 - Error category and message
 
@@ -310,6 +315,62 @@ Selection changes fire rapidly. The controller:
 1. Debounces for 500ms before processing
 2. Queues requests serially to avoid race conditions
 3. Cancels pending work when new selection arrives
+
+## Plotting
+
+XlDuck supports interactive charts via `DuckPlot`, rendered in the preview pane using Vega-Lite.
+
+### Design
+
+Plotting uses a **template-based** approach rather than requiring users to write Vega-Lite JSON:
+
+```excel
+=DuckPlot(data, "bar", "x", "region", "y", "sales", "color", "product")
+```
+
+Templates are hardcoded Vega-Lite specs. Users specify field bindings via overrides.
+
+### Templates
+
+| Template | Mark | Use Case |
+|----------|------|----------|
+| `bar` | bar | Aggregated values per category |
+| `line` | line + points | Time series, trends |
+| `point` | point | Scatter plots, correlations |
+| `area` | area | Cumulative/stacked time series |
+
+### PlotStore
+
+Plot configurations are stored similarly to fragments:
+
+```csharp
+class StoredPlot {
+    string DataHandle;      // duck://table/... or duck://frag/...
+    string Template;        // "bar", "line", etc.
+    Dictionary<string, string> Overrides;  // x, y, color, title
+}
+```
+
+Uses RTD lifecycle for automatic cleanup when cells no longer reference the plot.
+
+### Data Caps
+
+To prevent browser crashes with large datasets, plots enforce hard limits:
+- Max rows: 50,000
+- Max cells: 500,000
+
+Exceeding limits shows an error prompting the user to aggregate or filter in SQL.
+
+### Type Inference
+
+Field types are inferred from DuckDB column types:
+- VARCHAR, TEXT → `nominal`
+- INTEGER, DOUBLE, etc. → `quantitative`
+- DATE, TIMESTAMP → `temporal`
+
+### Vega-Lite Integration
+
+The preview pane loads Vega-Lite from CDN and renders charts via `vegaEmbed()`. Data is sent as column arrays and converted to Vega-Lite's `values` format in JavaScript.
 
 ## Future Considerations
 

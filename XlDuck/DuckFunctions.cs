@@ -273,6 +273,69 @@ public static class DuckFunctions
         }
     }
 
+    [ExcelFunction(Description = "Create a chart from data using a template. Use name/value pairs for x, y, color, title.")]
+    public static object DuckPlot(
+        [ExcelArgument(Description = "Data handle (table or fragment)")] string dataHandle,
+        [ExcelArgument(Description = "Template name: bar, line, point, area")] string template,
+        [ExcelArgument(Description = "First override name (e.g. 'x')")] object name1 = null!,
+        [ExcelArgument(Description = "First override value (e.g. column name)")] object value1 = null!,
+        [ExcelArgument(Description = "Second override name (e.g. 'y')")] object name2 = null!,
+        [ExcelArgument(Description = "Second override value")] object value2 = null!,
+        [ExcelArgument(Description = "Third override name (e.g. 'color')")] object name3 = null!,
+        [ExcelArgument(Description = "Third override value")] object value3 = null!,
+        [ExcelArgument(Description = "Fourth override name (e.g. 'title')")] object name4 = null!,
+        [ExcelArgument(Description = "Fourth override value")] object value4 = null!)
+    {
+        try
+        {
+            // Validate template
+            if (!PlotTemplates.IsValidTemplate(template))
+            {
+                return FormatError("invalid", $"Unknown template: {template}. Valid: {string.Join(", ", PlotTemplates.TemplateNames)}");
+            }
+
+            // Validate data handle
+            if (!ResultStore.IsHandle(dataHandle) && !FragmentStore.IsHandle(dataHandle))
+            {
+                // Check for error/blocked status
+                if (IsErrorOrBlocked(dataHandle))
+                {
+                    return dataHandle; // Pass through error/blocked status
+                }
+                return FormatError("invalid", "Data must be a table or fragment handle");
+            }
+
+            var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
+
+            // Validate required overrides
+            var overrides = new Dictionary<string, string>();
+            for (int i = 0; i + 1 < args.Length; i += 2)
+            {
+                var name = args[i]?.ToString() ?? "";
+                var value = args[i + 1]?.ToString() ?? "";
+                if (!string.IsNullOrEmpty(name))
+                {
+                    overrides[name] = value;
+                }
+            }
+
+            if (!overrides.ContainsKey("x"))
+                return FormatError("invalid", "Missing required override: x");
+            if (!overrides.ContainsKey("y"))
+                return FormatError("invalid", "Missing required override: y");
+
+            // Build topic info: ["plot", dataHandle, template, arg1, arg2, ...]
+            var topicInfo = new List<string> { "plot", dataHandle, template };
+            topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
+
+            return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
+        }
+        catch (Exception ex)
+        {
+            return FormatException(ex);
+        }
+    }
+
     [ExcelFunction(Description = "Create a SQL fragment for lazy evaluation. Use :name placeholders with name/value pairs.")]
     public static object DuckFrag(
         [ExcelArgument(Description = "SQL query (SELECT or PIVOT) with optional :name placeholders")] string sql,
@@ -346,6 +409,27 @@ public static class DuckFunctions
         {
             DecrementHandleRefCounts(referencedHandles);
         }
+    }
+
+    /// <summary>
+    /// Create a plot configuration and return the handle. Called by RTD server.
+    /// </summary>
+    internal static string CreatePlotInternal(string dataHandle, string template, object[] args)
+    {
+        // Build overrides dictionary
+        var overrides = new Dictionary<string, string>();
+        for (int i = 0; i + 1 < args.Length; i += 2)
+        {
+            var name = args[i]?.ToString() ?? "";
+            var value = args[i + 1]?.ToString() ?? "";
+            if (!string.IsNullOrEmpty(name))
+            {
+                overrides[name] = value;
+            }
+        }
+
+        var plot = new StoredPlot(dataHandle, template, overrides);
+        return PlotStore.Store(plot);
     }
 
     /// <summary>

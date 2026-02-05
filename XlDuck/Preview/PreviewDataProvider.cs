@@ -50,6 +50,12 @@ public static class PreviewDataProvider
             return GetFragmentPreview(cellValue);
         }
 
+        // Check for plot handles
+        if (PlotStore.IsHandle(cellValue))
+        {
+            return GetPlotPreview(cellValue);
+        }
+
         // Not a handle
         return new EmptyPreviewModel
         {
@@ -219,6 +225,155 @@ public static class PreviewDataProvider
             Handle = handle,
             Frag = fragData
         };
+    }
+
+    private const int PlotRowLimit = 50_000;
+    private const int PlotCellLimit = 500_000;
+
+    private static PreviewModel GetPlotPreview(string handle)
+    {
+        var plot = PlotStore.Get(handle);
+        if (plot == null)
+        {
+            return new ErrorPreviewModel
+            {
+                Title = "Plot Not Found",
+                Handle = handle,
+                Message = "This plot may have been released"
+            };
+        }
+
+        var plotData = new PlotPreviewData
+        {
+            Template = plot.Template,
+            Overrides = plot.Overrides
+        };
+
+        try
+        {
+            // Resolve data handle
+            string duckTableName;
+            long rowCount;
+            string[] columnNames;
+
+            if (ResultStore.IsHandle(plot.DataHandle))
+            {
+                var stored = ResultStore.Get(plot.DataHandle);
+                if (stored == null)
+                {
+                    plotData.Error = "Data handle not found - it may have been released";
+                    return new PlotPreviewModel
+                    {
+                        Title = $"Plot ({plot.Template})",
+                        Handle = handle,
+                        Plot = plotData
+                    };
+                }
+                duckTableName = stored.DuckTableName;
+                rowCount = stored.RowCount;
+                columnNames = stored.ColumnNames;
+            }
+            else if (FragmentStore.IsHandle(plot.DataHandle))
+            {
+                // For fragments, we need to materialize to get data
+                // This is more complex - for now, return an error suggesting to use table handles
+                plotData.Error = "Fragment handles for plots not yet supported. Use DuckQuery to materialize first.";
+                return new PlotPreviewModel
+                {
+                    Title = $"Plot ({plot.Template})",
+                    Handle = handle,
+                    Plot = plotData
+                };
+            }
+            else
+            {
+                plotData.Error = $"Invalid data handle: {plot.DataHandle}";
+                return new PlotPreviewModel
+                {
+                    Title = $"Plot ({plot.Template})",
+                    Handle = handle,
+                    Plot = plotData
+                };
+            }
+
+            plotData.RowCount = rowCount;
+
+            // Check data caps
+            if (rowCount > PlotRowLimit)
+            {
+                plotData.Error = $"Dataset too large for plotting ({rowCount:N0} rows). Maximum: {PlotRowLimit:N0} rows. Use DuckQuery to aggregate or filter your data.";
+                return new PlotPreviewModel
+                {
+                    Title = $"Plot ({plot.Template})",
+                    Handle = handle,
+                    Plot = plotData
+                };
+            }
+
+            var totalCells = rowCount * columnNames.Length;
+            if (totalCells > PlotCellLimit)
+            {
+                plotData.Error = $"Dataset too large for plotting ({totalCells:N0} cells). Maximum: {PlotCellLimit:N0} cells.";
+                return new PlotPreviewModel
+                {
+                    Title = $"Plot ({plot.Template})",
+                    Handle = handle,
+                    Plot = plotData
+                };
+            }
+
+            var conn = DuckFunctions.GetConnection();
+
+            // Get column types via PRAGMA table_info
+            var columnTypes = new List<string>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = $"PRAGMA table_info('{duckTableName}')";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    columnTypes.Add(reader.GetString(reader.GetOrdinal("type")));
+                }
+            }
+
+            plotData.Columns = columnNames.ToList();
+            plotData.Types = columnTypes;
+
+            // Get all rows (within limit)
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = $"SELECT * FROM \"{duckTableName}\" LIMIT {PlotRowLimit}";
+                using var reader = cmd.ExecuteReader();
+
+                var fieldCount = reader.FieldCount;
+                while (reader.Read())
+                {
+                    var row = new string?[fieldCount];
+                    for (int i = 0; i < fieldCount; i++)
+                    {
+                        row[i] = reader.IsDBNull(i) ? null : ConvertForJson(reader.GetValue(i));
+                    }
+                    plotData.Rows.Add(row);
+                }
+            }
+
+            return new PlotPreviewModel
+            {
+                Title = $"Plot ({plot.Template}, {rowCount:N0} rows)",
+                Handle = handle,
+                Plot = plotData
+            };
+        }
+        catch (Exception ex)
+        {
+            plotData.Error = ex.Message;
+            return new PlotPreviewModel
+            {
+                Title = $"Plot ({plot.Template})",
+                Handle = handle,
+                Plot = plotData
+            };
+        }
     }
 
     /// <summary>

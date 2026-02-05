@@ -229,7 +229,55 @@
             background: #d4edda;
             border-color: #c3e6cb;
         }
+
+        /* Plot display */
+        .plot-section {
+            padding: 12px;
+        }
+
+        .plot-container {
+            width: 100%;
+            min-height: 300px;
+        }
+
+        .plot-info {
+            margin-top: 12px;
+            padding: 8px;
+            background: #fafafa;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #666;
+        }
+
+        .plot-info-row {
+            display: flex;
+            padding: 2px 0;
+        }
+
+        .plot-info-label {
+            font-weight: 600;
+            min-width: 80px;
+        }
+
+        .plot-info-value {
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: #0066cc;
+        }
+
+        .plot-error {
+            padding: 16px;
+            background: #fff3f3;
+            border: 1px solid #ffcccc;
+            border-radius: 4px;
+            color: #c00;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
     </style>
+    <!-- Vega-Lite libraries from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
 </head>
 <body>
     <div class="container">
@@ -276,6 +324,10 @@
 
                 case 'frag':
                     contentEl.innerHTML = renderFragment(state.frag);
+                    break;
+
+                case 'plot':
+                    renderPlot(contentEl, state.plot);
                     break;
 
                 default:
@@ -377,6 +429,130 @@
                     btn.classList.remove('copied');
                 }, 1500);
             });
+        }
+
+        function renderPlot(container, plotData) {
+            // Check for error
+            if (plotData.error) {
+                container.innerHTML = `<div class="plot-section"><div class="plot-error">${escapeHtml(plotData.error)}</div></div>`;
+                return;
+            }
+
+            // Build HTML structure
+            let html = '<div class="plot-section">';
+            html += '<div id="plot-target" class="plot-container"></div>';
+            html += '<div class="plot-info">';
+            html += `<div class="plot-info-row"><span class="plot-info-label">Template:</span><span class="plot-info-value">${escapeHtml(plotData.template)}</span></div>`;
+            html += `<div class="plot-info-row"><span class="plot-info-label">Rows:</span><span class="plot-info-value">${plotData.rowCount.toLocaleString()}</span></div>`;
+
+            // Show overrides
+            for (const [key, value] of Object.entries(plotData.overrides || {})) {
+                html += `<div class="plot-info-row"><span class="plot-info-label">${escapeHtml(key)}:</span><span class="plot-info-value">${escapeHtml(value)}</span></div>`;
+            }
+
+            html += '</div>';
+            html += '</div>';
+            container.innerHTML = html;
+
+            // Build data values array
+            const dataValues = [];
+            for (const row of plotData.rows) {
+                const obj = {};
+                for (let i = 0; i < plotData.columns.length; i++) {
+                    const col = plotData.columns[i];
+                    let val = row[i];
+                    // Parse numeric values
+                    if (plotData.types[i] && isQuantitative(plotData.types[i]) && val !== null) {
+                        val = parseFloat(val);
+                    }
+                    obj[col] = val;
+                }
+                dataValues.push(obj);
+            }
+
+            // Build Vega-Lite spec
+            const spec = buildVegaSpec(plotData.template, plotData.overrides, plotData.columns, plotData.types, dataValues);
+
+            // Render with vegaEmbed
+            if (typeof vegaEmbed !== 'undefined') {
+                vegaEmbed('#plot-target', spec, {
+                    actions: false,
+                    renderer: 'canvas'
+                }).catch(err => {
+                    document.getElementById('plot-target').innerHTML =
+                        `<div class="plot-error">Render error: ${escapeHtml(err.message)}</div>`;
+                });
+            } else {
+                document.getElementById('plot-target').innerHTML =
+                    '<div class="plot-error">Vega-Lite libraries not loaded. Check internet connection.</div>';
+            }
+        }
+
+        function buildVegaSpec(template, overrides, columns, types, dataValues) {
+            const xField = overrides.x;
+            const yField = overrides.y;
+            const colorField = overrides.color;
+            const title = overrides.title;
+
+            // Get types for fields
+            const xType = getVegaType(xField, columns, types);
+            const yType = getVegaType(yField, columns, types);
+
+            const spec = {
+                "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+                "width": "container",
+                "height": 300,
+                "data": { "values": dataValues },
+                "mark": {
+                    "type": template,
+                    "tooltip": true
+                },
+                "encoding": {
+                    "x": { "field": xField, "type": xType },
+                    "y": { "field": yField, "type": yType }
+                }
+            };
+
+            // Add point markers for lines
+            if (template === 'line') {
+                spec.mark.point = true;
+            }
+
+            // Add color encoding if specified
+            if (colorField) {
+                const colorType = getVegaType(colorField, columns, types);
+                spec.encoding.color = { "field": colorField, "type": colorType };
+            }
+
+            // Add title if specified
+            if (title) {
+                spec.title = title;
+            }
+
+            return spec;
+        }
+
+        function getVegaType(fieldName, columns, types) {
+            const idx = columns.indexOf(fieldName);
+            if (idx < 0) return 'nominal';
+
+            const duckType = (types[idx] || '').toUpperCase();
+
+            if (duckType.includes('DATE') || duckType.includes('TIME') || duckType.includes('TIMESTAMP')) {
+                return 'temporal';
+            }
+            if (isQuantitative(duckType)) {
+                return 'quantitative';
+            }
+            return 'nominal';
+        }
+
+        function isQuantitative(duckType) {
+            const t = (duckType || '').toUpperCase();
+            return t.includes('INT') || t.includes('FLOAT') || t.includes('DOUBLE') ||
+                   t.includes('DECIMAL') || t.includes('NUMERIC') || t.includes('REAL') ||
+                   t.includes('BIGINT') || t.includes('SMALLINT') || t.includes('TINYINT') ||
+                   t.includes('HUGEINT');
         }
     </script>
 </body>

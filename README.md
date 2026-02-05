@@ -32,6 +32,7 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://frag/...`) |
 | `=DuckOut(handle)` | Output a handle as a spilled array |
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
+| `=DuckPlot(data, template, ...)` | Create a chart from data (`duck://plot/...`) |
 | `=DuckExecute(sql)` | Execute DDL/DML statements |
 | `=DuckVersion()` | XlDuck add-in version (0.1) |
 | `=DuckLibraryVersion()` | DuckDB library version |
@@ -143,12 +144,53 @@ B1: =DuckQueryOut("PIVOT :data ON region USING SUM(amount)", "data", A1)
 
 See [DuckDB PIVOT documentation](https://duckdb.org/docs/sql/statements/pivot) for more examples.
 
+### Plotting
+
+Create interactive charts with `DuckPlot`. Select a plot handle cell and open the Preview Pane to view.
+
+```excel
+A1: =DuckQuery("SELECT region, SUM(sales) as total FROM (VALUES ('North', 100), ('South', 150), ('East', 80), ('West', 120)) AS t(region, sales) GROUP BY region")
+
+B1: =DuckPlot(A1, "bar", "x", "region", "y", "total", "title", "Sales by Region")
+→ duck://plot/1
+```
+
+**Templates:**
+
+| Template | Use Case |
+|----------|----------|
+| `bar` | Aggregated values per category |
+| `line` | Time series, trends |
+| `point` | Scatter plots, correlations |
+| `area` | Cumulative/stacked time series |
+
+**Overrides:**
+- `x` - field for x-axis (required)
+- `y` - field for y-axis (required)
+- `color` - field for color/series (optional)
+- `title` - chart title (optional)
+
+**Examples:**
+
+Line chart with multiple series:
+```excel
+A1: =DuckQuery("SELECT x as day, 'A' as product, x*10 as sales FROM range(20) UNION ALL SELECT x, 'B', x*7+20 FROM range(20)")
+B1: =DuckPlot(A1, "line", "x", "day", "y", "sales", "color", "product")
+```
+
+Scatter plot:
+```excel
+A1: =DuckQuery("SELECT random()*100 as x, random()*100 as y FROM range(200)")
+B1: =DuckPlot(A1, "point", "x", "x", "y", "y")
+```
+
 ## Preview Pane
 
 The XlDuck ribbon tab includes a toggle to open a preview pane on the right side of the window. When you select a cell containing a handle:
 
 - **Table handles**: Shows column schema and the first 200 rows of data
 - **Fragment handles**: Shows the SQL text and bound parameters
+- **Plot handles**: Shows an interactive Vega-Lite chart
 - **Error handles**: Shows the error category and message
 
 Requires WebView2 Runtime (falls back to plain text if not installed).
