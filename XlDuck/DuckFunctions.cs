@@ -321,8 +321,14 @@ public static class DuckFunctions
 
             if (!overrides.ContainsKey("x"))
                 return FormatError("invalid", "Missing required override: x");
-            if (!overrides.ContainsKey("y"))
+
+            // y is required for most templates, but not histogram
+            if (template != "histogram" && !overrides.ContainsKey("y"))
                 return FormatError("invalid", "Missing required override: y");
+
+            // heatmap requires value for color intensity
+            if (template == "heatmap" && !overrides.ContainsKey("value"))
+                return FormatError("invalid", "Missing required override: value (for color intensity)");
 
             // Build topic info: ["plot", dataHandle, template, arg1, arg2, ...]
             var topicInfo = new List<string> { "plot", dataHandle, template };

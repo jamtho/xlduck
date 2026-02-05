@@ -16,7 +16,13 @@ public static class PlotTemplates
     /// <summary>
     /// Available template names.
     /// </summary>
-    public static readonly string[] TemplateNames = { "bar", "line", "point", "area" };
+    public static readonly string[] TemplateNames = { "bar", "line", "point", "area", "histogram", "heatmap", "boxplot" };
+
+    // Templates that only require x (y is auto-generated)
+    private static readonly HashSet<string> _xOnlyTemplates = new() { "histogram" };
+
+    // Templates that require a 'value' field for color intensity
+    private static readonly HashSet<string> _valueTemplates = new() { "heatmap" };
 
     private static readonly Dictionary<string, JsonObject> _templates = new()
     {
@@ -24,6 +30,9 @@ public static class PlotTemplates
         ["line"] = CreateTemplate("line"),
         ["point"] = CreateTemplate("point"),
         ["area"] = CreateTemplate("area"),
+        ["histogram"] = CreateHistogramTemplate(),
+        ["heatmap"] = CreateHeatmapTemplate(),
+        ["boxplot"] = CreateBoxplotTemplate(),
     };
 
     /// <summary>
@@ -59,39 +68,103 @@ public static class PlotTemplates
         var encoding = spec["encoding"]?.AsObject()
             ?? throw new InvalidOperationException("Template missing encoding");
 
-        // Required: x and y
+        // Required: x
         if (!overrides.TryGetValue("x", out var xField))
             throw new ArgumentException("Missing required override: x");
-        if (!overrides.TryGetValue("y", out var yField))
-            throw new ArgumentException("Missing required override: y");
 
-        // Find column types for x and y
         var xType = GetVegaType(xField, columnNames, columnTypes);
-        var yType = GetVegaType(yField, columnNames, columnTypes);
 
-        encoding["x"] = new JsonObject
+        // Handle special templates
+        if (templateName == "histogram")
         {
-            ["field"] = xField,
-            ["type"] = xType
-        };
-        encoding["y"] = new JsonObject
-        {
-            ["field"] = yField,
-            ["type"] = yType
-        };
-
-        // Optional: color
-        if (overrides.TryGetValue("color", out var colorField))
-        {
-            var colorType = GetVegaType(colorField, columnNames, columnTypes);
-            encoding["color"] = new JsonObject
+            // Histogram: x is binned, y is count
+            encoding["x"] = new JsonObject
             {
-                ["field"] = colorField,
-                ["type"] = colorType
+                ["field"] = xField,
+                ["type"] = "quantitative",
+                ["bin"] = true
+            };
+            encoding["y"] = new JsonObject
+            {
+                ["aggregate"] = "count"
             };
         }
+        else if (templateName == "heatmap")
+        {
+            // Heatmap: x and y are categories, color is the value
+            if (!overrides.TryGetValue("y", out var yFieldHeat))
+                throw new ArgumentException("Missing required override: y");
+            if (!overrides.TryGetValue("value", out var valueField))
+                throw new ArgumentException("Missing required override: value (for color intensity)");
 
-        // Optional: title
+            var yTypeHeat = GetVegaType(yFieldHeat, columnNames, columnTypes);
+
+            encoding["x"] = new JsonObject
+            {
+                ["field"] = xField,
+                ["type"] = xType == "quantitative" ? "ordinal" : xType
+            };
+            encoding["y"] = new JsonObject
+            {
+                ["field"] = yFieldHeat,
+                ["type"] = yTypeHeat == "quantitative" ? "ordinal" : yTypeHeat
+            };
+            encoding["color"] = new JsonObject
+            {
+                ["field"] = valueField,
+                ["type"] = "quantitative",
+                ["aggregate"] = "mean"
+            };
+        }
+        else if (templateName == "boxplot")
+        {
+            // Boxplot: x is category, y is values to summarize
+            if (!overrides.TryGetValue("y", out var yFieldBox))
+                throw new ArgumentException("Missing required override: y");
+
+            encoding["x"] = new JsonObject
+            {
+                ["field"] = xField,
+                ["type"] = xType == "quantitative" ? "nominal" : xType
+            };
+            encoding["y"] = new JsonObject
+            {
+                ["field"] = yFieldBox,
+                ["type"] = "quantitative"
+            };
+        }
+        else
+        {
+            // Standard templates: x and y required
+            if (!overrides.TryGetValue("y", out var yField))
+                throw new ArgumentException("Missing required override: y");
+
+            var yType = GetVegaType(yField, columnNames, columnTypes);
+
+            encoding["x"] = new JsonObject
+            {
+                ["field"] = xField,
+                ["type"] = xType
+            };
+            encoding["y"] = new JsonObject
+            {
+                ["field"] = yField,
+                ["type"] = yType
+            };
+
+            // Optional: color (not for heatmap which handles it specially)
+            if (overrides.TryGetValue("color", out var colorField))
+            {
+                var colorType = GetVegaType(colorField, columnNames, columnTypes);
+                encoding["color"] = new JsonObject
+                {
+                    ["field"] = colorField,
+                    ["type"] = colorType
+                };
+            }
+        }
+
+        // Optional: title (all templates)
         if (overrides.TryGetValue("title", out var title))
         {
             spec["title"] = title;
@@ -131,6 +204,63 @@ public static class PlotTemplates
         }
 
         return template;
+    }
+
+    /// <summary>
+    /// Create histogram template (binned x, count y).
+    /// </summary>
+    private static JsonObject CreateHistogramTemplate()
+    {
+        return new JsonObject
+        {
+            ["$schema"] = "https://vega.github.io/schema/vega-lite/v5.json",
+            ["width"] = "container",
+            ["height"] = 300,
+            ["mark"] = new JsonObject
+            {
+                ["type"] = "bar",
+                ["tooltip"] = true
+            },
+            ["encoding"] = new JsonObject()
+        };
+    }
+
+    /// <summary>
+    /// Create heatmap template (rect marks with color encoding).
+    /// </summary>
+    private static JsonObject CreateHeatmapTemplate()
+    {
+        return new JsonObject
+        {
+            ["$schema"] = "https://vega.github.io/schema/vega-lite/v5.json",
+            ["width"] = "container",
+            ["height"] = 300,
+            ["mark"] = new JsonObject
+            {
+                ["type"] = "rect",
+                ["tooltip"] = true
+            },
+            ["encoding"] = new JsonObject()
+        };
+    }
+
+    /// <summary>
+    /// Create boxplot template.
+    /// </summary>
+    private static JsonObject CreateBoxplotTemplate()
+    {
+        return new JsonObject
+        {
+            ["$schema"] = "https://vega.github.io/schema/vega-lite/v5.json",
+            ["width"] = "container",
+            ["height"] = 300,
+            ["mark"] = new JsonObject
+            {
+                ["type"] = "boxplot",
+                ["extent"] = "min-max"
+            },
+            ["encoding"] = new JsonObject()
+        };
     }
 
     /// <summary>

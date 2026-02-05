@@ -492,36 +492,81 @@
             const xField = overrides.x;
             const yField = overrides.y;
             const colorField = overrides.color;
+            const valueField = overrides.value;
             const title = overrides.title;
 
             // Get types for fields
             const xType = getVegaType(xField, columns, types);
-            const yType = getVegaType(yField, columns, types);
 
-            const spec = {
-                "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-                "width": "container",
-                "height": 300,
-                "data": { "values": dataValues },
-                "mark": {
-                    "type": template,
-                    "tooltip": true
-                },
-                "encoding": {
-                    "x": { "field": xField, "type": xType },
-                    "y": { "field": yField, "type": yType }
+            let spec;
+
+            // Handle special templates
+            if (template === 'histogram') {
+                spec = {
+                    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+                    "width": "container",
+                    "height": 300,
+                    "data": { "values": dataValues },
+                    "mark": { "type": "bar", "tooltip": true },
+                    "encoding": {
+                        "x": { "field": xField, "bin": true, "type": "quantitative" },
+                        "y": { "aggregate": "count" }
+                    }
+                };
+            } else if (template === 'heatmap') {
+                const yType = getVegaType(yField, columns, types);
+                spec = {
+                    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+                    "width": "container",
+                    "height": 300,
+                    "data": { "values": dataValues },
+                    "mark": { "type": "rect", "tooltip": true },
+                    "encoding": {
+                        "x": { "field": xField, "type": xType === "quantitative" ? "ordinal" : xType },
+                        "y": { "field": yField, "type": yType === "quantitative" ? "ordinal" : yType },
+                        "color": { "field": valueField, "type": "quantitative", "aggregate": "mean" }
+                    }
+                };
+            } else if (template === 'boxplot') {
+                spec = {
+                    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+                    "width": "container",
+                    "height": 300,
+                    "data": { "values": dataValues },
+                    "mark": { "type": "boxplot", "extent": "min-max" },
+                    "encoding": {
+                        "x": { "field": xField, "type": xType === "quantitative" ? "nominal" : xType },
+                        "y": { "field": yField, "type": "quantitative" }
+                    }
+                };
+            } else {
+                // Standard templates: bar, line, point, area
+                const yType = getVegaType(yField, columns, types);
+                spec = {
+                    "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+                    "width": "container",
+                    "height": 300,
+                    "data": { "values": dataValues },
+                    "mark": {
+                        "type": template,
+                        "tooltip": true
+                    },
+                    "encoding": {
+                        "x": { "field": xField, "type": xType },
+                        "y": { "field": yField, "type": yType }
+                    }
+                };
+
+                // Add point markers for lines
+                if (template === 'line') {
+                    spec.mark.point = true;
                 }
-            };
 
-            // Add point markers for lines
-            if (template === 'line') {
-                spec.mark.point = true;
-            }
-
-            // Add color encoding if specified
-            if (colorField) {
-                const colorType = getVegaType(colorField, columns, types);
-                spec.encoding.color = { "field": colorField, "type": colorType };
+                // Add color encoding if specified
+                if (colorField) {
+                    const colorType = getVegaType(colorField, columns, types);
+                    spec.encoding.color = { "field": colorField, "type": colorType };
+                }
             }
 
             // Add title if specified

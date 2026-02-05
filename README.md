@@ -163,11 +163,15 @@ B1: =DuckPlot(A1, "bar", "x", "region", "y", "total", "title", "Sales by Region"
 | `line` | Time series, trends |
 | `point` | Scatter plots, correlations |
 | `area` | Cumulative/stacked time series |
+| `histogram` | Distribution of values (only needs `x`) |
+| `heatmap` | Two categories with color intensity (needs `x`, `y`, `value`) |
+| `boxplot` | Distribution comparison across categories |
 
 **Overrides:**
 - `x` - field for x-axis (required)
-- `y` - field for y-axis (required)
+- `y` - field for y-axis (required, except histogram)
 - `color` - field for color/series (optional)
+- `value` - field for color intensity (heatmap only)
 - `title` - chart title (optional)
 
 **Examples:**
@@ -182,6 +186,24 @@ Scatter plot:
 ```excel
 A1: =DuckQuery("SELECT random()*100 as x, random()*100 as y FROM range(200)")
 B1: =DuckPlot(A1, "point", "x", "x", "y", "y")
+```
+
+Histogram (distribution):
+```excel
+A1: =DuckQuery("SELECT random()*100 as value FROM range(1000)")
+B1: =DuckPlot(A1, "histogram", "x", "value", "title", "Value Distribution")
+```
+
+Boxplot (compare distributions):
+```excel
+A1: =DuckQuery("SELECT category, value FROM (SELECT 'A' as category, random()*50 as value FROM range(100) UNION ALL SELECT 'B', random()*50+25 FROM range(100))")
+B1: =DuckPlot(A1, "boxplot", "x", "category", "y", "value")
+```
+
+Heatmap:
+```excel
+A1: =DuckQuery("SELECT weekday, hour, avg_temp FROM temperature_data")
+B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "weekday", "value", "avg_temp")
 ```
 
 ## Preview Pane

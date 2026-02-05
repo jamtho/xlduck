@@ -338,6 +338,9 @@ Templates are hardcoded Vega-Lite specs. Users specify field bindings via overri
 | `line` | line + points | Time series, trends |
 | `point` | point | Scatter plots, correlations |
 | `area` | area | Cumulative/stacked time series |
+| `histogram` | bar (binned) | Distribution of a single column |
+| `heatmap` | rect | Two categories with color intensity |
+| `boxplot` | boxplot | Distribution comparison across categories |
 
 ### PlotStore
 
