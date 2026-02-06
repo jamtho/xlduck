@@ -258,6 +258,8 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+    <!-- SQL formatter from CDN (UMD build for browser global) -->
+    <script src="https://cdn.jsdelivr.net/npm/sql-formatter@15/dist/sql-formatter.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -322,7 +324,7 @@
             if (table.sql) {
                 html += '<div class="frag-section">';
                 html += '<div class="section-title">SQL</div>';
-                html += `<pre class="frag-sql">${escapeHtml(table.sql)}</pre>`;
+                html += `<pre class="frag-sql">${escapeHtml(formatSql(table.sql))}</pre>`;
 
                 if (table.args && table.args.length > 0) {
                     html += '<div class="frag-args">';
@@ -388,7 +390,7 @@
 
             html += '<div class="frag-section">';
             html += '<div class="section-title">SQL</div>';
-            html += `<pre class="frag-sql">${escapeHtml(frag.sql)}</pre>`;
+            html += `<pre class="frag-sql">${escapeHtml(formatSql(frag.sql))}</pre>`;
 
             if (frag.args && frag.args.length > 0) {
                 html += '<div class="frag-args">';
@@ -412,6 +414,19 @@
                 return value.substring(0, 47) + '...';
             }
             return String(value);
+        }
+
+        function formatSql(sql) {
+            if (typeof sqlFormatter !== 'undefined') {
+                try {
+                    sql = sqlFormatter.format(sql, { language: 'duckdb', tabWidth: 2 });
+                } catch (e) {
+                    // Fall through with unformatted sql
+                }
+            }
+            // Number ? placeholders as ?1, ?2, etc.
+            let index = 0;
+            return sql.replace(/\?/g, () => `?${++index}`);
         }
 
         function escapeHtml(text) {
