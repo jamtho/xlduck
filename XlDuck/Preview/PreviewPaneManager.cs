@@ -160,7 +160,7 @@ public class PreviewPaneManager : IDisposable
 
             Log.Write("[PaneManager] Setting dock position and width");
             taskPane.DockPosition = MsoCTPDockPosition.msoCTPDockPositionRight;
-            taskPane.Width = 350;
+            taskPane.Width = 875;
 
             Log.Write("[PaneManager] Getting content control");
             var previewPane = (PreviewPane)taskPane.ContentControl;
