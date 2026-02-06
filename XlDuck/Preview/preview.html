@@ -338,6 +338,28 @@
         function renderTable(table) {
             let html = '';
 
+            // SQL section (if available)
+            if (table.sql) {
+                html += '<div class="frag-section">';
+                html += '<div class="section-title">SQL</div>';
+                html += `<pre class="frag-sql">${escapeHtml(table.sql)}</pre>`;
+                html += `<button class="copy-btn" onclick="copySql(this, ${escapeHtml(JSON.stringify(table.sql))})">Copy SQL</button>`;
+
+                if (table.args && table.args.length > 0) {
+                    html += '<div class="frag-args">';
+                    html += '<div class="section-title">Arguments</div>';
+                    for (const arg of table.args) {
+                        html += '<div class="frag-arg">';
+                        html += `<span class="frag-arg-name">${escapeHtml(arg.name)}</span>`;
+                        html += `<span class="frag-arg-value">${escapeHtml(arg.value)}</span>`;
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                }
+
+                html += '</div>';
+            }
+
             // Schema section
             html += '<div class="schema-section">';
             html += '<div class="section-title">Schema</div>';

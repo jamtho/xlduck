@@ -81,6 +81,12 @@ public class TablePreviewData
 
     [JsonPropertyName("previewRowCount")]
     public int PreviewRowCount { get; set; }
+
+    [JsonPropertyName("sql")]
+    public string? Sql { get; set; }
+
+    [JsonPropertyName("args")]
+    public List<FragmentArg>? Args { get; set; }
 }
 
 /// <summary>

@@ -405,7 +405,7 @@ public static class DuckFunctions
             }
             var countTime = sw.ElapsedMilliseconds;
 
-            var stored = new StoredResult(duckTableName, columnNames, rowCount);
+            var stored = new StoredResult(duckTableName, columnNames, rowCount, sql, args);
             var handle = ResultStore.Store(stored);
 
             System.Diagnostics.Debug.WriteLine($"[DuckQuery] resolve={resolveTime}ms create={createTime}ms count={countTime}ms rows={rowCount} cols={columnNames.Length}");

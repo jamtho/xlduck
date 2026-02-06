@@ -126,8 +126,28 @@ public static class PreviewDataProvider
             {
                 RowCount = stored.RowCount,
                 ColCount = stored.ColumnNames.Length,
-                DuckTableName = stored.DuckTableName
+                DuckTableName = stored.DuckTableName,
+                Sql = !string.IsNullOrEmpty(stored.Sql) ? stored.Sql : null
             };
+
+            // Populate positional args (excluding @config sentinel)
+            if (stored.Args.Length > 0)
+            {
+                tableData.Args = new List<FragmentArg>();
+                foreach (var arg in stored.Args)
+                {
+                    var value = arg?.ToString() ?? "";
+                    if (value == DuckFunctions.ConfigSentinel)
+                        continue;
+                    tableData.Args.Add(new FragmentArg
+                    {
+                        Name = $"?{tableData.Args.Count + 1}",
+                        Value = value
+                    });
+                }
+                if (tableData.Args.Count == 0)
+                    tableData.Args = null;
+            }
 
             // Get column schema via PRAGMA table_info
             using (var cmd = conn.CreateCommand())

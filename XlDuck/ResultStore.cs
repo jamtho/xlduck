@@ -13,12 +13,16 @@ public class StoredResult
     public string DuckTableName { get; }
     public string[] ColumnNames { get; }
     public long RowCount { get; }
+    public string Sql { get; }
+    public object[] Args { get; }
 
-    public StoredResult(string duckTableName, string[] columnNames, long rowCount)
+    public StoredResult(string duckTableName, string[] columnNames, long rowCount, string sql = "", object[]? args = null)
     {
         DuckTableName = duckTableName;
         ColumnNames = columnNames;
         RowCount = rowCount;
+        Sql = sql;
+        Args = args ?? Array.Empty<object>();
     }
 }
 
