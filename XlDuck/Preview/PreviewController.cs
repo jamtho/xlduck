@@ -15,6 +15,7 @@ public class PreviewController : IDisposable
     private readonly PreviewPane _pane;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private CancellationTokenSource? _cts;
+    private long _lastUpdateTicks;
     private bool _disposed;
 
     public PreviewController(PreviewPane pane)
@@ -35,17 +36,19 @@ public class PreviewController : IDisposable
         _cts = new CancellationTokenSource();
 
         var token = _cts.Token;
+        var elapsed = (Environment.TickCount64 - Interlocked.Read(ref _lastUpdateTicks));
+        var idle = elapsed >= DebounceMs;
 
-        // Start debounced load
-        _ = LoadPreviewDebouncedAsync(cellValue, token);
+        _ = LoadPreviewThrottledAsync(cellValue, token, idle);
     }
 
-    private async Task LoadPreviewDebouncedAsync(string? cellValue, CancellationToken token)
+    private async Task LoadPreviewThrottledAsync(string? cellValue, CancellationToken token, bool immediate)
     {
         try
         {
-            // Debounce
-            await Task.Delay(DebounceMs, token);
+            // Fire immediately if idle, otherwise debounce
+            if (!immediate)
+                await Task.Delay(DebounceMs, token);
 
             // Wait for gate (serial queue)
             await _gate.WaitAsync(token);
@@ -54,6 +57,8 @@ public class PreviewController : IDisposable
             {
                 // Check if still valid
                 if (token.IsCancellationRequested) return;
+
+                Interlocked.Exchange(ref _lastUpdateTicks, Environment.TickCount64);
 
                 // Load preview model (runs on thread pool to avoid blocking UI)
                 var model = await Task.Run(() => PreviewDataProvider.GetPreview(cellValue), token);
