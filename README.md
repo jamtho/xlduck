@@ -57,10 +57,10 @@ A1: =DuckQueryOut("SELECT * FROM range(5)")
 A1: =DuckQuery("SELECT * FROM range(10)")
 → duck://table/1|10x1
 
-B1: =DuckQuery("SELECT * FROM :src WHERE range > 5", "src", A1)
+B1: =DuckQuery("SELECT * FROM ? WHERE range > 5", A1)
 → duck://table/2|4x1
 
-C1: =DuckQuery("SELECT SUM(range) AS total FROM :data", "data", B1)
+C1: =DuckQuery("SELECT SUM(range) AS total FROM ?", B1)
 → duck://table/3|1x1
 
 D1: =DuckOut(C1)
@@ -70,10 +70,10 @@ D1: =DuckOut(C1)
 
 ### Parameter Binding
 
-Use `:name` placeholders with name/value pairs (up to 4 pairs):
+Use `?` placeholders for positional arguments (up to 8):
 
 ```excel
-=DuckQuery("SELECT * FROM :t1 JOIN :t2 ON t1.id = t2.id", "t1", A1, "t2", B1)
+=DuckQuery("SELECT * FROM ? JOIN ? ON t1.id = t2.id", A1, B1)
 ```
 
 ### Lazy Evaluation with Fragments
@@ -84,7 +84,7 @@ Fragments (`duck://frag/...`) defer SQL execution - the SQL is inlined as a subq
 A1: =DuckFrag("SELECT * FROM range(10)")
 → duck://frag/1
 
-B1: =DuckFrag("SELECT * FROM :src WHERE range >= 5", "src", A1)
+B1: =DuckFrag("SELECT * FROM ? WHERE range >= 5", A1)
 → duck://frag/2
 
 C1: =DuckOut(B1)
@@ -124,7 +124,7 @@ Combine with fragments for reusable data sources:
 
 ```excel
 A1: =DuckFrag("SELECT * FROM read_csv_auto('C:/data/sales.csv')")
-B1: =DuckQueryOut("SELECT region, SUM(amount) FROM :sales GROUP BY region", "sales", A1)
+B1: =DuckQueryOut("SELECT region, SUM(amount) FROM ? GROUP BY region", A1)
 ```
 
 DuckDB can also read from URLs and S3 - see [DuckDB documentation](https://duckdb.org/docs/data/overview) for details.
@@ -136,7 +136,7 @@ DuckDB has built-in PIVOT support for reshaping data:
 ```excel
 A1: =DuckFrag("SELECT * FROM (VALUES ('Q1','North',100), ('Q1','South',150), ('Q2','North',200), ('Q2','South',250)) AS sales(quarter, region, amount)")
 
-B1: =DuckQueryOut("PIVOT :data ON region USING SUM(amount)", "data", A1)
+B1: =DuckQueryOut("PIVOT ? ON region USING SUM(amount)", A1)
 → | quarter | North | South |
   | Q1      | 100   | 150   |
   | Q2      | 200   | 250   |

@@ -149,21 +149,21 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Execute a DuckDB SQL query and return a handle. Use :name placeholders with name/value pairs.")]
+    [ExcelFunction(Description = "Execute a DuckDB SQL query and return a handle. Use ? placeholders for positional arguments.")]
     public static object DuckQuery(
-        [ExcelArgument(Description = "SQL query with optional :name placeholders")] string sql,
-        [ExcelArgument(Description = "First parameter name")] object name1 = null!,
-        [ExcelArgument(Description = "First parameter value")] object value1 = null!,
-        [ExcelArgument(Description = "Second parameter name")] object name2 = null!,
-        [ExcelArgument(Description = "Second parameter value")] object value2 = null!,
-        [ExcelArgument(Description = "Third parameter name")] object name3 = null!,
-        [ExcelArgument(Description = "Third parameter value")] object value3 = null!,
-        [ExcelArgument(Description = "Fourth parameter name")] object name4 = null!,
-        [ExcelArgument(Description = "Fourth parameter value")] object value4 = null!)
+        [ExcelArgument(Description = "SQL query with optional ? placeholders")] string sql,
+        [ExcelArgument(Description = "First argument (replaces first ?)")] object arg1 = null!,
+        [ExcelArgument(Description = "Second argument (replaces second ?)")] object arg2 = null!,
+        [ExcelArgument(Description = "Third argument")] object arg3 = null!,
+        [ExcelArgument(Description = "Fourth argument")] object arg4 = null!,
+        [ExcelArgument(Description = "Fifth argument")] object arg5 = null!,
+        [ExcelArgument(Description = "Sixth argument")] object arg6 = null!,
+        [ExcelArgument(Description = "Seventh argument")] object arg7 = null!,
+        [ExcelArgument(Description = "Eighth argument")] object arg8 = null!)
     {
         try
         {
-            var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
+            var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
             // Build topic info: ["query", sql, arg1, arg2, ...]
             var topicInfo = new List<string> { "query", sql };
             topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
@@ -221,21 +221,21 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Execute a DuckDB SQL query and output results as a spilled array. Use :name placeholders with name/value pairs.")]
+    [ExcelFunction(Description = "Execute a DuckDB SQL query and output results as a spilled array. Use ? placeholders for positional arguments.")]
     public static object[,] DuckQueryOut(
-        [ExcelArgument(Description = "SQL query with optional :name placeholders")] string sql,
-        [ExcelArgument(Description = "First parameter name")] object name1 = null!,
-        [ExcelArgument(Description = "First parameter value")] object value1 = null!,
-        [ExcelArgument(Description = "Second parameter name")] object name2 = null!,
-        [ExcelArgument(Description = "Second parameter value")] object value2 = null!,
-        [ExcelArgument(Description = "Third parameter name")] object name3 = null!,
-        [ExcelArgument(Description = "Third parameter value")] object value3 = null!,
-        [ExcelArgument(Description = "Fourth parameter name")] object name4 = null!,
-        [ExcelArgument(Description = "Fourth parameter value")] object value4 = null!)
+        [ExcelArgument(Description = "SQL query with optional ? placeholders")] string sql,
+        [ExcelArgument(Description = "First argument (replaces first ?)")] object arg1 = null!,
+        [ExcelArgument(Description = "Second argument (replaces second ?)")] object arg2 = null!,
+        [ExcelArgument(Description = "Third argument")] object arg3 = null!,
+        [ExcelArgument(Description = "Fourth argument")] object arg4 = null!,
+        [ExcelArgument(Description = "Fifth argument")] object arg5 = null!,
+        [ExcelArgument(Description = "Sixth argument")] object arg6 = null!,
+        [ExcelArgument(Description = "Seventh argument")] object arg7 = null!,
+        [ExcelArgument(Description = "Eighth argument")] object arg8 = null!)
     {
         try
         {
-            var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
+            var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
             var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
             try
             {
@@ -342,21 +342,21 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Create a SQL fragment for lazy evaluation. Use :name placeholders with name/value pairs.")]
+    [ExcelFunction(Description = "Create a SQL fragment for lazy evaluation. Use ? placeholders for positional arguments.")]
     public static object DuckFrag(
-        [ExcelArgument(Description = "SQL query (SELECT or PIVOT) with optional :name placeholders")] string sql,
-        [ExcelArgument(Description = "First parameter name")] object name1 = null!,
-        [ExcelArgument(Description = "First parameter value")] object value1 = null!,
-        [ExcelArgument(Description = "Second parameter name")] object name2 = null!,
-        [ExcelArgument(Description = "Second parameter value")] object value2 = null!,
-        [ExcelArgument(Description = "Third parameter name")] object name3 = null!,
-        [ExcelArgument(Description = "Third parameter value")] object value3 = null!,
-        [ExcelArgument(Description = "Fourth parameter name")] object name4 = null!,
-        [ExcelArgument(Description = "Fourth parameter value")] object value4 = null!)
+        [ExcelArgument(Description = "SQL query (SELECT or PIVOT) with optional ? placeholders")] string sql,
+        [ExcelArgument(Description = "First argument (replaces first ?)")] object arg1 = null!,
+        [ExcelArgument(Description = "Second argument (replaces second ?)")] object arg2 = null!,
+        [ExcelArgument(Description = "Third argument")] object arg3 = null!,
+        [ExcelArgument(Description = "Fourth argument")] object arg4 = null!,
+        [ExcelArgument(Description = "Fifth argument")] object arg5 = null!,
+        [ExcelArgument(Description = "Sixth argument")] object arg6 = null!,
+        [ExcelArgument(Description = "Seventh argument")] object arg7 = null!,
+        [ExcelArgument(Description = "Eighth argument")] object arg8 = null!)
     {
         try
         {
-            var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
+            var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
             // Build topic info: ["frag", sql, arg1, arg2, ...]
             var topicInfo = new List<string> { "frag", sql };
             topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
@@ -618,38 +618,24 @@ public static class DuckFunctions
     }
 
     /// <summary>
-    /// Collect optional name/value pairs into an array, filtering out missing values.
-    /// The @config sentinel is treated specially - added standalone without a value.
+    /// Collect optional positional values into an array, stopping at the first missing value.
     /// </summary>
-    private static object[] CollectArgs(params object[] pairs)
+    private static object[] CollectArgs(params object[] values)
     {
         var result = new List<object>();
-        for (int i = 0; i < pairs.Length; i += 2)
+        foreach (var value in values)
         {
-            var name = pairs[i];
-            var value = pairs[i + 1];
-
-            // Skip if name is missing/empty
-            if (name == null || name is ExcelMissing || name is ExcelEmpty)
+            if (value == null || value is ExcelMissing || value is ExcelEmpty)
                 break;
-            if (name is string s && string.IsNullOrEmpty(s))
+            if (value is string s && string.IsNullOrEmpty(s))
                 break;
-
-            // @config sentinel is standalone - don't add its (empty) value
-            if (name is string nameStr && nameStr == ConfigSentinel)
-            {
-                result.Add(name);
-                continue;
-            }
-
-            result.Add(name);
             result.Add(value);
         }
         return result.ToArray();
     }
 
     /// <summary>
-    /// Parse SQL for :name placeholders, look up handles, and return resolved SQL.
+    /// Replace ? placeholders with positional argument values.
     /// Table handles are resolved to their DuckDB table names.
     /// Fragment handles are resolved recursively and inlined as subqueries.
     /// Returns list of table handles that were referenced (their refcounts were incremented).
@@ -658,21 +644,19 @@ public static class DuckFunctions
     {
         var referencedHandles = new List<string>();
 
-        if (args.Length == 0)
+        // Filter out @config sentinel before positional replacement
+        var paramArgs = args.Where(a => a?.ToString() != ConfigSentinel).ToArray();
+
+        if (paramArgs.Length == 0)
         {
             return (sql, referencedHandles);
         }
 
-        if (args.Length % 2 != 0)
+        // Resolve each positional value
+        var resolvedValues = new List<string>();
+        foreach (var arg in paramArgs)
         {
-            throw new ArgumentException("Parameters must be name/value pairs");
-        }
-
-        var parameters = new Dictionary<string, string>();
-        for (int i = 0; i < args.Length; i += 2)
-        {
-            var name = args[i]?.ToString() ?? throw new ArgumentException($"Parameter name at position {i} is null");
-            var value = args[i + 1]?.ToString() ?? "";
+            var value = arg?.ToString() ?? "";
 
             if (ResultStore.IsHandle(value))
             {
@@ -683,7 +667,7 @@ public static class DuckFunctions
                 ResultStore.IncrementRefCount(value);
                 referencedHandles.Add(value);
 
-                parameters[name] = $"\"{stored.DuckTableName}\"";
+                resolvedValues.Add($"\"{stored.DuckTableName}\"");
             }
             else if (FragmentStore.IsHandle(value))
             {
@@ -704,25 +688,26 @@ public static class DuckFunctions
                 referencedHandles.AddRange(fragmentReferencedHandles);
 
                 // Wrap fragment SQL in parentheses as a subquery
-                parameters[name] = $"({resolvedFragmentSql})";
+                resolvedValues.Add($"({resolvedFragmentSql})");
             }
             else
             {
                 // Quote string values for SQL (escape single quotes)
                 var escaped = value.Replace("'", "''");
-                parameters[name] = $"'{escaped}'";
+                resolvedValues.Add($"'{escaped}'");
             }
         }
 
-        var resolvedSql = Regex.Replace(sql, @":(\w+)", match =>
+        // Replace ? placeholders left-to-right with resolved values
+        int paramIndex = 0;
+        var resolvedSql = Regex.Replace(sql, @"\?", match =>
         {
-            var paramName = match.Groups[1].Value;
-            if (parameters.TryGetValue(paramName, out var replacement))
-            {
-                return replacement;
-            }
-            return match.Value;
+            if (paramIndex >= resolvedValues.Count)
+                throw new ArgumentException($"More ? placeholders than arguments ({resolvedValues.Count} provided)");
+            return resolvedValues[paramIndex++];
         });
+        if (paramIndex < resolvedValues.Count)
+            throw new ArgumentException($"More arguments ({resolvedValues.Count}) than ? placeholders ({paramIndex})");
 
         return (resolvedSql, referencedHandles);
     }

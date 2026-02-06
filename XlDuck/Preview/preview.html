@@ -395,7 +395,7 @@
                 html += '<div class="section-title">Parameters</div>';
                 for (const arg of frag.args) {
                     html += '<div class="frag-arg">';
-                    html += `<span class="frag-arg-name">:${escapeHtml(arg.name)}</span>`;
+                    html += `<span class="frag-arg-name">${escapeHtml(arg.name)}</span>`;
                     html += `<span class="frag-arg-value">${escapeHtml(arg.value)}</span>`;
                     html += '</div>';
                 }

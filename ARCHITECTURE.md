@@ -65,15 +65,15 @@ Fragments enable lazy evaluation - the SQL is validated (via EXPLAIN) at creatio
 
 ### Query Parameter Binding
 
-When a query references a stored result, users specify placeholders with `:name` syntax:
+When a query references a stored result, users specify `?` placeholders with positional arguments:
 
 ```excel
-=DuckQuery("SELECT * FROM :sales WHERE region = 'EU'", "sales", A1)
+=DuckQuery("SELECT * FROM ? WHERE region = ?", A1, "EU")
 ```
 
 Where A1 contains a handle like `duck://table/1234`.
 
-Parameters are passed as name/value pairs after the SQL string.
+Arguments are passed positionally after the SQL string, replacing `?` placeholders left-to-right.
 
 ## Data Flow
 
@@ -91,12 +91,12 @@ DuckQuery("SELECT ...")
 ### Query with References
 
 ```
-DuckQuery("SELECT * FROM :src", "src", "duck://table/1")
-    → Parse SQL for :placeholders
-    → For each placeholder:
+DuckQuery("SELECT * FROM ?", "duck://table/1")
+    → Resolve positional ? arguments left-to-right
+    → For each argument:
         → If table handle: substitute DuckDB table name directly
         → If fragment handle: recursively resolve and inline as subquery
-        → Replace :name with table name or (subquery SQL)
+        → If string: escape and quote as SQL literal
     → Increment refcount on referenced tables (prevents drop during query)
     → CREATE TEMP TABLE _xlduck_res_xxx AS [resolved SQL]
     → Decrement refcounts (may trigger table drops if count reaches zero)
@@ -106,8 +106,8 @@ DuckQuery("SELECT * FROM :src", "src", "duck://table/1")
 ### Fragment Creation
 
 ```
-DuckFrag("SELECT * FROM :src WHERE x > 5", "src", A1)
-    → Resolve parameters (for validation only)
+DuckFrag("SELECT * FROM ? WHERE x > 5", A1)
+    → Resolve positional arguments (for validation only)
     → Run EXPLAIN to validate SQL
     → Decrement refcounts on any referenced tables
     → Store original SQL + args
@@ -119,9 +119,9 @@ DuckFrag("SELECT * FROM :src WHERE x > 5", "src", A1)
 When a fragment is used as a parameter, it's resolved recursively:
 
 ```
-DuckQuery("SELECT * FROM :data", "data", "duck://frag/1")
+DuckQuery("SELECT * FROM ?", "duck://frag/1")
     → Look up fragment f/1
-    → Resolve fragment's own parameters recursively
+    → Resolve fragment's own arguments recursively
     → Inline resolved SQL as: (SELECT ...)
     → Continue with outer query resolution
 ```
@@ -155,10 +155,10 @@ The trade-off is that all intermediate results consume DuckDB memory until their
 
 | Function | Purpose |
 |----------|---------|
-| `DuckQuery(sql, [n1, v1, ...])` | Execute SQL, return table handle. Up to 4 `:name` placeholders. Add `"@config"` to wait for config. |
-| `DuckFrag(sql, [n1, v1, ...])` | Create SQL fragment for lazy evaluation. Validated but not executed. Add `"@config"` to wait for config. |
+| `DuckQuery(sql, [arg1, arg2, ...])` | Execute SQL, return table handle. Up to 8 positional `?` arguments. Add `"@config"` to wait for config. |
+| `DuckFrag(sql, [arg1, arg2, ...])` | Create SQL fragment for lazy evaluation. Validated but not executed. Add `"@config"` to wait for config. |
 | `DuckOut(handle)` | Output handle (table or frag) as spilled array with headers. |
-| `DuckQueryOut(sql, [n1, v1, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
+| `DuckQueryOut(sql, [arg1, arg2, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
 | `DuckConfigReady()` | Signal that configuration is complete. Queries with `@config` wait for this. |
 | `DuckVersion()` | Return add-in version (0.1) |
@@ -178,7 +178,7 @@ DuckDB's aggregate functions (SUM, etc.) return HUGEINT/INT128 types that .NET a
 
 ### Parameter Limit
 
-Excel-DNA doesn't support `params` arrays in UDFs. Instead, we use explicit optional parameters, limiting queries to 4 name/value pairs (8 parameters). This covers most use cases; complex joins needing more can use subqueries or intermediate handles.
+Excel-DNA doesn't support `params` arrays in UDFs. Instead, we use explicit optional parameters, limiting queries to 8 positional arguments. This covers most use cases; complex joins needing more can use subqueries or intermediate handles.
 
 ## RTD and Lifecycle Management
 
@@ -204,7 +204,7 @@ This provides responsive UX for fast queries while supporting long-running opera
 Queries needing runtime configuration (e.g., S3 endpoints) can wait for setup:
 
 ```excel
-=DuckFrag("SELECT * FROM read_parquet(:url)", "url", A1, "@config")
+=DuckFrag("SELECT * FROM read_parquet(?)", A1, "@config")
 ```
 
 The `@config` sentinel causes the query to wait until `DuckConfigReady()` is called, typically from VBA `Auto_Open`:
@@ -287,7 +287,7 @@ Without this pattern, Excel throws "Unable to create specified ActiveX control".
 
 **Fragment handles** show:
 - SQL text
-- Bound parameters as name/value pairs
+- Bound positional arguments
 
 **Plot handles** show:
 - Interactive Vega-Lite chart

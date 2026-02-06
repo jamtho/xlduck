@@ -47,7 +47,7 @@ public class DuckRtdServer : ExcelRtdServer
 
         // topicInfo[0] = "query" or "frag"
         // topicInfo[1] = sql
-        // topicInfo[2..] = serialized args (name1, value1, name2, value2, ...)
+        // topicInfo[2..] = serialized positional args (value1, value2, ...)
 
         var queryType = topicInfo[0];
         var sql = topicInfo[1];

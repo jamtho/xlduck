@@ -199,22 +199,18 @@ public static class PreviewDataProvider
             Sql = fragment.Sql
         };
 
-        // Parse args as name/value pairs
-        for (int i = 0; i + 1 < fragment.Args.Length; i += 2)
+        // Parse positional args
+        for (int i = 0; i < fragment.Args.Length; i++)
         {
-            var name = fragment.Args[i]?.ToString() ?? "";
-            var value = fragment.Args[i + 1]?.ToString() ?? "";
+            var value = fragment.Args[i]?.ToString() ?? "";
 
             // Skip @config sentinel
-            if (name == DuckFunctions.ConfigSentinel)
-            {
-                i--; // Sentinel is standalone, adjust index
+            if (value == DuckFunctions.ConfigSentinel)
                 continue;
-            }
 
             fragData.Args.Add(new FragmentArg
             {
-                Name = name,
+                Name = $"?{fragData.Args.Count + 1}",
                 Value = value
             });
         }

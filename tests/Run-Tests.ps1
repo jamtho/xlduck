@@ -143,7 +143,7 @@ function Test-DuckQueryOut {
     # Test 2: With parameter binding
     Set-Formula "E1" '=DuckQuery("SELECT * FROM range(5)")'
     Start-Sleep -Milliseconds 300
-    Set-Formula "F1" '=DuckQueryOut("SELECT * FROM :src WHERE range > 2", "src", E1)'
+    Set-Formula "F1" '=DuckQueryOut("SELECT * FROM ? WHERE range > 2", E1)'
 
     $filtered1 = Get-CellValue "F2"
     $filtered2 = Get-CellValue "F3"
@@ -160,7 +160,7 @@ function Test-ParameterBinding {
     Start-Sleep -Milliseconds 300
 
     # Test 1: Single parameter
-    Set-Formula "B1" '=DuckQuery("SELECT COUNT(*) as cnt FROM :src", "src", A1)'
+    Set-Formula "B1" '=DuckQuery("SELECT COUNT(*) as cnt FROM ?", A1)'
     Start-Sleep -Milliseconds 300
     Set-Formula "C1" "=DuckOut(B1)"
 
@@ -171,7 +171,7 @@ function Test-ParameterBinding {
     Write-TestResult "Single param - count" ($count -eq "5") "Got: $count"
 
     # Test 2: Filtered query
-    Set-Formula "D1" '=DuckQuery("SELECT * FROM :data WHERE range > 2", "data", A1)'
+    Set-Formula "D1" '=DuckQuery("SELECT * FROM ? WHERE range > 2", A1)'
     Start-Sleep -Milliseconds 300
     Set-Formula "E1" "=DuckOut(D1)"
 
@@ -190,10 +190,10 @@ function Test-ChainedQueries {
     Set-Formula "A1" '=DuckQuery("SELECT * FROM range(10)")'
     Start-Sleep -Milliseconds 300
 
-    Set-Formula "B1" '=DuckQuery("SELECT * FROM :src WHERE range >= 5", "src", A1)'
+    Set-Formula "B1" '=DuckQuery("SELECT * FROM ? WHERE range >= 5", A1)'
     Start-Sleep -Milliseconds 300
 
-    Set-Formula "C1" '=DuckQuery("SELECT SUM(range) as total FROM :filtered", "filtered", B1)'
+    Set-Formula "C1" '=DuckQuery("SELECT SUM(range) as total FROM ?", B1)'
     Start-Sleep -Milliseconds 300
 
     Set-Formula "D1" "=DuckOut(C1)"
@@ -238,7 +238,7 @@ function Test-TypeConversions {
     # Test 4: TINYINT (sbyte) handling - must work through temp table creation
     Set-Formula "G1" '=DuckQuery("SELECT 1::TINYINT as val")'
     Start-Sleep -Milliseconds 300
-    Set-Formula "H1" '=DuckQuery("SELECT val + 1 as result FROM :t", "t", G1)'
+    Set-Formula "H1" '=DuckQuery("SELECT val + 1 as result FROM ?", G1)'
     Start-Sleep -Milliseconds 300
     Set-Formula "I1" "=DuckOut(H1)"
 
@@ -248,7 +248,7 @@ function Test-TypeConversions {
     # Test 5: COUNT(DISTINCT) through temp table
     Set-Formula "J1" '=DuckQuery("SELECT * FROM (VALUES (1), (2), (2), (3), (3), (3)) AS t(id)")'
     Start-Sleep -Milliseconds 300
-    Set-Formula "K1" '=DuckQuery("SELECT COUNT(DISTINCT id) as cnt FROM :t", "t", J1)'
+    Set-Formula "K1" '=DuckQuery("SELECT COUNT(DISTINCT id) as cnt FROM ?", J1)'
     Start-Sleep -Milliseconds 300
     Set-Formula "L1" "=DuckOut(K1)"
 
@@ -288,7 +288,7 @@ function Test-DuckConfigReady {
     # Test 2: @config sentinel works alongside real parameters
     Set-Formula "B1" '=DuckQuery("SELECT * FROM range(3)")'
     Start-Sleep -Milliseconds 500
-    Set-Formula "C1" '=DuckFrag("SELECT * FROM :src", "src", B1, "@config")'
+    Set-Formula "C1" '=DuckFrag("SELECT * FROM ?", B1, "@config")'
     $result2 = Get-CellValue "C1"
     Write-TestResult "@config with params returns handle" ($result2 -match "^duck://frag/\d+$") "Got: $result2"
 }
@@ -343,7 +343,7 @@ function Test-DuckFragInQuery {
     # Test 1: Fragment used as table source
     Set-Formula "A1" '=DuckFrag("SELECT * FROM range(5)")'
     Start-Sleep -Milliseconds 300
-    Set-Formula "B1" '=DuckQuery("SELECT * FROM :src WHERE range > 2", "src", A1)'
+    Set-Formula "B1" '=DuckQuery("SELECT * FROM ? WHERE range > 2", A1)'
     Start-Sleep -Milliseconds 300
     Set-Formula "C1" "=DuckOut(B1)"
 
@@ -356,7 +356,7 @@ function Test-DuckFragInQuery {
     # Test 2: Fragment with aggregation
     Set-Formula "D1" '=DuckFrag("SELECT * FROM range(10)")'
     Start-Sleep -Milliseconds 300
-    Set-Formula "E1" '=DuckQuery("SELECT SUM(range) as total FROM :data", "data", D1)'
+    Set-Formula "E1" '=DuckQuery("SELECT SUM(range) as total FROM ?", D1)'
     Start-Sleep -Milliseconds 300
     Set-Formula "F1" "=DuckOut(E1)"
 
@@ -373,10 +373,10 @@ function Test-DuckFragChained {
     Set-Formula "A1" '=DuckFrag("SELECT * FROM range(10)")'
     Start-Sleep -Milliseconds 300
 
-    Set-Formula "B1" '=DuckFrag("SELECT * FROM :src WHERE range >= 5", "src", A1)'
+    Set-Formula "B1" '=DuckFrag("SELECT * FROM ? WHERE range >= 5", A1)'
     Start-Sleep -Milliseconds 300
 
-    Set-Formula "C1" '=DuckQuery("SELECT SUM(range) as total FROM :filtered", "filtered", B1)'
+    Set-Formula "C1" '=DuckQuery("SELECT SUM(range) as total FROM ?", B1)'
     Start-Sleep -Milliseconds 300
 
     Set-Formula "D1" "=DuckOut(C1)"
@@ -395,11 +395,11 @@ function Test-DuckFragWithTableHandle {
     Start-Sleep -Milliseconds 300
 
     # Fragment references the table handle
-    Set-Formula "B1" '=DuckFrag("SELECT * FROM :tbl WHERE range > 2", "tbl", A1)'
+    Set-Formula "B1" '=DuckFrag("SELECT * FROM ? WHERE range > 2", A1)'
     Start-Sleep -Milliseconds 300
 
     # Query the fragment
-    Set-Formula "C1" '=DuckQuery("SELECT COUNT(*) as cnt FROM :frag", "frag", B1)'
+    Set-Formula "C1" '=DuckQuery("SELECT COUNT(*) as cnt FROM ?", B1)'
     Start-Sleep -Milliseconds 300
     Set-Formula "D1" "=DuckOut(C1)"
 
@@ -436,7 +436,7 @@ function Test-Pivot {
     Start-Sleep -Milliseconds 300
 
     # Pivot the data
-    Set-Formula "B1" '=DuckQueryOut("PIVOT :data ON region USING SUM(amount) ORDER BY quarter", "data", A1)'
+    Set-Formula "B1" '=DuckQueryOut("PIVOT ? ON region USING SUM(amount) ORDER BY quarter", A1)'
 
     $header1 = Get-CellValue "B1"
     $header2 = Get-CellValue "C1"
@@ -487,9 +487,9 @@ function Test-ReadCSV {
     # Test 3: String parameter binding (path as parameter)
     Clear-TestRange
     $script:Sheet.Range("A1").Value2 = $csvPath
-    Set-Formula "B1" '=DuckFrag("SELECT * FROM read_csv_auto(:path)", "path", A1)'
+    Set-Formula "B1" '=DuckFrag("SELECT * FROM read_csv_auto(?)", A1)'
     Start-Sleep -Milliseconds 300
-    Set-Formula "C1" '=DuckQueryOut("SELECT name FROM :data WHERE id = 1", "data", B1)'
+    Set-Formula "C1" '=DuckQueryOut("SELECT name FROM ? WHERE id = 1", B1)'
 
     $name = Get-CellValue "C2"
     Write-TestResult "String param in read_csv_auto" ($name -eq "alice") "Got: $name"

@@ -95,7 +95,7 @@ public class TablePreviewModel : PreviewModel
 }
 
 /// <summary>
-/// Fragment argument (name/value pair).
+/// Fragment argument (position label and value).
 /// </summary>
 public class FragmentArg
 {
