@@ -6,7 +6,7 @@
           <toggleButton id="PreviewPaneToggle"
                         label="Preview Pane"
                         size="large"
-                        imageMso="ViewTaskPane"
+                        imageMso="FindDialog"
                         onAction="OnPreviewPaneToggle"
                         getPressed="GetPreviewPanePressed"
                         screentip="Toggle Preview Pane"
