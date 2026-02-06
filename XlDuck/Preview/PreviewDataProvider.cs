@@ -127,7 +127,7 @@ public static class PreviewDataProvider
                 RowCount = stored.RowCount,
                 ColCount = stored.ColumnNames.Length,
                 DuckTableName = stored.DuckTableName,
-                Sql = !string.IsNullOrEmpty(stored.Sql) ? stored.Sql : null
+                Sql = !string.IsNullOrEmpty(stored.Sql) ? NumberPlaceholders(stored.Sql) : null
             };
 
             // Populate positional args (excluding @config sentinel)
@@ -216,7 +216,7 @@ public static class PreviewDataProvider
 
         var fragData = new FragPreviewData
         {
-            Sql = fragment.Sql
+            Sql = NumberPlaceholders(fragment.Sql)
         };
 
         // Parse positional args
@@ -390,6 +390,15 @@ public static class PreviewDataProvider
                 Plot = plotData
             };
         }
+    }
+
+    /// <summary>
+    /// Number ? placeholders in SQL for display: ? → ?1, ?2, ?3, etc.
+    /// </summary>
+    private static string NumberPlaceholders(string sql)
+    {
+        int index = 0;
+        return System.Text.RegularExpressions.Regex.Replace(sql, @"\?", _ => $"?{++index}");
     }
 
     /// <summary>
