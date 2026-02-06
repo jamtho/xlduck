@@ -210,26 +210,6 @@
             word-break: break-all;
         }
 
-        /* Copy button */
-        .copy-btn {
-            margin-top: 8px;
-            padding: 4px 12px;
-            font-size: 11px;
-            background: #f0f0f0;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-
-        .copy-btn:hover {
-            background: #e0e0e0;
-        }
-
-        .copy-btn.copied {
-            background: #d4edda;
-            border-color: #c3e6cb;
-        }
-
         /* Plot display */
         .plot-section {
             padding: 12px;
@@ -343,7 +323,6 @@
                 html += '<div class="frag-section">';
                 html += '<div class="section-title">SQL</div>';
                 html += `<pre class="frag-sql">${escapeHtml(table.sql)}</pre>`;
-                html += `<button class="copy-btn" onclick="copySql(this, ${escapeHtml(JSON.stringify(table.sql))})">Copy SQL</button>`;
 
                 if (table.args && table.args.length > 0) {
                     html += '<div class="frag-args">';
@@ -410,7 +389,6 @@
             html += '<div class="frag-section">';
             html += '<div class="section-title">SQL</div>';
             html += `<pre class="frag-sql">${escapeHtml(frag.sql)}</pre>`;
-            html += `<button class="copy-btn" onclick="copySql(this, ${escapeHtml(JSON.stringify(frag.sql))})">Copy SQL</button>`;
 
             if (frag.args && frag.args.length > 0) {
                 html += '<div class="frag-args">';
@@ -440,17 +418,6 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
-        }
-
-        function copySql(btn, sql) {
-            navigator.clipboard.writeText(sql).then(() => {
-                btn.textContent = 'Copied!';
-                btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = 'Copy SQL';
-                    btn.classList.remove('copied');
-                }, 1500);
-            });
         }
 
         function renderPlot(container, plotData) {
