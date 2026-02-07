@@ -368,26 +368,26 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Create a chart from data using a template. Use name/value pairs for x, y, color, label, title, xmin, xmax, ymin, ymax.")]
+    [ExcelFunction(Description = "Create a chart from data. Templates: bar, line, point, area, histogram, heatmap, boxplot. Overrides: x, y, color, label, tooltip, title, value, xmin, xmax, ymin, ymax.")]
     public static object DuckPlot(
         [ExcelArgument(Description = "Data handle (table or fragment)")] string dataHandle,
-        [ExcelArgument(Description = "Template name: bar, line, point, area")] string template,
-        [ExcelArgument(Description = "First override name (e.g. 'x')")] object name1 = null!,
-        [ExcelArgument(Description = "First override value (e.g. column name)")] object value1 = null!,
-        [ExcelArgument(Description = "Second override name (e.g. 'y')")] object name2 = null!,
-        [ExcelArgument(Description = "Second override value")] object value2 = null!,
-        [ExcelArgument(Description = "Third override name (e.g. 'color')")] object name3 = null!,
-        [ExcelArgument(Description = "Third override value")] object value3 = null!,
-        [ExcelArgument(Description = "Fourth override name (e.g. 'title')")] object name4 = null!,
-        [ExcelArgument(Description = "Fourth override value")] object value4 = null!,
-        [ExcelArgument(Description = "Fifth override name")] object name5 = null!,
-        [ExcelArgument(Description = "Fifth override value")] object value5 = null!,
-        [ExcelArgument(Description = "Sixth override name")] object name6 = null!,
-        [ExcelArgument(Description = "Sixth override value")] object value6 = null!,
-        [ExcelArgument(Description = "Seventh override name")] object name7 = null!,
-        [ExcelArgument(Description = "Seventh override value")] object value7 = null!,
-        [ExcelArgument(Description = "Eighth override name")] object name8 = null!,
-        [ExcelArgument(Description = "Eighth override value")] object value8 = null!)
+        [ExcelArgument(Description = "bar, line, point, area, histogram, heatmap, boxplot")] string template,
+        [ExcelArgument(Description = "bar/line/point/area: x,y. histogram: x. heatmap: x,y,value. boxplot: x,y. All: color, label, tooltip, title, xmin, xmax, ymin, ymax")] object name1 = null!,
+        [ExcelArgument(Description = "Column name or literal for this override")] object value1 = null!,
+        [ExcelArgument(Description = "Override name (see name1 for allowed names)")] object name2 = null!,
+        [ExcelArgument(Description = "Column name or literal for this override")] object value2 = null!,
+        [ExcelArgument(Description = "Override name")] object name3 = null!,
+        [ExcelArgument(Description = "Override value")] object value3 = null!,
+        [ExcelArgument(Description = "Override name")] object name4 = null!,
+        [ExcelArgument(Description = "Override value")] object value4 = null!,
+        [ExcelArgument(Description = "Override name")] object name5 = null!,
+        [ExcelArgument(Description = "Override value")] object value5 = null!,
+        [ExcelArgument(Description = "Override name")] object name6 = null!,
+        [ExcelArgument(Description = "Override value")] object value6 = null!,
+        [ExcelArgument(Description = "Override name")] object name7 = null!,
+        [ExcelArgument(Description = "Override value")] object value7 = null!,
+        [ExcelArgument(Description = "Override name")] object name8 = null!,
+        [ExcelArgument(Description = "Override value")] object value8 = null!)
     {
         try
         {
