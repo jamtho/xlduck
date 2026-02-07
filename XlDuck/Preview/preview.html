@@ -503,6 +503,7 @@
             const colorField = overrides.color;
             const valueField = overrides.value;
             const labelField = overrides.label;
+            const tooltipField = overrides.tooltip;
             const title = overrides.title;
 
             // Get types for fields
@@ -517,7 +518,7 @@
                     "width": "container",
                     "height": 300,
                     "data": { "values": dataValues },
-                    "mark": { "type": "bar", "tooltip": true },
+                    "mark": { "type": "bar", "tooltip": {"content": "data"} },
                     "encoding": {
                         "x": { "field": xField, "bin": true, "type": "quantitative" },
                         "y": { "aggregate": "count" }
@@ -530,7 +531,7 @@
                     "width": "container",
                     "height": 300,
                     "data": { "values": dataValues },
-                    "mark": { "type": "rect", "tooltip": true },
+                    "mark": { "type": "rect", "tooltip": {"content": "data"} },
                     "encoding": {
                         "x": { "field": xField, "type": xType === "quantitative" ? "ordinal" : xType },
                         "y": { "field": yField, "type": yType === "quantitative" ? "ordinal" : yType },
@@ -543,7 +544,7 @@
                     "width": "container",
                     "height": 300,
                     "data": { "values": dataValues },
-                    "mark": { "type": "boxplot", "extent": "min-max" },
+                    "mark": { "type": "boxplot", "extent": "min-max", "tooltip": {"content": "data"} },
                     "encoding": {
                         "x": { "field": xField, "type": xType === "quantitative" ? "nominal" : xType },
                         "y": { "field": yField, "type": "quantitative" }
@@ -559,7 +560,7 @@
                     "data": { "values": dataValues },
                     "mark": {
                         "type": template,
-                        "tooltip": true
+                        "tooltip": {"content": "data"}
                     },
                     "encoding": {
                         "x": { "field": xField, "type": xType },
@@ -577,6 +578,11 @@
                     const colorType = getVegaType(colorField, columns, types);
                     spec.encoding.color = { "field": colorField, "type": colorType };
                 }
+            }
+
+            // Tooltip: specific field overrides the mark-level "all data" default
+            if (tooltipField && spec.encoding) {
+                spec.encoding.tooltip = { "field": tooltipField, "type": getVegaType(tooltipField, columns, types) };
             }
 
             // Add title if specified
