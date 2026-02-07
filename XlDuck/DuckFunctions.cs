@@ -368,7 +368,7 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Create a chart from data using a template. Use name/value pairs for x, y, color, title.")]
+    [ExcelFunction(Description = "Create a chart from data using a template. Use name/value pairs for x, y, color, label, title, xmin, xmax, ymin, ymax.")]
     public static object DuckPlot(
         [ExcelArgument(Description = "Data handle (table or fragment)")] string dataHandle,
         [ExcelArgument(Description = "Template name: bar, line, point, area")] string template,
@@ -379,7 +379,15 @@ public static class DuckFunctions
         [ExcelArgument(Description = "Third override name (e.g. 'color')")] object name3 = null!,
         [ExcelArgument(Description = "Third override value")] object value3 = null!,
         [ExcelArgument(Description = "Fourth override name (e.g. 'title')")] object name4 = null!,
-        [ExcelArgument(Description = "Fourth override value")] object value4 = null!)
+        [ExcelArgument(Description = "Fourth override value")] object value4 = null!,
+        [ExcelArgument(Description = "Fifth override name")] object name5 = null!,
+        [ExcelArgument(Description = "Fifth override value")] object value5 = null!,
+        [ExcelArgument(Description = "Sixth override name")] object name6 = null!,
+        [ExcelArgument(Description = "Sixth override value")] object value6 = null!,
+        [ExcelArgument(Description = "Seventh override name")] object name7 = null!,
+        [ExcelArgument(Description = "Seventh override value")] object value7 = null!,
+        [ExcelArgument(Description = "Eighth override name")] object name8 = null!,
+        [ExcelArgument(Description = "Eighth override value")] object value8 = null!)
     {
         try
         {
@@ -400,7 +408,8 @@ public static class DuckFunctions
                 return FormatError("invalid", "Data must be a table or fragment handle");
             }
 
-            var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4);
+            var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4,
+                                   name5, value5, name6, value6, name7, value7, name8, value8);
 
             // Validate required overrides
             var overrides = new Dictionary<string, string>();

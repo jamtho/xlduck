@@ -479,13 +479,18 @@
 
             // Render with vegaEmbed
             if (typeof vegaEmbed !== 'undefined') {
-                vegaEmbed('#plot-target', spec, {
-                    actions: false,
-                    renderer: 'canvas'
-                }).catch(err => {
+                try {
+                    vegaEmbed('#plot-target', spec, {
+                        actions: false,
+                        renderer: 'canvas'
+                    }).catch(err => {
+                        document.getElementById('plot-target').innerHTML =
+                            `<div class="plot-error">Render error: ${escapeHtml(err.message)}</div>`;
+                    });
+                } catch (err) {
                     document.getElementById('plot-target').innerHTML =
-                        `<div class="plot-error">Render error: ${escapeHtml(err.message)}</div>`;
-                });
+                        `<div class="plot-error">Spec error: ${escapeHtml(err.message)}</div>`;
+                }
             } else {
                 document.getElementById('plot-target').innerHTML =
                     '<div class="plot-error">Vega-Lite libraries not loaded. Check internet connection.</div>';
@@ -497,6 +502,7 @@
             const yField = overrides.y;
             const colorField = overrides.color;
             const valueField = overrides.value;
+            const labelField = overrides.label;
             const title = overrides.title;
 
             // Get types for fields
@@ -579,13 +585,13 @@
             }
 
             // Apply explicit scale domains if provided
-            if (spec.encoding.x) {
+            if (spec.encoding && spec.encoding.x) {
                 const xDomain = parseDomain(overrides.xmin, overrides.xmax);
                 if (xDomain) {
                     spec.encoding.x.scale = { "domain": xDomain };
                 }
             }
-            if (spec.encoding.y) {
+            if (spec.encoding && spec.encoding.y) {
                 const yDomain = parseDomain(overrides.ymin, overrides.ymax);
                 if (yDomain) {
                     spec.encoding.y.scale = { "domain": yDomain };
@@ -593,7 +599,32 @@
             }
 
             // Enable interactive pan and zoom (drag to pan, scroll to zoom)
-            spec.params = [{ "name": "grid", "select": "interval", "bind": "scales" }];
+            const zoomParams = [{ "name": "grid", "select": "interval", "bind": "scales" }];
+
+            // Add text labels as a layer if specified
+            if (labelField) {
+                const baseMark = spec.mark;
+                const baseEncoding = spec.encoding;
+                delete spec.mark;
+                delete spec.encoding;
+
+                // Text layer gets only x, y positioning and the label text
+                const textEncoding = {
+                    "x": baseEncoding.x,
+                    "y": baseEncoding.y,
+                    "text": { "field": labelField, "type": "nominal" }
+                };
+
+                spec.layer = [
+                    { "mark": baseMark, "encoding": baseEncoding, "params": zoomParams },
+                    {
+                        "mark": { "type": "text", "dy": -10, "fontSize": 10 },
+                        "encoding": textEncoding
+                    }
+                ];
+            } else {
+                spec.params = zoomParams;
+            }
 
             return spec;
         }
