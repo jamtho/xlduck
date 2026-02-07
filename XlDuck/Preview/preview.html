@@ -573,6 +573,16 @@
                     spec.mark.point = true;
                 }
 
+                // Fit quantitative axes to data range (skip bar which needs zero baseline)
+                if (template !== 'bar') {
+                    if (xType === 'quantitative') {
+                        spec.encoding.x.scale = { "zero": false };
+                    }
+                    if (yType === 'quantitative') {
+                        spec.encoding.y.scale = { "zero": false };
+                    }
+                }
+
                 // Add color encoding if specified
                 if (colorField) {
                     const colorType = getVegaType(colorField, columns, types);
@@ -590,17 +600,17 @@
                 spec.title = title;
             }
 
-            // Apply explicit scale domains if provided
+            // Apply explicit scale domains if provided (merge with existing scale)
             if (spec.encoding && spec.encoding.x) {
                 const xDomain = parseDomain(overrides.xmin, overrides.xmax);
                 if (xDomain) {
-                    spec.encoding.x.scale = { "domain": xDomain };
+                    spec.encoding.x.scale = Object.assign({}, spec.encoding.x.scale, { "domain": xDomain });
                 }
             }
             if (spec.encoding && spec.encoding.y) {
                 const yDomain = parseDomain(overrides.ymin, overrides.ymax);
                 if (yDomain) {
-                    spec.encoding.y.scale = { "domain": yDomain };
+                    spec.encoding.y.scale = Object.assign({}, spec.encoding.y.scale, { "domain": yDomain });
                 }
             }
 
