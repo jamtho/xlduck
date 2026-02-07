@@ -210,8 +210,8 @@ B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "weekday", "value", "avg_temp")
 
 The XLDuck ribbon tab includes a toggle to open a preview pane on the right side of the window. When you select a cell containing a handle:
 
-- **Table handles**: Shows column schema and the first 200 rows of data
-- **Fragment handles**: Shows the SQL text and bound parameters
+- **Table handles**: Shows SQL with positional arguments, column schema, and the first 200 rows of data
+- **Fragment handles**: Shows the SQL text and positional arguments
 - **Plot handles**: Shows an interactive Vega-Lite chart
 - **Error handles**: Shows the error category and message
 

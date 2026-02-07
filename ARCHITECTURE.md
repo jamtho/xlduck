@@ -281,6 +281,7 @@ Without this pattern, Excel throws "Unable to create specified ActiveX control".
 ### Preview Types
 
 **Table handles** show:
+- SQL text and positional arguments (if any)
 - Schema table: column names and DuckDB types
 - Data grid: first 200 rows of data
 - Row/column counts in the title
