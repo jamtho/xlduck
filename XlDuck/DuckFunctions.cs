@@ -153,6 +153,20 @@ public static class DuckFunctions
         }
     }
 
+    [ExcelFunction(Description = "Convert an Excel date serial number to a SQL date string (yyyy-MM-dd).")]
+    public static string DuckDate(
+        [ExcelArgument(Description = "Cell containing a date")] double value)
+    {
+        return DateTime.FromOADate(value).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    [ExcelFunction(Description = "Convert an Excel date/time serial number to a SQL datetime string (yyyy-MM-dd HH:mm:ss).")]
+    public static string DuckDateTime(
+        [ExcelArgument(Description = "Cell containing a date/time")] double value)
+    {
+        return DateTime.FromOADate(value).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+    }
+
     [ExcelFunction(Description = "Execute a DuckDB SQL query and return a handle. Use ? placeholders for positional arguments.")]
     public static object DuckQuery(
         [ExcelArgument(Description = "SQL query with optional ? placeholders")] string sql,

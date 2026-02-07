@@ -179,6 +179,8 @@ The trade-off is that all intermediate results consume DuckDB memory until their
 | `DuckFrag(sql, [arg1, arg2, ...])` | Create SQL fragment for lazy evaluation. Validated but not executed. |
 | `DuckFragAfterConfig(sql, [arg1, arg2, ...])` | Same as DuckFrag, but waits for `DuckConfigReady()` before executing. |
 | `DuckCapture(range)` | Capture a sheet range as a DuckDB table. First row = headers. Returns table handle. |
+| `DuckDate(cell)` | Convert Excel date serial to SQL date string (`yyyy-MM-dd`). |
+| `DuckDateTime(cell)` | Convert Excel date/time serial to SQL datetime string (`yyyy-MM-dd HH:mm:ss`). |
 | `DuckOut(handle)` | Output handle (table or frag) as spilled array with headers. |
 | `DuckQueryOut(sql, [arg1, arg2, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |

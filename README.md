@@ -33,6 +33,8 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://frag/...`) |
 | `=DuckFragAfterConfig(sql, ...)` | Same as DuckFrag, but waits for `DuckConfigReady()` first |
 | `=DuckCapture(range)` | Capture a sheet range as a DuckDB table (first row = headers) |
+| `=DuckDate(cell)` | Convert Excel date to SQL date string (`2023-01-01`) |
+| `=DuckDateTime(cell)` | Convert Excel date/time to SQL datetime string (`2023-01-01 14:30:00`) |
 | `=DuckOut(handle)` | Output a handle as a spilled array |
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
 | `=DuckPlot(data, template, ...)` | Create a chart from data (`duck://plot/...`) |
@@ -160,6 +162,19 @@ Combine with other functions for analysis:
 ```excel
 A1: =DuckCapture(Sheet2!A1:D100)
 B1: =DuckQueryOut("SELECT department, AVG(salary) FROM ? GROUP BY department", A1)
+```
+
+### Date Parameters
+
+Excel stores dates as serial numbers, so passing a date cell directly as a `?` parameter won't work — DuckDB receives a number like `44927` instead of a date. Use `DuckDate` or `DuckDateTime` to convert:
+
+```excel
+C1: 1/1/2023                    (Excel date)
+D1: 12/31/2023                  (Excel date)
+
+E1: =DuckQuery("SELECT * FROM ? WHERE date BETWEEN ? AND ?", A1, DuckDate(C1), DuckDate(D1))
+
+F1: =DuckQuery("SELECT * FROM ? WHERE timestamp > ?", A1, DuckDateTime(C1))
 ```
 
 ### Pivot Tables

@@ -519,6 +519,41 @@ function Test-DuckCapture {
     Write-TestResult "Empty cells become NULL (COUNT skips)" ($cnt -eq "2") "Got: $cnt (expected 2, skipping NULL)"
 }
 
+function Test-DuckDateFunctions {
+    Write-Host "`nTest Suite: DuckDate / DuckDateTime" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Setup: Put dates into cells
+    $script:Sheet.Range("A1").Value2 = "2023-01-15"
+    $script:Sheet.Range("A1").NumberFormat = "yyyy-mm-dd"
+    # Force Excel to interpret as date by setting via NumberFormat
+    $script:Sheet.Range("B1").Formula = "=DATE(2023,6,15) + TIME(14,30,45)"
+    $script:Sheet.Range("B1").NumberFormat = "yyyy-mm-dd hh:mm:ss"
+    Start-Sleep -Milliseconds 200
+
+    # Test 1: DuckDate returns ISO date string
+    Set-Formula "C1" '=DuckDate(A1)'
+    $dateVal = Get-CellValue "C1"
+    Write-TestResult "DuckDate returns ISO date" ($dateVal -eq "2023-01-15") "Got: $dateVal"
+
+    # Test 2: DuckDateTime returns ISO datetime string
+    Set-Formula "D1" '=DuckDateTime(B1)'
+    $dtVal = Get-CellValue "D1"
+    Write-TestResult "DuckDateTime returns ISO datetime" ($dtVal -eq "2023-06-15 14:30:45") "Got: $dtVal"
+
+    # Test 3: DuckDate used as query parameter
+    Set-Formula "E1" '=DuckQuery("SELECT * FROM range(5)")'
+    Start-Sleep -Milliseconds 300
+    $script:Sheet.Range("F1").Formula = "=DATE(2023,1,1)"
+    $script:Sheet.Range("G1").Formula = "=DATE(2023,12,31)"
+    Start-Sleep -Milliseconds 200
+    Set-Formula "H1" '=DuckQueryOut("SELECT ? as start_date, ? as end_date", DuckDate(F1), DuckDate(G1))'
+    Start-Sleep -Milliseconds 300
+    $startDate = Get-CellValue "H2"
+    $endDate = Get-CellValue "I2"
+    Write-TestResult "DuckDate in query params" ($startDate -eq "2023-01-01" -and $endDate -eq "2023-12-31") "Got: start=$startDate, end=$endDate"
+}
+
 function Test-ReadCSV {
     Write-Host "`nTest Suite: Read CSV Files" -ForegroundColor Cyan
     Clear-TestRange
@@ -593,6 +628,7 @@ Test-DuckFragWithTableHandle
 Test-DuckOutWithFragment
 Test-Pivot
 Test-DuckCapture
+Test-DuckDateFunctions
 Test-ReadCSV
 
 # Summary
