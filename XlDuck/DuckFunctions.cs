@@ -57,8 +57,8 @@ public static class DuckFunctions
     {
         // Truncate long messages and remove newlines
         var cleanMessage = message.Replace("\r", "").Replace("\n", " ");
-        if (cleanMessage.Length > 200)
-            cleanMessage = cleanMessage.Substring(0, 197) + "...";
+        if (cleanMessage.Length > 1000)
+            cleanMessage = cleanMessage.Substring(0, 997) + "...";
         return $"{ErrorPrefix}{category}|{cleanMessage}";
     }
 
