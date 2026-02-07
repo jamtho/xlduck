@@ -35,11 +35,8 @@ public static class DuckFunctions
     private static DuckDBConnection? _connection;
     private static readonly object _connLock = new();
 
-    // Ready flag - queries with "@config" sentinel wait until DuckConfigReady() is called
+    // Ready flag - DuckQueryAfterConfig/DuckFragAfterConfig wait until DuckConfigReady() is called
     internal static bool IsReady { get; private set; } = false;
-
-    // Sentinel value that marks a query as requiring config
-    internal const string ConfigSentinel = "@config";
 
     // Status URL prefixes (# prefix follows Excel convention)
     internal const string BlockedPrefix = "#duck://blocked/";
@@ -125,7 +122,7 @@ public static class DuckFunctions
         return Version;
     }
 
-    [ExcelFunction(Description = "Signal that configuration is complete. Queries with @config wait until this is called.")]
+    [ExcelFunction(Description = "Signal that configuration is complete. DuckQueryAfterConfig/DuckFragAfterConfig wait until this is called.")]
     public static string DuckConfigReady()
     {
         System.Diagnostics.Debug.WriteLine("[XlDuck] DuckConfigReady called");
@@ -166,6 +163,33 @@ public static class DuckFunctions
             var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
             // Build topic info: ["query", sql, arg1, arg2, ...]
             var topicInfo = new List<string> { "query", sql };
+            topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
+
+            return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
+        }
+        catch (Exception ex)
+        {
+            return FormatException(ex);
+        }
+    }
+
+    [ExcelFunction(Description = "Execute a DuckDB SQL query after DuckConfigReady() is called. Use ? placeholders for positional arguments.")]
+    public static object DuckQueryAfterConfig(
+        [ExcelArgument(Description = "SQL query with optional ? placeholders")] string sql,
+        [ExcelArgument(Description = "First argument (replaces first ?)")] object arg1 = null!,
+        [ExcelArgument(Description = "Second argument (replaces second ?)")] object arg2 = null!,
+        [ExcelArgument(Description = "Third argument")] object arg3 = null!,
+        [ExcelArgument(Description = "Fourth argument")] object arg4 = null!,
+        [ExcelArgument(Description = "Fifth argument")] object arg5 = null!,
+        [ExcelArgument(Description = "Sixth argument")] object arg6 = null!,
+        [ExcelArgument(Description = "Seventh argument")] object arg7 = null!,
+        [ExcelArgument(Description = "Eighth argument")] object arg8 = null!)
+    {
+        try
+        {
+            var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+            // Build topic info: ["query-config", sql, arg1, arg2, ...]
+            var topicInfo = new List<string> { "query-config", sql };
             topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
 
             return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
@@ -359,6 +383,33 @@ public static class DuckFunctions
             var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
             // Build topic info: ["frag", sql, arg1, arg2, ...]
             var topicInfo = new List<string> { "frag", sql };
+            topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
+
+            return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
+        }
+        catch (Exception ex)
+        {
+            return FormatException(ex);
+        }
+    }
+
+    [ExcelFunction(Description = "Create a SQL fragment after DuckConfigReady() is called. Use ? placeholders for positional arguments.")]
+    public static object DuckFragAfterConfig(
+        [ExcelArgument(Description = "SQL query (SELECT or PIVOT) with optional ? placeholders")] string sql,
+        [ExcelArgument(Description = "First argument (replaces first ?)")] object arg1 = null!,
+        [ExcelArgument(Description = "Second argument (replaces second ?)")] object arg2 = null!,
+        [ExcelArgument(Description = "Third argument")] object arg3 = null!,
+        [ExcelArgument(Description = "Fourth argument")] object arg4 = null!,
+        [ExcelArgument(Description = "Fifth argument")] object arg5 = null!,
+        [ExcelArgument(Description = "Sixth argument")] object arg6 = null!,
+        [ExcelArgument(Description = "Seventh argument")] object arg7 = null!,
+        [ExcelArgument(Description = "Eighth argument")] object arg8 = null!)
+    {
+        try
+        {
+            var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+            // Build topic info: ["frag-config", sql, arg1, arg2, ...]
+            var topicInfo = new List<string> { "frag-config", sql };
             topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
 
             return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
@@ -644,17 +695,14 @@ public static class DuckFunctions
     {
         var referencedHandles = new List<string>();
 
-        // Filter out @config sentinel before positional replacement
-        var paramArgs = args.Where(a => a?.ToString() != ConfigSentinel).ToArray();
-
-        if (paramArgs.Length == 0)
+        if (args.Length == 0)
         {
             return (sql, referencedHandles);
         }
 
         // Resolve each positional value
         var resolvedValues = new List<string>();
-        foreach (var arg in paramArgs)
+        foreach (var arg in args)
         {
             var value = arg?.ToString() ?? "";
 

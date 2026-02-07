@@ -29,11 +29,14 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | Function | Description |
 |----------|-------------|
 | `=DuckQuery(sql, ...)` | Execute SQL, return a table handle (`duck://table/1\|10x4` = 10 rows, 4 cols) |
+| `=DuckQueryAfterConfig(sql, ...)` | Same as DuckQuery, but waits for `DuckConfigReady()` first |
 | `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://frag/...`) |
+| `=DuckFragAfterConfig(sql, ...)` | Same as DuckFrag, but waits for `DuckConfigReady()` first |
 | `=DuckOut(handle)` | Output a handle as a spilled array |
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
 | `=DuckPlot(data, template, ...)` | Create a chart from data (`duck://plot/...`) |
 | `=DuckExecute(sql)` | Execute DDL/DML statements |
+| `=DuckConfigReady()` | Signal that configuration is complete |
 | `=DuckVersion()` | XLDuck add-in version (0.1) |
 | `=DuckLibraryVersion()` | DuckDB library version |
 

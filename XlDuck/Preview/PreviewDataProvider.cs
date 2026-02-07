@@ -130,23 +130,19 @@ public static class PreviewDataProvider
                 Sql = !string.IsNullOrEmpty(stored.Sql) ? stored.Sql : null
             };
 
-            // Populate positional args (excluding @config sentinel)
+            // Populate positional args
             if (stored.Args.Length > 0)
             {
                 tableData.Args = new List<FragmentArg>();
                 foreach (var arg in stored.Args)
                 {
                     var value = arg?.ToString() ?? "";
-                    if (value == DuckFunctions.ConfigSentinel)
-                        continue;
                     tableData.Args.Add(new FragmentArg
                     {
                         Name = $"?{tableData.Args.Count + 1}",
                         Value = value
                     });
                 }
-                if (tableData.Args.Count == 0)
-                    tableData.Args = null;
             }
 
             // Get column schema via PRAGMA table_info
@@ -223,14 +219,9 @@ public static class PreviewDataProvider
         for (int i = 0; i < fragment.Args.Length; i++)
         {
             var value = fragment.Args[i]?.ToString() ?? "";
-
-            // Skip @config sentinel
-            if (value == DuckFunctions.ConfigSentinel)
-                continue;
-
             fragData.Args.Add(new FragmentArg
             {
-                Name = $"?{fragData.Args.Count + 1}",
+                Name = $"?{i + 1}",
                 Value = value
             });
         }

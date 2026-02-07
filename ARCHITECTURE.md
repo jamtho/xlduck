@@ -155,18 +155,22 @@ The trade-off is that all intermediate results consume DuckDB memory until their
 
 | Function | Purpose |
 |----------|---------|
-| `DuckQuery(sql, [arg1, arg2, ...])` | Execute SQL, return table handle. Up to 8 positional `?` arguments. Add `"@config"` to wait for config. |
-| `DuckFrag(sql, [arg1, arg2, ...])` | Create SQL fragment for lazy evaluation. Validated but not executed. Add `"@config"` to wait for config. |
+| `DuckQuery(sql, [arg1, arg2, ...])` | Execute SQL, return table handle. Up to 8 positional `?` arguments. |
+| `DuckQueryAfterConfig(sql, [arg1, arg2, ...])` | Same as DuckQuery, but waits for `DuckConfigReady()` before executing. |
+| `DuckFrag(sql, [arg1, arg2, ...])` | Create SQL fragment for lazy evaluation. Validated but not executed. |
+| `DuckFragAfterConfig(sql, [arg1, arg2, ...])` | Same as DuckFrag, but waits for `DuckConfigReady()` before executing. |
 | `DuckOut(handle)` | Output handle (table or frag) as spilled array with headers. |
 | `DuckQueryOut(sql, [arg1, arg2, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
-| `DuckConfigReady()` | Signal that configuration is complete. Queries with `@config` wait for this. |
+| `DuckConfigReady()` | Signal that configuration is complete. `AfterConfig` functions wait for this. |
 | `DuckVersion()` | Return add-in version (0.1) |
 | `DuckLibraryVersion()` | Return DuckDB library version |
 
 **When to use which:**
 - `DuckQuery` - Materialize and cache results (good for expensive queries used multiple times)
+- `DuckQueryAfterConfig` - Same as DuckQuery, for queries that need runtime config (S3 endpoints, etc.)
 - `DuckFrag` - Defer execution, allow query optimization across composed fragments
+- `DuckFragAfterConfig` - Same as DuckFrag, for fragments that need runtime config
 - `DuckOut` - Display results from either handle type
 - `DuckQueryOut` - One-off queries where you just want the output
 
@@ -199,15 +203,15 @@ To avoid RTD's 2-second throttle delay, queries use a timeout budget:
 
 This provides responsive UX for fast queries while supporting long-running operations.
 
-### Configuration Gate (@config)
+### Configuration Gate (AfterConfig functions)
 
-Queries needing runtime configuration (e.g., S3 endpoints) can wait for setup:
+Queries needing runtime configuration (e.g., S3 endpoints) use the `AfterConfig` variants which wait for setup:
 
 ```excel
-=DuckFrag("SELECT * FROM read_parquet(?)", A1, "@config")
+=DuckFragAfterConfig("SELECT * FROM read_parquet(?)", A1)
 ```
 
-The `@config` sentinel causes the query to wait until `DuckConfigReady()` is called, typically from VBA `Auto_Open`:
+`DuckQueryAfterConfig` and `DuckFragAfterConfig` wait until `DuckConfigReady()` is called, typically from VBA `Auto_Open`:
 
 ```vba
 Sub Auto_Open()

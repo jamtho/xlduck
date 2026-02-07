@@ -45,11 +45,13 @@ public class DuckRtdServer : ExcelRtdServer
     {
         System.Diagnostics.Debug.WriteLine($"[DuckRTD] ConnectData: TopicId={topic.TopicId}, IsReady={DuckFunctions.IsReady}, Info=[{string.Join(", ", topicInfo)}]");
 
-        // topicInfo[0] = "query" or "frag"
+        // topicInfo[0] = query type: "query", "query-config", "frag", "frag-config", "plot"
         // topicInfo[1] = sql
         // topicInfo[2..] = serialized positional args (value1, value2, ...)
 
-        var queryType = topicInfo[0];
+        var rawQueryType = topicInfo[0];
+        bool requiresConfig = rawQueryType.EndsWith("-config");
+        var queryType = requiresConfig ? rawQueryType.Replace("-config", "") : rawQueryType;
         var sql = topicInfo[1];
         var args = topicInfo.Skip(2).Select(s => (object)s).ToArray();
 
@@ -64,20 +66,12 @@ public class DuckRtdServer : ExcelRtdServer
         };
         _topics[topic.TopicId] = info;
 
-        // Check if query has @config sentinel OR depends on a blocked query - if so, wait for DuckConfigReady()
-        bool requiresConfig = args.Any(a => a?.ToString() == DuckFunctions.ConfigSentinel);
+        // Check if query requires config OR depends on a blocked query - if so, wait for DuckConfigReady()
         bool dependsOnBlocked = args.Any(a => a?.ToString()?.StartsWith(DuckFunctions.BlockedPrefix) == true);
-
-        // Filter out sentinel from args before any execution path
-        if (requiresConfig)
-        {
-            args = args.Where(a => a?.ToString() != DuckFunctions.ConfigSentinel).ToArray();
-            info.Args = args;
-        }
 
         if ((requiresConfig || dependsOnBlocked) && !DuckFunctions.IsReady)
         {
-            System.Diagnostics.Debug.WriteLine($"[DuckRTD] @config sentinel found, waiting for DuckConfigReady()...");
+            System.Diagnostics.Debug.WriteLine($"[DuckRTD] Config required, waiting for DuckConfigReady()...");
             newValues = true;
 
             // Poll for ready flag in background, then execute query

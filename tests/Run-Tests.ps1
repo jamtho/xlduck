@@ -285,12 +285,12 @@ function Test-DuckConfigReady {
     $result = Get-CellValue "A1"
     Write-TestResult "DuckConfigReady returns OK" ($result -eq "OK") "Got: $result"
 
-    # Test 2: @config sentinel works alongside real parameters
+    # Test 2: DuckFragAfterConfig works alongside real parameters
     Set-Formula "B1" '=DuckQuery("SELECT * FROM range(3)")'
     Start-Sleep -Milliseconds 500
-    Set-Formula "C1" '=DuckFrag("SELECT * FROM ?", B1, "@config")'
+    Set-Formula "C1" '=DuckFragAfterConfig("SELECT * FROM ?", B1)'
     $result2 = Get-CellValue "C1"
-    Write-TestResult "@config with params returns handle" ($result2 -match "^duck://frag/\d+$") "Got: $result2"
+    Write-TestResult "DuckFragAfterConfig with params returns handle" ($result2 -match "^duck://frag/\d+$") "Got: $result2"
 }
 
 function Test-DuckExecute {
