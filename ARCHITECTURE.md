@@ -128,6 +128,25 @@ DuckQuery("SELECT * FROM ?", "duck://frag/1")
 
 Circular references (fragment A → B → A) are detected and raise an error.
 
+### Range Capture
+
+```
+DuckCapture(A1:C4)
+    → Compute SHA256 content hash of all cell values + dimensions
+    → Stash array data in ConcurrentDictionary keyed by hash
+    → Call XlCall.RTD with topic ["capture", hash]
+    → RTD ConnectData:
+        → Take stashed data from dictionary (by hash)
+        → Extract headers from row 0, sanitize and deduplicate
+        → Infer column types (DOUBLE, BOOLEAN, VARCHAR)
+        → CREATE TEMP TABLE _xlduck_cap_xxx (explicit schema)
+        → INSERT data in batches of 1000 rows
+        → Store metadata in ResultStore
+        → Return table handle
+```
+
+**Why content hash + stash?** RTD topic info is `IList<string>` and cannot carry a 2D array directly. The content hash serves as a key to pass the array data out-of-band. Same data in two cells produces the same hash → same RTD topic → shared handle with refcount 2, cleaned up correctly when both cells are deleted.
+
 ### Materialization
 
 ```
@@ -159,6 +178,7 @@ The trade-off is that all intermediate results consume DuckDB memory until their
 | `DuckQueryAfterConfig(sql, [arg1, arg2, ...])` | Same as DuckQuery, but waits for `DuckConfigReady()` before executing. |
 | `DuckFrag(sql, [arg1, arg2, ...])` | Create SQL fragment for lazy evaluation. Validated but not executed. |
 | `DuckFragAfterConfig(sql, [arg1, arg2, ...])` | Same as DuckFrag, but waits for `DuckConfigReady()` before executing. |
+| `DuckCapture(range)` | Capture a sheet range as a DuckDB table. First row = headers. Returns table handle. |
 | `DuckOut(handle)` | Output handle (table or frag) as spilled array with headers. |
 | `DuckQueryOut(sql, [arg1, arg2, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
@@ -167,6 +187,7 @@ The trade-off is that all intermediate results consume DuckDB memory until their
 | `DuckLibraryVersion()` | Return DuckDB library version |
 
 **When to use which:**
+- `DuckCapture` - Bring Excel range data into DuckDB for querying
 - `DuckQuery` - Materialize and cache results (good for expensive queries used multiple times)
 - `DuckQueryAfterConfig` - Same as DuckQuery, for queries that need runtime config (S3 endpoints, etc.)
 - `DuckFrag` - Defer execution, allow query optimization across composed fragments

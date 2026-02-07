@@ -452,6 +452,73 @@ function Test-Pivot {
     Write-TestResult "PIVOT values" ($q1North -eq "100" -and $q1South -eq "150" -and $q2North -eq "200" -and $q2South -eq "250") "Got: Q1=($q1North,$q1South), Q2=($q2North,$q2South)"
 }
 
+function Test-DuckCapture {
+    Write-Host "`nTest Suite: DuckCapture" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Setup: Put data into a range (headers + data)
+    $script:Sheet.Range("A1").Value2 = "name"
+    $script:Sheet.Range("B1").Value2 = "age"
+    $script:Sheet.Range("C1").Value2 = "city"
+    $script:Sheet.Range("A2").Value2 = "alice"
+    $script:Sheet.Range("B2").Value2 = 30
+    $script:Sheet.Range("C2").Value2 = "NYC"
+    $script:Sheet.Range("A3").Value2 = "bob"
+    $script:Sheet.Range("B3").Value2 = 25
+    $script:Sheet.Range("C3").Value2 = "LA"
+    $script:Sheet.Range("A4").Value2 = "charlie"
+    $script:Sheet.Range("B4").Value2 = 35
+    $script:Sheet.Range("C4").Value2 = "Chicago"
+    Start-Sleep -Milliseconds 200
+
+    # Test 1: Basic capture returns handle
+    Set-Formula "E1" '=DuckCapture(A1:C4)'
+    $handle = Get-CellValue "E1"
+    Write-TestResult "Returns table handle format" ($handle -match "^duck://table/\d+\|3x3$") "Got: $handle"
+
+    # Test 2: DuckOut of captured data preserves headers and values
+    Set-Formula "F1" '=DuckOut(E1)'
+    Start-Sleep -Milliseconds 300
+    $hdr1 = Get-CellValue "F1"
+    $hdr2 = Get-CellValue "G1"
+    $hdr3 = Get-CellValue "H1"
+    $val1 = Get-CellValue "F2"
+    $val2 = Get-CellValue "G2"
+    $val3 = Get-CellValue "H2"
+
+    Write-TestResult "Headers preserved" ($hdr1 -eq "name" -and $hdr2 -eq "age" -and $hdr3 -eq "city") "Got: $hdr1, $hdr2, $hdr3"
+    Write-TestResult "First row values" ($val1 -eq "alice" -and $val2 -eq "30" -and $val3 -eq "NYC") "Got: $val1, $val2, $val3"
+
+    # Test 3: SQL query on captured data
+    Set-Formula "J1" '=DuckQueryOut("SELECT * FROM ? WHERE age > 28", E1)'
+    Start-Sleep -Milliseconds 300
+    $qName1 = Get-CellValue "J2"
+    $qName2 = Get-CellValue "J3"
+
+    Write-TestResult "SQL filter on captured data" ($qName1 -eq "alice" -and $qName2 -eq "charlie") "Got: $qName1, $qName2"
+
+    # Test 4: Numeric type inference (SUM works)
+    Set-Formula "M1" '=DuckQueryOut("SELECT SUM(age) as total FROM ?", E1)'
+    Start-Sleep -Milliseconds 300
+    $sum = Get-CellValue "M2"
+    Write-TestResult "Numeric type inference (SUM)" ($sum -eq "90") "Got: $sum (expected 90 = 30+25+35)"
+
+    # Test 5: Empty cells become NULL
+    Clear-TestRange
+    $script:Sheet.Range("A1").Value2 = "val"
+    $script:Sheet.Range("A2").Value2 = 10
+    # A3 intentionally left empty
+    $script:Sheet.Range("A4").Value2 = 30
+    Start-Sleep -Milliseconds 200
+
+    Set-Formula "B1" '=DuckCapture(A1:A4)'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "C1" '=DuckQueryOut("SELECT COUNT(val) as cnt FROM ?", B1)'
+    Start-Sleep -Milliseconds 300
+    $cnt = Get-CellValue "C2"
+    Write-TestResult "Empty cells become NULL (COUNT skips)" ($cnt -eq "2") "Got: $cnt (expected 2, skipping NULL)"
+}
+
 function Test-ReadCSV {
     Write-Host "`nTest Suite: Read CSV Files" -ForegroundColor Cyan
     Clear-TestRange
@@ -525,6 +592,7 @@ Test-DuckFragChained
 Test-DuckFragWithTableHandle
 Test-DuckOutWithFragment
 Test-Pivot
+Test-DuckCapture
 Test-ReadCSV
 
 # Summary

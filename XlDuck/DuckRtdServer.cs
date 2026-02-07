@@ -45,8 +45,8 @@ public class DuckRtdServer : ExcelRtdServer
     {
         System.Diagnostics.Debug.WriteLine($"[DuckRTD] ConnectData: TopicId={topic.TopicId}, IsReady={DuckFunctions.IsReady}, Info=[{string.Join(", ", topicInfo)}]");
 
-        // topicInfo[0] = query type: "query", "query-config", "frag", "frag-config", "plot"
-        // topicInfo[1] = sql
+        // topicInfo[0] = query type: "query", "query-config", "frag", "frag-config", "plot", "capture"
+        // topicInfo[1] = sql (or content hash for capture)
         // topicInfo[2..] = serialized positional args (value1, value2, ...)
 
         var rawQueryType = topicInfo[0];
@@ -111,6 +111,11 @@ public class DuckRtdServer : ExcelRtdServer
                     var overrideArgs = args.Length > 1 ? args.Skip(1).ToArray() : Array.Empty<object>();
                     result = QueryExecutor.CreatePlot(sql, template, overrideArgs);
                 }
+                else if (queryType == "capture")
+                {
+                    // For capture: sql holds the content hash
+                    result = QueryExecutor.CaptureRange(sql);
+                }
                 else
                 {
                     result = DuckFunctions.FormatError("internal", $"Unknown query type: {queryType}");
@@ -150,7 +155,7 @@ public class DuckRtdServer : ExcelRtdServer
             // Increment refcount if we got a valid handle
             if (result != null && !DuckFunctions.IsErrorOrBlocked(result))
             {
-                if (queryType == "query")
+                if (queryType == "query" || queryType == "capture")
                     ResultStore.IncrementRefCount(result);
                 else if (queryType == "frag")
                     FragmentStore.IncrementRefCount(result);
@@ -190,7 +195,7 @@ public class DuckRtdServer : ExcelRtdServer
                 // Increment refcount if we got a valid handle
                 if (!DuckFunctions.IsErrorOrBlocked(finalResult))
                 {
-                    if (queryType == "query")
+                    if (queryType == "query" || queryType == "capture")
                         ResultStore.IncrementRefCount(finalResult);
                     else if (queryType == "frag")
                         FragmentStore.IncrementRefCount(finalResult);
@@ -234,6 +239,10 @@ public class DuckRtdServer : ExcelRtdServer
                 var overrideArgs = info.Args.Length > 1 ? info.Args.Skip(1).ToArray() : Array.Empty<object>();
                 result = QueryExecutor.CreatePlot(info.Sql, template, overrideArgs);
             }
+            else if (info.QueryType == "capture")
+            {
+                result = QueryExecutor.CaptureRange(info.Sql);
+            }
             else
             {
                 result = DuckFunctions.FormatError("internal", $"Unknown query type: {info.QueryType}");
@@ -260,7 +269,7 @@ public class DuckRtdServer : ExcelRtdServer
         // Increment refcount if we got a valid handle
         if (!DuckFunctions.IsErrorOrBlocked(finalResult))
         {
-            if (info.QueryType == "query")
+            if (info.QueryType == "query" || info.QueryType == "capture")
                 ResultStore.IncrementRefCount(finalResult);
             else if (info.QueryType == "frag")
                 FragmentStore.IncrementRefCount(finalResult);
@@ -317,5 +326,13 @@ public static class QueryExecutor
     public static string CreatePlot(string dataHandle, string template, object[] args)
     {
         return DuckFunctions.CreatePlotInternal(dataHandle, template, args);
+    }
+
+    public static string CaptureRange(string hash)
+    {
+        var data = DuckFunctions.TakePendingCapture(hash);
+        if (data == null)
+            return DuckFunctions.FormatError("internal", "Capture data not found (hash expired)");
+        return DuckFunctions.CaptureRangeInternal(data);
     }
 }

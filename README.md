@@ -32,6 +32,7 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | `=DuckQueryAfterConfig(sql, ...)` | Same as DuckQuery, but waits for `DuckConfigReady()` first |
 | `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://frag/...`) |
 | `=DuckFragAfterConfig(sql, ...)` | Same as DuckFrag, but waits for `DuckConfigReady()` first |
+| `=DuckCapture(range)` | Capture a sheet range as a DuckDB table (first row = headers) |
 | `=DuckOut(handle)` | Output a handle as a spilled array |
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
 | `=DuckPlot(data, template, ...)` | Create a chart from data (`duck://plot/...`) |
@@ -131,6 +132,35 @@ B1: =DuckQueryOut("SELECT region, SUM(amount) FROM ? GROUP BY region", A1)
 ```
 
 DuckDB can also read from URLs and S3 - see [DuckDB documentation](https://duckdb.org/docs/data/overview) for details.
+
+### Capturing Sheet Data
+
+`DuckCapture` brings Excel range data into DuckDB for querying. The first row is treated as headers, the rest as data:
+
+```excel
+A1:C4 contains:
+  | name    | age | city    |
+  | alice   | 30  | NYC     |
+  | bob     | 25  | LA      |
+  | charlie | 35  | Chicago |
+
+D1: =DuckCapture(A1:C4)
+→ duck://table/1|3x3
+
+E1: =DuckQueryOut("SELECT * FROM ? WHERE age > 28", D1)
+→ | name    | age | city    |
+  | alice   | 30  | NYC     |
+  | charlie | 35  | Chicago |
+```
+
+Column types are inferred automatically: all-numeric columns become `DOUBLE`, all-boolean become `BOOLEAN`, everything else becomes `VARCHAR`. Empty cells are treated as `NULL`.
+
+Combine with other functions for analysis:
+
+```excel
+A1: =DuckCapture(Sheet2!A1:D100)
+B1: =DuckQueryOut("SELECT department, AVG(salary) FROM ? GROUP BY department", A1)
+```
 
 ### Pivot Tables
 

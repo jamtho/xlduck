@@ -3,6 +3,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using ExcelDna.Integration;
 using DuckDB.NET.Data;
@@ -37,6 +41,9 @@ public static class DuckFunctions
 
     // Ready flag - DuckQueryAfterConfig/DuckFragAfterConfig wait until DuckConfigReady() is called
     internal static bool IsReady { get; private set; } = false;
+
+    // Stash for pending DuckCapture data (hash → array), consumed by RTD ConnectData
+    private static readonly ConcurrentDictionary<string, object[,]> _pendingCaptures = new();
 
     // Status URL prefixes (# prefix follows Excel convention)
     internal const string BlockedPrefix = "#duck://blocked/";
@@ -512,6 +519,250 @@ public static class DuckFunctions
         var fragment = new StoredFragment(sql, args);
         return FragmentStore.Store(fragment);
     }
+
+    // ─── DuckCapture ───────────────────────────────────────────────
+
+    [ExcelFunction(Description = "Capture a sheet range as a DuckDB table. First row = headers.")]
+    public static object DuckCapture(
+        [ExcelArgument(Description = "Range (first row = headers, rest = data)")] object[,] range)
+    {
+        try
+        {
+            var rows = range.GetLength(0);
+            var cols = range.GetLength(1);
+
+            if (rows < 2 || cols < 1)
+                return FormatError("invalid", "Range must have at least 1 header row and 1 data row");
+
+            var hash = ComputeRangeHash(range);
+            _pendingCaptures[hash] = range;
+
+            return XlCall.RTD("XlDuck.DuckRtdServer", null, "capture", hash);
+        }
+        catch (Exception ex)
+        {
+            return FormatException(ex);
+        }
+    }
+
+    /// <summary>
+    /// Remove and return stashed capture data by hash. Called by RTD server.
+    /// </summary>
+    internal static object[,]? TakePendingCapture(string hash)
+    {
+        _pendingCaptures.TryRemove(hash, out var data);
+        return data;
+    }
+
+    /// <summary>
+    /// Capture a range array into a DuckDB temp table and return the handle. Called by RTD server.
+    /// </summary>
+    internal static string CaptureRangeInternal(object[,] data)
+    {
+        var rows = data.GetLength(0);
+        var cols = data.GetLength(1);
+        var dataRows = rows - 1;
+
+        var headers = ExtractHeaders(data, cols);
+        var types = InferColumnTypes(data, dataRows, cols);
+
+        return CreateCaptureTable(headers, types, data, dataRows, cols);
+    }
+
+    /// <summary>
+    /// Compute SHA256 hash of range dimensions and all cell values.
+    /// </summary>
+    private static string ComputeRangeHash(object[,] data)
+    {
+        var rows = data.GetLength(0);
+        var cols = data.GetLength(1);
+
+        using var sha = SHA256.Create();
+        var sb = new StringBuilder();
+        sb.Append(rows).Append('x').Append(cols).Append('\0');
+
+        for (int r = 0; r < rows; r++)
+        {
+            for (int c = 0; c < cols; c++)
+            {
+                sb.Append(ConvertCellToString(data[r, c])).Append('\0');
+            }
+        }
+
+        var hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
+        return Convert.ToHexString(hashBytes);
+    }
+
+    /// <summary>
+    /// Extract and sanitize column headers from row 0.
+    /// Deduplicates by appending _2, _3, etc.
+    /// </summary>
+    private static string[] ExtractHeaders(object[,] data, int cols)
+    {
+        var headers = new string[cols];
+        var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        for (int c = 0; c < cols; c++)
+        {
+            var raw = ConvertCellToString(data[0, c]).Trim();
+            if (string.IsNullOrEmpty(raw))
+                raw = $"col{c + 1}";
+
+            // Sanitize: remove characters that are problematic in SQL identifiers
+            raw = Regex.Replace(raw, @"[^\w]", "_");
+            if (raw.Length == 0 || char.IsDigit(raw[0]))
+                raw = "_" + raw;
+
+            if (seen.TryGetValue(raw, out var count))
+            {
+                seen[raw] = count + 1;
+                raw = $"{raw}_{count + 1}";
+            }
+            else
+            {
+                seen[raw] = 1;
+            }
+
+            headers[c] = raw;
+        }
+
+        return headers;
+    }
+
+    private enum CaptureType { Double, Boolean, Varchar }
+
+    /// <summary>
+    /// Infer column types by scanning data rows.
+    /// </summary>
+    private static CaptureType[] InferColumnTypes(object[,] data, int dataRows, int cols)
+    {
+        var types = new CaptureType[cols];
+
+        for (int c = 0; c < cols; c++)
+        {
+            bool allDouble = true;
+            bool allBool = true;
+            bool hasValue = false;
+
+            for (int r = 1; r <= dataRows; r++)
+            {
+                var cell = data[r, c];
+                if (cell == null || cell is ExcelEmpty || cell is ExcelMissing || cell is ExcelError)
+                    continue;
+
+                hasValue = true;
+
+                if (cell is not double)
+                    allDouble = false;
+                if (cell is not bool)
+                    allBool = false;
+
+                if (!allDouble && !allBool)
+                    break;
+            }
+
+            if (!hasValue || (!allDouble && !allBool))
+                types[c] = CaptureType.Varchar;
+            else if (allDouble)
+                types[c] = CaptureType.Double;
+            else
+                types[c] = CaptureType.Boolean;
+        }
+
+        return types;
+    }
+
+    private static string DuckDbTypeName(CaptureType type) => type switch
+    {
+        CaptureType.Double => "DOUBLE",
+        CaptureType.Boolean => "BOOLEAN",
+        _ => "VARCHAR"
+    };
+
+    /// <summary>
+    /// Create the DuckDB temp table, insert data, store in ResultStore, return handle.
+    /// </summary>
+    private static string CreateCaptureTable(string[] headers, CaptureType[] types, object[,] data, int dataRows, int cols)
+    {
+        var conn = GetConnection();
+        var tableName = $"_xlduck_cap_{Guid.NewGuid():N}";
+
+        // CREATE TEMP TABLE
+        var colDefs = new StringBuilder();
+        for (int c = 0; c < cols; c++)
+        {
+            if (c > 0) colDefs.Append(", ");
+            colDefs.Append('"').Append(headers[c]).Append("\" ").Append(DuckDbTypeName(types[c]));
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = $"CREATE TEMP TABLE \"{tableName}\" ({colDefs})";
+            cmd.ExecuteNonQuery();
+        }
+
+        // INSERT in batches of 1000
+        const int batchSize = 1000;
+        for (int batchStart = 0; batchStart < dataRows; batchStart += batchSize)
+        {
+            var batchEnd = Math.Min(batchStart + batchSize, dataRows);
+            var sb = new StringBuilder();
+            sb.Append($"INSERT INTO \"{tableName}\" VALUES ");
+
+            for (int r = batchStart; r < batchEnd; r++)
+            {
+                if (r > batchStart) sb.Append(", ");
+                sb.Append('(');
+                for (int c = 0; c < cols; c++)
+                {
+                    if (c > 0) sb.Append(", ");
+                    sb.Append(FormatCellAsSqlLiteral(data[r + 1, c], types[c]));
+                }
+                sb.Append(')');
+            }
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sb.ToString();
+            cmd.ExecuteNonQuery();
+        }
+
+        var stored = new StoredResult(tableName, headers, dataRows, "(captured from Excel range)");
+        return ResultStore.Store(stored);
+    }
+
+    /// <summary>
+    /// Format a cell value as a SQL literal based on inferred column type.
+    /// </summary>
+    private static string FormatCellAsSqlLiteral(object cell, CaptureType colType)
+    {
+        if (cell == null || cell is ExcelEmpty || cell is ExcelMissing || cell is ExcelError)
+            return "NULL";
+
+        return colType switch
+        {
+            CaptureType.Double when cell is double d => d.ToString(CultureInfo.InvariantCulture),
+            CaptureType.Boolean when cell is bool b => b ? "TRUE" : "FALSE",
+            _ => $"'{ConvertCellToString(cell).Replace("'", "''")}'"
+        };
+    }
+
+    /// <summary>
+    /// Convert a cell value to its string representation.
+    /// </summary>
+    private static string ConvertCellToString(object cell)
+    {
+        if (cell == null || cell is ExcelEmpty || cell is ExcelMissing)
+            return "";
+        if (cell is ExcelError err)
+            return $"#ERR:{err}";
+        if (cell is double d)
+            return d.ToString(CultureInfo.InvariantCulture);
+        if (cell is bool b)
+            return b ? "TRUE" : "FALSE";
+        return cell.ToString() ?? "";
+    }
+
+    // ─── End DuckCapture ────────────────────────────────────────────
 
     /// <summary>
     /// Get column names from a table using PRAGMA table_info.
