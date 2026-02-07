@@ -179,6 +179,12 @@ B1: =DuckPlot(A1, "bar", "x", "region", "y", "total", "title", "Sales by Region"
 
 **Examples:**
 
+Bar chart:
+```excel
+A1: =DuckQuery("SELECT region, SUM(sales) as total FROM (VALUES ('North', 100), ('South', 150), ('East', 80), ('West', 120)) AS t(region, sales) GROUP BY region")
+B1: =DuckPlot(A1, "bar", "x", "region", "y", "total", "title", "Sales by Region")
+```
+
 Line chart with multiple series:
 ```excel
 A1: =DuckQuery("SELECT x as day, 'A' as product, x*10 as sales FROM range(20) UNION ALL SELECT x, 'B', x*7+20 FROM range(20)")
@@ -189,6 +195,12 @@ Scatter plot:
 ```excel
 A1: =DuckQuery("SELECT random()*100 as x, random()*100 as y FROM range(200)")
 B1: =DuckPlot(A1, "point", "x", "x", "y", "y")
+```
+
+Area chart with stacked series:
+```excel
+A1: =DuckQuery("SELECT x as month, 'Product A' as product, x*5+10 as revenue FROM range(12) UNION ALL SELECT x, 'Product B', x*3+20 FROM range(12)")
+B1: =DuckPlot(A1, "area", "x", "month", "y", "revenue", "color", "product")
 ```
 
 Histogram (distribution):
@@ -205,8 +217,8 @@ B1: =DuckPlot(A1, "boxplot", "x", "category", "y", "value")
 
 Heatmap:
 ```excel
-A1: =DuckQuery("SELECT weekday, hour, avg_temp FROM temperature_data")
-B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "weekday", "value", "avg_temp")
+A1: =DuckQuery("SELECT day, hour, temp FROM (SELECT d.d as day, h.h as hour, (15 + d.d + h.h*0.5 + random()*5)::INT as temp FROM range(7) AS d(d), range(24) AS h(h))")
+B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "day", "value", "temp")
 ```
 
 ## Preview Pane
