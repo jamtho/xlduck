@@ -578,7 +578,34 @@
                 spec.title = title;
             }
 
+            // Apply explicit scale domains if provided
+            if (spec.encoding.x) {
+                const xDomain = parseDomain(overrides.xmin, overrides.xmax);
+                if (xDomain) {
+                    spec.encoding.x.scale = { "domain": xDomain };
+                }
+            }
+            if (spec.encoding.y) {
+                const yDomain = parseDomain(overrides.ymin, overrides.ymax);
+                if (yDomain) {
+                    spec.encoding.y.scale = { "domain": yDomain };
+                }
+            }
+
+            // Enable interactive pan and zoom (drag to pan, scroll to zoom)
+            spec.params = [{ "name": "grid", "select": "interval", "bind": "scales" }];
+
             return spec;
+        }
+
+        function parseDomain(minVal, maxVal) {
+            if (minVal == null && maxVal == null) return null;
+            const min = minVal != null ? parseFloat(minVal) : undefined;
+            const max = maxVal != null ? parseFloat(maxVal) : undefined;
+            if (min != null && !isNaN(min) && max != null && !isNaN(max)) return [min, max];
+            if (min != null && !isNaN(min)) return [min, undefined];
+            if (max != null && !isNaN(max)) return [undefined, max];
+            return null;
         }
 
         function getVegaType(fieldName, columns, types) {
