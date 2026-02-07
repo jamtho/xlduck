@@ -263,17 +263,17 @@ function Test-ErrorHandling {
     # Test 1: Invalid table - should be notfound category
     Set-Formula "A1" '=DuckQuery("SELECT * FROM nonexistent_table")'
     $result = Get-CellValue "A1"
-    Write-TestResult "Invalid table error (notfound)" ($result -match "#duck://error/notfound\|") "Got: $result"
+    Write-TestResult "Invalid table error (notfound)" ($result -match "#duck://error/\d+/notfound\|") "Got: $result"
 
     # Test 2: Invalid handle - should be notfound category
     Set-Formula "B1" '=DuckOut("duck://table/99999")'
     $result2 = Get-CellValue "B1"
-    Write-TestResult "Invalid handle error (notfound)" ($result2 -match "#duck://error/notfound\|") "Got: $result2"
+    Write-TestResult "Invalid handle error (notfound)" ($result2 -match "#duck://error/\d+/notfound\|") "Got: $result2"
 
     # Test 3: Syntax error
     Set-Formula "C1" '=DuckQuery("SELEC * FORM table")'
     $result3 = Get-CellValue "C1"
-    Write-TestResult "Syntax error category" ($result3 -match "#duck://error/syntax\|") "Got: $result3"
+    Write-TestResult "Syntax error category" ($result3 -match "#duck://error/\d+/syntax\|") "Got: $result3"
 }
 
 function Test-DuckConfigReady {
@@ -519,6 +519,33 @@ function Test-DuckCapture {
     Write-TestResult "Empty cells become NULL (COUNT skips)" ($cnt -eq "2") "Got: $cnt (expected 2, skipping NULL)"
 }
 
+function Test-DuckQueryOutScalar {
+    Write-Host "`nTest Suite: DuckQueryOutScalar" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Test 1: Numeric scalar
+    Set-Formula "A1" '=DuckQueryOutScalar("SELECT SUM(range) FROM range(10)")'
+    $sum = Get-CellValue "A1"
+    Write-TestResult "Numeric scalar (SUM)" ($sum -eq "45") "Got: $sum"
+
+    # Test 2: String scalar
+    Set-Formula "B1" "=DuckQueryOutScalar(""SELECT 'hello world'"")"
+    $str = Get-CellValue "B1"
+    Write-TestResult "String scalar" ($str -eq "hello world") "Got: $str"
+
+    # Test 3: Scalar with parameter binding
+    Set-Formula "C1" '=DuckQuery("SELECT * FROM range(10)")'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "D1" '=DuckQueryOutScalar("SELECT COUNT(*) FROM ? WHERE range > 5", C1)'
+    $cnt = Get-CellValue "D1"
+    Write-TestResult "Scalar with param binding" ($cnt -eq "4") "Got: $cnt"
+
+    # Test 4: NULL returns empty
+    Set-Formula "E1" '=DuckQueryOutScalar("SELECT NULL")'
+    $null_val = Get-CellValue "E1"
+    Write-TestResult "NULL returns empty" ($null_val -eq "") "Got: '$null_val'"
+}
+
 function Test-DuckDateFunctions {
     Write-Host "`nTest Suite: DuckDate / DuckDateTime" -ForegroundColor Cyan
     Clear-TestRange
@@ -628,6 +655,7 @@ Test-DuckFragWithTableHandle
 Test-DuckOutWithFragment
 Test-Pivot
 Test-DuckCapture
+Test-DuckQueryOutScalar
 Test-DuckDateFunctions
 Test-ReadCSV
 

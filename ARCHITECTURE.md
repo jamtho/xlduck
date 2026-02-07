@@ -183,6 +183,7 @@ The trade-off is that all intermediate results consume DuckDB memory until their
 | `DuckDateTime(cell)` | Convert Excel date/time serial to SQL datetime string (`yyyy-MM-dd HH:mm:ss`). |
 | `DuckOut(handle)` | Output handle (table or frag) as spilled array with headers. |
 | `DuckQueryOut(sql, [arg1, arg2, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
+| `DuckQueryOutScalar(sql, [arg1, arg2, ...])` | Execute SQL and return a single value (first column, first row). |
 | `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
 | `DuckConfigReady()` | Signal that configuration is complete. `AfterConfig` functions wait for this. |
 | `DuckVersion()` | Return add-in version (0.1) |

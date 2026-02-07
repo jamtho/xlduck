@@ -37,6 +37,7 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | `=DuckDateTime(cell)` | Convert Excel date/time to SQL datetime string (`2023-01-01 14:30:00`) |
 | `=DuckOut(handle)` | Output a handle as a spilled array |
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
+| `=DuckQueryOutScalar(sql, ...)` | Execute SQL and return a single value (first column, first row) |
 | `=DuckPlot(data, template, ...)` | Create a chart from data (`duck://plot/...`) |
 | `=DuckExecute(sql)` | Execute DDL/DML statements |
 | `=DuckConfigReady()` | Signal that configuration is complete |

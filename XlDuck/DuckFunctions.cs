@@ -312,6 +312,41 @@ public static class DuckFunctions
         }
     }
 
+    [ExcelFunction(Description = "Execute a DuckDB SQL query and return a single value (first column, first row). Use ? placeholders for positional arguments.")]
+    public static object DuckQueryOutScalar(
+        [ExcelArgument(Description = "SQL query with optional ? placeholders")] string sql,
+        [ExcelArgument(Description = "First argument (replaces first ?)")] object arg1 = null!,
+        [ExcelArgument(Description = "Second argument (replaces second ?)")] object arg2 = null!,
+        [ExcelArgument(Description = "Third argument")] object arg3 = null!,
+        [ExcelArgument(Description = "Fourth argument")] object arg4 = null!,
+        [ExcelArgument(Description = "Fifth argument")] object arg5 = null!,
+        [ExcelArgument(Description = "Sixth argument")] object arg6 = null!,
+        [ExcelArgument(Description = "Seventh argument")] object arg7 = null!,
+        [ExcelArgument(Description = "Eighth argument")] object arg8 = null!)
+    {
+        try
+        {
+            var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+            var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
+            try
+            {
+                var conn = GetConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = resolvedSql;
+                var result = cmd.ExecuteScalar();
+                return ConvertToExcelValue(result);
+            }
+            finally
+            {
+                DecrementHandleRefCounts(referencedHandles);
+            }
+        }
+        catch (Exception ex)
+        {
+            return FormatException(ex);
+        }
+    }
+
     [ExcelFunction(Description = "Execute a DuckDB SQL statement (CREATE, INSERT, etc.)")]
     public static object DuckExecute(
         [ExcelArgument(Description = "SQL statement")] string sql)
