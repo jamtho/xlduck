@@ -73,8 +73,8 @@ public class RibbonController : ExcelRibbon
             var libVersion = DuckFunctions.DuckLibraryVersion();
 
             MessageBox.Show(
-                $"XlDuck Add-in: v{addInVersion}\nDuckDB Library: {libVersion}",
-                "XlDuck Version",
+                $"XLDuck Add-in: v{addInVersion}\nDuckDB Library: {libVersion}",
+                "XLDuck Version",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
@@ -82,7 +82,7 @@ public class RibbonController : ExcelRibbon
         {
             MessageBox.Show(
                 $"Error getting version: {ex.Message}",
-                "XlDuck",
+                "XLDuck",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }

@@ -2,7 +2,7 @@
 
 ## Overview
 
-XlDuck is an Excel add-in that exposes DuckDB's SQL engine to spreadsheet users. The core idea is to enable **dataflow-style computation** where intermediate query results can be stored as handles and referenced by downstream queries, creating a DAG of computations across the sheet.
+XLDuck is an Excel add-in that exposes DuckDB's SQL engine to spreadsheet users. The core idea is to enable **dataflow-style computation** where intermediate query results can be stored as handles and referenced by downstream queries, creating a DAG of computations across the sheet.
 
 ## Core Concepts
 
@@ -236,7 +236,7 @@ Current approach: simple locking around connection access. This works but has li
 
 ## Preview Pane
 
-The XlDuck ribbon tab includes a "Preview Pane" toggle button that opens a task pane for inspecting handles.
+The XLDuck ribbon tab includes a "Preview Pane" toggle button that opens a task pane for inspecting handles.
 
 ### Architecture
 
@@ -318,7 +318,7 @@ Selection changes fire rapidly. The controller:
 
 ## Plotting
 
-XlDuck supports interactive charts via `DuckPlot`, rendered in the preview pane using Vega-Lite.
+XLDuck supports interactive charts via `DuckPlot`, rendered in the preview pane using Vega-Lite.
 
 ### Design
 

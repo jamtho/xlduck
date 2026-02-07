@@ -1,4 +1,4 @@
-# XlDuck
+# XLDuck
 
 Excel add-in wrapping DuckDB for in-cell SQL queries.
 
@@ -34,7 +34,7 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
 | `=DuckPlot(data, template, ...)` | Create a chart from data (`duck://plot/...`) |
 | `=DuckExecute(sql)` | Execute DDL/DML statements |
-| `=DuckVersion()` | XlDuck add-in version (0.1) |
+| `=DuckVersion()` | XLDuck add-in version (0.1) |
 | `=DuckLibraryVersion()` | DuckDB library version |
 
 ## Examples
@@ -208,7 +208,7 @@ B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "weekday", "value", "avg_temp")
 
 ## Preview Pane
 
-The XlDuck ribbon tab includes a toggle to open a preview pane on the right side of the window. When you select a cell containing a handle:
+The XLDuck ribbon tab includes a toggle to open a preview pane on the right side of the window. When you select a cell containing a handle:
 
 - **Table handles**: Shows column schema and the first 200 rows of data
 - **Fragment handles**: Shows the SQL text and bound parameters

@@ -156,7 +156,7 @@ public class PreviewPaneManager : IDisposable
             Log.Write("[PaneManager] Calling CustomTaskPaneFactory.CreateCustomTaskPane with type");
             var taskPane = CustomTaskPaneFactory.CreateCustomTaskPane(
                 typeof(PreviewPane),
-                "XlDuck Preview");
+                "XLDuck Preview");
 
             Log.Write("[PaneManager] Setting dock position and width");
             taskPane.DockPosition = MsoCTPDockPosition.msoCTPDockPositionRight;

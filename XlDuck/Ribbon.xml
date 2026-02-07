@@ -1,7 +1,7 @@
 <customUI xmlns="http://schemas.microsoft.com/office/2009/07/customui" onLoad="OnRibbonLoad">
   <ribbon>
     <tabs>
-      <tab id="XlDuckTab" label="XlDuck">
+      <tab id="XlDuckTab" label="XLDuck">
         <group id="PreviewGroup" label="Preview">
           <toggleButton id="PreviewPaneToggle"
                         label="Preview Pane"
@@ -18,8 +18,8 @@
                   size="normal"
                   imageMso="Info"
                   onAction="OnVersionClick"
-                  screentip="Show XlDuck Version"
-                  supertip="Display the XlDuck add-in and DuckDB library versions." />
+                  screentip="Show XLDuck Version"
+                  supertip="Display the XLDuck add-in and DuckDB library versions." />
         </group>
       </tab>
     </tabs>
