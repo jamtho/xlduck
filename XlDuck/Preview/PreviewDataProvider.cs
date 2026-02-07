@@ -66,7 +66,27 @@ public static class PreviewDataProvider
 
     private static PreviewModel GetErrorPreview(string handle)
     {
-        // Format: #duck://error/category|message
+        // Format: #duck://error/ID/category|message
+        // The cell value may be truncated to 255 chars by RTD,
+        // so we extract the error ID and look up the full message.
+        var afterPrefix = handle[DuckFunctions.ErrorPrefix.Length..];
+        var slashIndex = afterPrefix.IndexOf('/');
+
+        if (slashIndex >= 0 && long.TryParse(afterPrefix[..slashIndex], out var errorId))
+        {
+            var fullError = DuckFunctions.GetFullError(errorId);
+            if (fullError != null)
+            {
+                return new ErrorPreviewModel
+                {
+                    Title = $"Error ({fullError.Value.Category})",
+                    Handle = handle,
+                    Message = fullError.Value.Message
+                };
+            }
+        }
+
+        // Fallback: parse from handle directly (old format or lookup miss)
         var pipeIndex = handle.IndexOf('|');
         string category, message;
 

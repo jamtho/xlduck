@@ -45,6 +45,10 @@ public static class DuckFunctions
     // Stash for pending DuckCapture data (hash → array), consumed by RTD ConnectData
     private static readonly ConcurrentDictionary<string, object[,]> _pendingCaptures = new();
 
+    // Full error messages keyed by error ID (RTD truncates values to 255 chars)
+    private static readonly ConcurrentDictionary<long, (string Category, string Message)> _fullErrors = new();
+    private static long _nextErrorId;
+
     // Status URL prefixes (# prefix follows Excel convention)
     internal const string BlockedPrefix = "#duck://blocked/";
     internal const string ErrorPrefix = "#duck://error/";
@@ -52,14 +56,25 @@ public static class DuckFunctions
 
     /// <summary>
     /// Format an error message as a duck:// URL.
+    /// Error ID is embedded so the preview pane can look up the full message
+    /// (RTD truncates return values to 255 characters).
+    /// Format: #duck://error/ID/category|message
     /// </summary>
     internal static string FormatError(string category, string message)
     {
-        // Truncate long messages and remove newlines
+        // Remove newlines for single-line cell display
         var cleanMessage = message.Replace("\r", "").Replace("\n", " ");
-        if (cleanMessage.Length > 1000)
-            cleanMessage = cleanMessage.Substring(0, 997) + "...";
-        return $"{ErrorPrefix}{category}|{cleanMessage}";
+        var id = Interlocked.Increment(ref _nextErrorId);
+        _fullErrors[id] = (category, cleanMessage);
+        return $"{ErrorPrefix}{id}/{category}|{cleanMessage}";
+    }
+
+    /// <summary>
+    /// Look up full error details by ID. Used by preview pane to bypass RTD 255-char truncation.
+    /// </summary>
+    internal static (string Category, string Message)? GetFullError(long id)
+    {
+        return _fullErrors.TryGetValue(id, out var error) ? error : null;
     }
 
     /// <summary>
