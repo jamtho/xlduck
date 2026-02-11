@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>XLDuck Preview</title>
     <style>
         * {
@@ -218,6 +218,7 @@
         .plot-container {
             width: 100%;
             min-height: 300px;
+            overflow: hidden;
         }
 
         .plot-info {
@@ -477,24 +478,26 @@
             // Build Vega-Lite spec
             const spec = buildVegaSpec(plotData.template, plotData.overrides, plotData.columns, plotData.types, dataValues);
 
-            // Render with vegaEmbed
-            if (typeof vegaEmbed !== 'undefined') {
-                try {
-                    vegaEmbed('#plot-target', spec, {
-                        actions: false,
-                        renderer: 'canvas'
-                    }).catch(err => {
+            // Render with vegaEmbed (defer to next frame so container has layout dimensions)
+            requestAnimationFrame(() => {
+                if (typeof vegaEmbed !== 'undefined') {
+                    try {
+                        vegaEmbed('#plot-target', spec, {
+                            actions: false,
+                            renderer: 'canvas'
+                        }).catch(err => {
+                            document.getElementById('plot-target').innerHTML =
+                                `<div class="plot-error">Render error: ${escapeHtml(err.message)}</div>`;
+                        });
+                    } catch (err) {
                         document.getElementById('plot-target').innerHTML =
-                            `<div class="plot-error">Render error: ${escapeHtml(err.message)}</div>`;
-                    });
-                } catch (err) {
+                            `<div class="plot-error">Spec error: ${escapeHtml(err.message)}</div>`;
+                    }
+                } else {
                     document.getElementById('plot-target').innerHTML =
-                        `<div class="plot-error">Spec error: ${escapeHtml(err.message)}</div>`;
+                        '<div class="plot-error">Vega-Lite libraries not loaded. Check internet connection.</div>';
                 }
-            } else {
-                document.getElementById('plot-target').innerHTML =
-                    '<div class="plot-error">Vega-Lite libraries not loaded. Check internet connection.</div>';
-            }
+            });
         }
 
         function buildVegaSpec(template, overrides, columns, types, dataValues) {
@@ -520,7 +523,7 @@
                     "data": { "values": dataValues },
                     "mark": { "type": "bar", "tooltip": {"content": "data"} },
                     "encoding": {
-                        "x": { "field": xField, "bin": true, "type": "quantitative" },
+                        "x": { "field": xField, "bin": true, "type": xType === "nominal" ? "quantitative" : xType },
                         "y": { "aggregate": "count" }
                     }
                 };
@@ -613,6 +616,9 @@
                     spec.encoding.y.scale = Object.assign({}, spec.encoding.y.scale, { "domain": yDomain });
                 }
             }
+
+            // Fit the entire chart (including axes/labels) within the container
+            spec.autosize = { "type": "fit", "contains": "padding" };
 
             // Enable interactive pan and zoom (drag to pan, scroll to zoom)
             const zoomParams = [{ "name": "grid", "select": "interval", "bind": "scales" }];
