@@ -544,6 +544,24 @@ function Test-DuckQueryOutScalar {
     Set-Formula "E1" '=DuckQueryOutScalar("SELECT NULL")'
     $null_val = Get-CellValue "E1"
     Write-TestResult "NULL returns empty" ($null_val -eq "") "Got: '$null_val'"
+
+    # Test 5: DATE returns OLE Automation date double
+    Set-Formula "F1" "=DuckQueryOutScalar(""SELECT DATE '2023-01-15'"")"
+    $script:Sheet.Range("F1").NumberFormat = "yyyy-mm-dd"
+    $dateVal = Get-CellValue "F1"
+    Write-TestResult "DATE scalar" ($dateVal -eq "2023-01-15") "Got: $dateVal"
+
+    # Test 6: TIMESTAMP returns OLE Automation date double
+    Set-Formula "G1" "=DuckQueryOutScalar(""SELECT TIMESTAMP '2023-06-15 14:30:00'"")"
+    $script:Sheet.Range("G1").NumberFormat = "yyyy-mm-dd hh:mm:ss"
+    $tsVal = Get-CellValue "G1"
+    Write-TestResult "TIMESTAMP scalar" ($tsVal -eq "2023-06-15 14:30:00") "Got: $tsVal"
+
+    # Test 7: TIME returns fractional day double
+    Set-Formula "H1" "=DuckQueryOutScalar(""SELECT TIME '12:00:00'"")"
+    $script:Sheet.Range("H1").NumberFormat = "hh:mm:ss"
+    $timeVal = Get-CellValue "H1"
+    Write-TestResult "TIME scalar" ($timeVal -eq "12:00:00") "Got: $timeVal"
 }
 
 function Test-DuckDateFunctions {

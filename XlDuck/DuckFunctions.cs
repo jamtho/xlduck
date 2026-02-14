@@ -1174,6 +1174,16 @@ public static class DuckFunctions
         if (value is decimal dec)
             return (double)dec;
 
+        // Handle date/time types that COM interop cannot marshal
+        if (value is DateOnly dateOnly)
+            return new DateTime(dateOnly.Year, dateOnly.Month, dateOnly.Day).ToOADate();
+        if (value is TimeOnly timeOnly)
+            return timeOnly.ToTimeSpan().TotalDays;
+        if (value is DateTime dt)
+            return dt.ToOADate();
+        if (value is DateTimeOffset dto)
+            return dto.DateTime.ToOADate();
+
         // Handle other numeric types that might cause issues
         var type = value.GetType();
         if (type.FullName?.Contains("HugeInt") == true ||
