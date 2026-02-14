@@ -27,6 +27,7 @@ public class DuckRtdServer : ExcelRtdServer
         public string Sql { get; set; } = "";
         public object[] Args { get; set; } = Array.Empty<object>();
         public bool IsComplete { get; set; }
+        public int Epoch { get; set; }
         public ManualResetEventSlim? CompletionEvent { get; set; }
     }
 
@@ -55,6 +56,7 @@ public class DuckRtdServer : ExcelRtdServer
         var sql = topicInfo[1];
         var args = topicInfo.Skip(2).Select(s => (object)s).ToArray();
 
+        var epoch = DuckFunctions.InterruptEpoch;
         var completionEvent = new ManualResetEventSlim(false);
         var info = new TopicInfo
         {
@@ -62,6 +64,7 @@ public class DuckRtdServer : ExcelRtdServer
             QueryType = queryType,
             Sql = sql,
             Args = args,
+            Epoch = epoch,
             CompletionEvent = completionEvent
         };
         _topics[topic.TopicId] = info;
@@ -82,6 +85,7 @@ public class DuckRtdServer : ExcelRtdServer
                     Thread.Sleep(100);
                 }
                 System.Diagnostics.Debug.WriteLine($"[DuckRTD] DuckConfigReady() called, executing deferred query");
+                DuckFunctions.SetThreadEpoch(info.Epoch);
                 ExecuteQuery(topic, info);
             });
 
@@ -94,8 +98,10 @@ public class DuckRtdServer : ExcelRtdServer
 
         var queryThread = new Thread(() =>
         {
+            DuckFunctions.SetThreadEpoch(epoch);
             try
             {
+
                 if (queryType == "query")
                 {
                     result = QueryExecutor.ExecuteQuery(sql, args);
@@ -224,6 +230,9 @@ public class DuckRtdServer : ExcelRtdServer
 
         try
         {
+            if (info.Epoch != DuckFunctions.InterruptEpoch)
+                throw new OperationCanceledException("Query cancelled");
+
             if (info.QueryType == "query")
             {
                 result = QueryExecutor.ExecuteQuery(info.Sql, info.Args);

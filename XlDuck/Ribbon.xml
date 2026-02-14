@@ -12,6 +12,13 @@
                         screentip="Toggle Preview Pane"
                         supertip="Show or hide the preview pane that displays handle contents." />
         </group>
+        <group id="QueryGroup" label="Query">
+          <button id="CancelQueryButton" label="Cancel Query"
+                  imageMso="CancelRequest" size="large"
+                  onAction="OnCancelQuery"
+                  screentip="Cancel Running Query"
+                  supertip="Cancels the running query and all pending queries." />
+        </group>
         <group id="InfoGroup" label="Info">
           <button id="VersionButton"
                   label="Version"

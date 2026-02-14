@@ -267,6 +267,15 @@ A1: =DuckQuery("SELECT day, hour, temp FROM (SELECT d.d as day, h.h as hour, (15
 B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "day", "value", "temp")
 ```
 
+## Cancel Query
+
+The XLDuck ribbon tab includes a **Cancel Query** button that interrupts the running query and cancels all pending queued queries. The connection remains valid after cancellation — subsequent queries work normally.
+
+Also available programmatically via VBA:
+```vba
+Application.Run "DuckInterrupt"
+```
+
 ## Preview Pane
 
 The XLDuck ribbon tab includes a toggle to open a preview pane on the right side of the window. When you select a cell containing a handle:

@@ -256,11 +256,20 @@ Downstream queries that depend on a blocked query (input starts with `#duck://bl
 
 ## Concurrency Model
 
-The add-in uses a single shared DuckDB connection protected by locks. RTD callbacks and Excel function calls may occur on different threads.
-
-Current approach: simple locking around connection access. This works but has limitations.
+The add-in uses a single shared DuckDB connection. RTD query threads serialize on a `_queryLock` so that only one query executes at a time. Excel function calls (UDFs) may occur on different threads.
 
 **Future consideration**: A dedicated worker thread (actor pattern) that owns the DuckDB connection would be cleaner. All database operations would be queued to this worker, eliminating lock contention and ensuring operations like temp table drops don't race with queries. Deferred for now as current locking is sufficient, but may be needed as complexity grows.
+
+### Query Cancellation
+
+The Cancel Query ribbon button (and `DuckInterrupt` macro) cancels the running query and all pending queued queries using an epoch-based mechanism:
+
+1. `Interrupt()` atomically increments `_interruptEpoch`, then calls `NativeConnection.Interrupt()` to kill the active DuckDB query
+2. Each RTD query thread captures the epoch at creation time and stores it via `SetThreadEpoch()` (thread-static)
+3. Before acquiring `_queryLock` to execute, threads wait in our code (not inside DuckDB)
+4. After the running query is interrupted and releases the lock, the next thread acquires it, calls `ThrowIfInterrupted()`, sees the epoch mismatch, and throws `OperationCanceledException` — as does every subsequent pending thread
+
+This ensures a single interrupt cancels all in-flight work. The connection remains valid; new queries after the interrupt use the new epoch and execute normally.
 
 ## Preview Pane
 

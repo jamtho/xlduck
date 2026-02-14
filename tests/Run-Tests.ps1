@@ -624,6 +624,53 @@ function Test-ReadCSV {
     Write-TestResult "String param in read_csv_auto" ($name -eq "alice") "Got: $name"
 }
 
+function Test-CancelQuery {
+    Write-Host "`nTest Suite: Cancel Query" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Test 1: Start a slow cross-join query (trillion-row)
+    Set-Formula "A1" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) a, range(1000000) b")'
+    Start-Sleep -Seconds 2
+
+    # The cell should still be loading (RTD not yet resolved to a handle)
+    $before = Get-CellValue "A1"
+
+    # Test 2: Interrupt via DuckInterrupt macro
+    $script:Excel.Run("DuckInterrupt") | Out-Null
+    Start-Sleep -Seconds 2
+
+    # After interrupt, the cell should show an error
+    $after = Get-CellValue "A1"
+    Write-TestResult "Interrupt produces error" ($after -match "#duck://error/") "Got: $after"
+
+    # Test 3: Multiple queued queries all get cancelled by one interrupt
+    Clear-TestRange
+    Set-Formula "A1" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) a, range(1000000) b")'
+    Set-Formula "A2" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) c, range(1000000) d")'
+    Set-Formula "A3" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) e, range(1000000) f")'
+    Start-Sleep -Seconds 2
+
+    $script:Excel.Run("DuckInterrupt") | Out-Null
+    Start-Sleep -Seconds 3
+
+    $q1 = Get-CellValue "A1"
+    $q2 = Get-CellValue "A2"
+    $q3 = Get-CellValue "A3"
+
+    $allErrored = ($q1 -match "#duck://error/") -and ($q2 -match "#duck://error/") -and ($q3 -match "#duck://error/")
+    Write-TestResult "All queued queries cancelled" $allErrored "Got: q1=$q1, q2=$q2, q3=$q3"
+
+    # Test 4: Connection still works after interrupt
+    Clear-TestRange
+    Set-Formula "A1" '=DuckQuery("SELECT 1 as ok")'
+    Start-Sleep -Milliseconds 500
+    Set-Formula "B1" "=DuckOut(A1)"
+    $header = Get-CellValue "B1"
+    $val = Get-CellValue "B2"
+
+    Write-TestResult "Connection valid after interrupt" ($header -eq "ok" -and $val -eq "1") "Got: header=$header, val=$val"
+}
+
 # ============================================
 # Main
 # ============================================
@@ -658,6 +705,7 @@ Test-DuckCapture
 Test-DuckQueryOutScalar
 Test-DuckDateFunctions
 Test-ReadCSV
+Test-CancelQuery
 
 # Summary
 Write-Host "`n========================" -ForegroundColor White

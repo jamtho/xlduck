@@ -65,6 +65,18 @@ public class RibbonController : ExcelRibbon
         }
     }
 
+    public void OnCancelQuery(IRibbonControl control)
+    {
+        try
+        {
+            DuckFunctions.Interrupt();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("OnCancelQuery", ex);
+        }
+    }
+
     public void OnVersionClick(IRibbonControl control)
     {
         try

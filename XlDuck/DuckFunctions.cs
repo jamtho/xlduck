@@ -38,6 +38,30 @@ public static class DuckFunctions
 
     private static DuckDBConnection? _connection;
     private static readonly object _connLock = new();
+    private static volatile int _interruptEpoch;
+    private static readonly object _queryLock = new();
+    [ThreadStatic] private static int _threadEpoch;
+
+    /// <summary>
+    /// Monotonically increasing epoch, bumped on each Interrupt() call.
+    /// Query threads capture this before executing and bail if it changes.
+    /// </summary>
+    internal static int InterruptEpoch => _interruptEpoch;
+
+    /// <summary>
+    /// Set the interrupt epoch for the current thread. Called by RTD threads
+    /// before executing so ThrowIfInterrupted can detect stale queries.
+    /// </summary>
+    internal static void SetThreadEpoch(int epoch) => _threadEpoch = epoch;
+
+    /// <summary>
+    /// Throw if an interrupt has occurred since the current thread's epoch was set.
+    /// </summary>
+    private static void ThrowIfInterrupted()
+    {
+        if (_threadEpoch != _interruptEpoch)
+            throw new OperationCanceledException("Query cancelled");
+    }
 
     // Ready flag - DuckQueryAfterConfig/DuckFragAfterConfig wait until DuckConfigReady() is called
     internal static bool IsReady { get; private set; } = false;
@@ -103,6 +127,21 @@ public static class DuckFunctions
     internal static bool IsErrorOrBlocked(string? value)
     {
         return value != null && (value.StartsWith(ErrorPrefix) || value.StartsWith(BlockedPrefix));
+    }
+
+    internal static void Interrupt()
+    {
+        Interlocked.Increment(ref _interruptEpoch);
+        var conn = _connection;
+        if (conn == null) return;
+        conn.NativeConnection.Interrupt();
+        Log.Write("[DuckFunctions] Query interrupted by user");
+    }
+
+    [ExcelCommand(Name = "DuckInterrupt")]
+    public static void DuckInterruptCommand()
+    {
+        Interrupt();
     }
 
     internal static DuckDBConnection GetConnection()
@@ -511,36 +550,41 @@ public static class DuckFunctions
 
         try
         {
-            var conn = GetConnection();
-            var duckTableName = $"_xlduck_res_{Guid.NewGuid():N}";
-
-            // Create temp table with query results
-            sw.Restart();
-            using (var cmd = conn.CreateCommand())
+            lock (_queryLock)
             {
-                cmd.CommandText = $"CREATE TEMP TABLE \"{duckTableName}\" AS {resolvedSql}";
-                cmd.ExecuteNonQuery();
+                ThrowIfInterrupted();
+
+                var conn = GetConnection();
+                var duckTableName = $"_xlduck_res_{Guid.NewGuid():N}";
+
+                // Create temp table with query results
+                sw.Restart();
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = $"CREATE TEMP TABLE \"{duckTableName}\" AS {resolvedSql}";
+                    cmd.ExecuteNonQuery();
+                }
+                var createTime = sw.ElapsedMilliseconds;
+
+                // Get schema from PRAGMA table_info
+                var columnNames = GetTableColumnNames(conn, duckTableName);
+
+                // Get row count
+                sw.Restart();
+                long rowCount;
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = $"SELECT COUNT(*) FROM \"{duckTableName}\"";
+                    rowCount = Convert.ToInt64(cmd.ExecuteScalar());
+                }
+                var countTime = sw.ElapsedMilliseconds;
+
+                var stored = new StoredResult(duckTableName, columnNames, rowCount, sql, args);
+                var handle = ResultStore.Store(stored);
+
+                System.Diagnostics.Debug.WriteLine($"[DuckQuery] resolve={resolveTime}ms create={createTime}ms count={countTime}ms rows={rowCount} cols={columnNames.Length}");
+                return handle;
             }
-            var createTime = sw.ElapsedMilliseconds;
-
-            // Get schema from PRAGMA table_info
-            var columnNames = GetTableColumnNames(conn, duckTableName);
-
-            // Get row count
-            sw.Restart();
-            long rowCount;
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = $"SELECT COUNT(*) FROM \"{duckTableName}\"";
-                rowCount = Convert.ToInt64(cmd.ExecuteScalar());
-            }
-            var countTime = sw.ElapsedMilliseconds;
-
-            var stored = new StoredResult(duckTableName, columnNames, rowCount, sql, args);
-            var handle = ResultStore.Store(stored);
-
-            System.Diagnostics.Debug.WriteLine($"[DuckQuery] resolve={resolveTime}ms create={createTime}ms count={countTime}ms rows={rowCount} cols={columnNames.Length}");
-            return handle;
         }
         finally
         {
@@ -578,10 +622,15 @@ public static class DuckFunctions
         var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
         try
         {
-            var conn = GetConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"EXPLAIN {resolvedSql}";
-            cmd.ExecuteNonQuery();
+            lock (_queryLock)
+            {
+                ThrowIfInterrupted();
+
+                var conn = GetConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"EXPLAIN {resolvedSql}";
+                cmd.ExecuteNonQuery();
+            }
         }
         finally
         {
@@ -757,50 +806,55 @@ public static class DuckFunctions
     /// </summary>
     private static string CreateCaptureTable(string[] headers, CaptureType[] types, object[,] data, int dataRows, int cols)
     {
-        var conn = GetConnection();
-        var tableName = $"_xlduck_cap_{Guid.NewGuid():N}";
-
-        // CREATE TEMP TABLE
-        var colDefs = new StringBuilder();
-        for (int c = 0; c < cols; c++)
+        lock (_queryLock)
         {
-            if (c > 0) colDefs.Append(", ");
-            colDefs.Append('"').Append(headers[c]).Append("\" ").Append(DuckDbTypeName(types[c]));
-        }
+            ThrowIfInterrupted();
 
-        using (var cmd = conn.CreateCommand())
-        {
-            cmd.CommandText = $"CREATE TEMP TABLE \"{tableName}\" ({colDefs})";
-            cmd.ExecuteNonQuery();
-        }
+            var conn = GetConnection();
+            var tableName = $"_xlduck_cap_{Guid.NewGuid():N}";
 
-        // INSERT in batches of 1000
-        const int batchSize = 1000;
-        for (int batchStart = 0; batchStart < dataRows; batchStart += batchSize)
-        {
-            var batchEnd = Math.Min(batchStart + batchSize, dataRows);
-            var sb = new StringBuilder();
-            sb.Append($"INSERT INTO \"{tableName}\" VALUES ");
-
-            for (int r = batchStart; r < batchEnd; r++)
+            // CREATE TEMP TABLE
+            var colDefs = new StringBuilder();
+            for (int c = 0; c < cols; c++)
             {
-                if (r > batchStart) sb.Append(", ");
-                sb.Append('(');
-                for (int c = 0; c < cols; c++)
-                {
-                    if (c > 0) sb.Append(", ");
-                    sb.Append(FormatCellAsSqlLiteral(data[r + 1, c], types[c]));
-                }
-                sb.Append(')');
+                if (c > 0) colDefs.Append(", ");
+                colDefs.Append('"').Append(headers[c]).Append("\" ").Append(DuckDbTypeName(types[c]));
             }
 
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = sb.ToString();
-            cmd.ExecuteNonQuery();
-        }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = $"CREATE TEMP TABLE \"{tableName}\" ({colDefs})";
+                cmd.ExecuteNonQuery();
+            }
 
-        var stored = new StoredResult(tableName, headers, dataRows, "(captured from Excel range)");
-        return ResultStore.Store(stored);
+            // INSERT in batches of 1000
+            const int batchSize = 1000;
+            for (int batchStart = 0; batchStart < dataRows; batchStart += batchSize)
+            {
+                var batchEnd = Math.Min(batchStart + batchSize, dataRows);
+                var sb = new StringBuilder();
+                sb.Append($"INSERT INTO \"{tableName}\" VALUES ");
+
+                for (int r = batchStart; r < batchEnd; r++)
+                {
+                    if (r > batchStart) sb.Append(", ");
+                    sb.Append('(');
+                    for (int c = 0; c < cols; c++)
+                    {
+                        if (c > 0) sb.Append(", ");
+                        sb.Append(FormatCellAsSqlLiteral(data[r + 1, c], types[c]));
+                    }
+                    sb.Append(')');
+                }
+
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = sb.ToString();
+                cmd.ExecuteNonQuery();
+            }
+
+            var stored = new StoredResult(tableName, headers, dataRows, "(captured from Excel range)");
+            return ResultStore.Store(stored);
+        }
     }
 
     /// <summary>
