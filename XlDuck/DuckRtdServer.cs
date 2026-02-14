@@ -29,6 +29,7 @@ public class DuckRtdServer : ExcelRtdServer
         public bool IsComplete { get; set; }
         public int Epoch { get; set; }
         public ManualResetEventSlim? CompletionEvent { get; set; }
+        public CancellationTokenSource? Cts { get; set; }
     }
 
     protected override bool ServerStart()
@@ -69,8 +70,8 @@ public class DuckRtdServer : ExcelRtdServer
         };
         _topics[topic.TopicId] = info;
 
-        // Check if query requires config OR depends on a blocked query - if so, wait for DuckConfigReady()
-        bool dependsOnBlocked = args.Any(a => a?.ToString()?.StartsWith(DuckFunctions.BlockedPrefix) == true);
+        // Check if query requires config OR depends on a config-blocked query - if so, wait for DuckConfigReady()
+        bool dependsOnBlocked = args.Any(a => a?.ToString() == DuckFunctions.ConfigBlockedStatus);
 
         if ((requiresConfig || dependsOnBlocked) && !DuckFunctions.IsReady)
         {
@@ -90,6 +91,14 @@ public class DuckRtdServer : ExcelRtdServer
             });
 
             return DuckFunctions.ConfigBlockedStatus;
+        }
+
+        // Check if queries are paused - defer execution until resumed
+        if (DuckFunctions.QueriesPaused)
+        {
+            newValues = true;
+            SpawnDeferredThread(topic, info);
+            return DuckFunctions.PausedBlockedStatus;
         }
 
         // Start query on background thread
@@ -150,6 +159,12 @@ public class DuckRtdServer : ExcelRtdServer
 
             if (error != null)
             {
+                if (error is OperationCanceledException && DuckFunctions.QueriesPaused)
+                {
+                    newValues = true;
+                    SpawnDeferredThread(topic, info);
+                    return DuckFunctions.PausedBlockedStatus;
+                }
                 info.IsComplete = true;
                 newValues = true;
                 return DuckFunctions.FormatException(error);
@@ -184,6 +199,13 @@ public class DuckRtdServer : ExcelRtdServer
                 completionEvent.Wait(); // Wait for completion
                 completionEvent.Dispose();
                 info.CompletionEvent = null;
+
+                if (error is OperationCanceledException && DuckFunctions.QueriesPaused)
+                {
+                    topic.UpdateValue(DuckFunctions.PausedBlockedStatus);
+                    SpawnDeferredThread(topic, info);
+                    return;
+                }
 
                 string finalResult;
                 if (error != null)
@@ -262,6 +284,13 @@ public class DuckRtdServer : ExcelRtdServer
             error = ex;
         }
 
+        if (error is OperationCanceledException && DuckFunctions.QueriesPaused)
+        {
+            topic.UpdateValue(DuckFunctions.PausedBlockedStatus);
+            SpawnDeferredThread(topic, info);
+            return;
+        }
+
         string finalResult;
         if (error != null)
         {
@@ -290,12 +319,31 @@ public class DuckRtdServer : ExcelRtdServer
         topic.UpdateValue(finalResult);
     }
 
+    private void SpawnDeferredThread(Topic topic, TopicInfo info)
+    {
+        info.Cts ??= new CancellationTokenSource();
+        var ct = info.Cts.Token;
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            if (!DuckFunctions.WaitForUnpause(ct)) return;
+            if (ct.IsCancellationRequested) return;
+            // Args containing blocked/error status will fail; skip and let
+            // Excel recalculate with correct args when dependencies resolve.
+            if (info.Args.Any(a => DuckFunctions.IsErrorOrBlocked(a?.ToString())))
+                return;
+            info.Epoch = DuckFunctions.InterruptEpoch;
+            DuckFunctions.SetThreadEpoch(info.Epoch);
+            ExecuteQuery(topic, info);
+        });
+    }
+
     protected override void DisconnectData(Topic topic)
     {
         System.Diagnostics.Debug.WriteLine($"[DuckRTD] DisconnectData: TopicId={topic.TopicId}");
 
         if (_topics.TryRemove(topic.TopicId, out var info))
         {
+            info.Cts?.Cancel();
             // Decrement refcount if we had a valid handle
             if (info.Handle != null && !DuckFunctions.IsErrorOrBlocked(info.Handle))
             {

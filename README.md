@@ -267,6 +267,30 @@ A1: =DuckQuery("SELECT day, hour, temp FROM (SELECT d.d as day, h.h as hour, (15
 B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "day", "value", "temp")
 ```
 
+## Pause Queries
+
+The XLDuck ribbon tab includes a **Pause Queries** toggle button. When paused, all query execution is deferred — cells show `#duck://blocked/paused|Queries paused` instead of running. Toggle off to resume: all deferred queries execute automatically and results flow to cells.
+
+Use this when building complex formulas to avoid triggering expensive queries during editing. For example, if you have a chain of queries (A1 feeds B1 feeds C1) and need to restructure them, pausing prevents each intermediate edit from triggering a cascade of expensive executions.
+
+```excel
+1. Click "Pause Queries" in the XLDuck ribbon tab
+2. Edit formulas freely — cells show "Queries paused" instead of executing
+3. Click "Pause Queries" again to resume — all queries execute and results appear
+```
+
+Also available programmatically via VBA:
+```vba
+Application.Run "DuckPauseQueries"   ' pause
+Application.Run "DuckResumeQueries"  ' resume
+```
+
+**Pause vs Cancel — two different behaviors:**
+- **Pause**: "I'm editing, don't run anything yet" — queries are deferred and resume automatically when toggled off
+- **Cancel**: "Kill this query, I don't want it" — queries error out permanently, new queries after cancellation run normally
+
+Pausing while a query is running will cancel it and defer it for re-execution on resume. Queries that depend on other paused queries resolve naturally through Excel's recalculation chain — root queries execute first, then dependents recalculate with the correct handles.
+
 ## Cancel Query
 
 The XLDuck ribbon tab includes a **Cancel Query** button that interrupts the running query and cancels all pending queued queries. The connection remains valid after cancellation — subsequent queries work normally.

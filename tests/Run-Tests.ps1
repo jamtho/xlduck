@@ -642,6 +642,48 @@ function Test-ReadCSV {
     Write-TestResult "String param in read_csv_auto" ($name -eq "alice") "Got: $name"
 }
 
+function Test-PauseQueries {
+    Write-Host "`nTest Suite: Pause Queries" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Test 1: Toggle pause on
+    $script:Excel.Run("DuckPauseQueries") | Out-Null
+    Start-Sleep -Milliseconds 300
+
+    # Test 2: Enter several DuckQuery formulas while paused
+    Set-Formula "A1" '=DuckQuery("SELECT 1 as a")'
+    Set-Formula "A2" '=DuckQuery("SELECT 2 as b")'
+    Set-Formula "A3" '=DuckQuery("SELECT 3 as c")'
+    Start-Sleep -Milliseconds 500
+
+    # Verify all cells show blocked status (not executing)
+    $v1 = Get-CellValue "A1"
+    $v2 = Get-CellValue "A2"
+    $v3 = Get-CellValue "A3"
+
+    $allBlocked = ($v1 -match "#duck://blocked/paused") -and ($v2 -match "#duck://blocked/paused") -and ($v3 -match "#duck://blocked/paused")
+    Write-TestResult "All queries blocked while paused" $allBlocked "Got: q1=$v1, q2=$v2, q3=$v3"
+
+    # Test 3: Toggle pause off - queries should resume
+    $script:Excel.Run("DuckResumeQueries") | Out-Null
+    Start-Sleep -Seconds 3
+
+    $r1 = Get-CellValue "A1"
+    $r2 = Get-CellValue "A2"
+    $r3 = Get-CellValue "A3"
+
+    $allHandles = ($r1 -match "^duck://table/") -and ($r2 -match "^duck://table/") -and ($r3 -match "^duck://table/")
+    Write-TestResult "All queries resume after unpause" $allHandles "Got: q1=$r1, q2=$r2, q3=$r3"
+
+    # Test 4: DuckOut works on resumed results (connection valid)
+    Set-Formula "B1" "=DuckOut(A1)"
+    Start-Sleep -Milliseconds 300
+    $header = Get-CellValue "B1"
+    $val = Get-CellValue "B2"
+
+    Write-TestResult "DuckOut works on resumed handle" ($header -eq "a" -and $val -eq "1") "Got: header=$header, val=$val"
+}
+
 function Test-CancelQuery {
     Write-Host "`nTest Suite: Cancel Query" -ForegroundColor Cyan
     Clear-TestRange
@@ -723,6 +765,7 @@ Test-DuckCapture
 Test-DuckQueryOutScalar
 Test-DuckDateFunctions
 Test-ReadCSV
+Test-PauseQueries
 Test-CancelQuery
 
 # Summary

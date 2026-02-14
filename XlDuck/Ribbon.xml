@@ -13,6 +13,14 @@
                         supertip="Show or hide the preview pane that displays handle contents." />
         </group>
         <group id="QueryGroup" label="Query">
+          <toggleButton id="QueryPauseToggle"
+                        label="Pause Queries"
+                        size="large"
+                        imageMso="Pause"
+                        onAction="OnQueryPauseToggle"
+                        getPressed="GetQueryPaused"
+                        screentip="Pause/Resume Queries"
+                        supertip="Pause all query execution. Queries resume when toggled off." />
           <button id="CancelQueryButton" label="Cancel Query"
                   imageMso="CancelRequest" size="large"
                   onAction="OnCancelQuery"

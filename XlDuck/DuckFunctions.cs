@@ -42,6 +42,9 @@ public static class DuckFunctions
     private static readonly object _queryLock = new();
     [ThreadStatic] private static int _threadEpoch;
 
+    private static volatile bool _queriesPaused;
+    private static readonly ManualResetEventSlim _unpauseEvent = new(true);
+
     /// <summary>
     /// Monotonically increasing epoch, bumped on each Interrupt() call.
     /// Query threads capture this before executing and bail if it changes.
@@ -77,6 +80,7 @@ public static class DuckFunctions
     internal const string BlockedPrefix = "#duck://blocked/";
     internal const string ErrorPrefix = "#duck://error/";
     internal const string ConfigBlockedStatus = "#duck://blocked/config|Waiting for DuckConfigReady()";
+    internal const string PausedBlockedStatus = "#duck://blocked/paused|Queries paused";
 
     /// <summary>
     /// Format an error message as a duck:// URL.
@@ -143,6 +147,41 @@ public static class DuckFunctions
     {
         Interrupt();
     }
+
+    internal static bool QueriesPaused => _queriesPaused;
+
+    internal static void SetQueriesPaused(bool paused)
+    {
+        if (paused)
+        {
+            _queriesPaused = true;
+            _unpauseEvent.Reset();
+            Interrupt();
+            Log.Write("[DuckFunctions] Queries paused");
+        }
+        else
+        {
+            _queriesPaused = false;
+            _unpauseEvent.Set();
+            Log.Write("[DuckFunctions] Queries resumed");
+        }
+    }
+
+    internal static bool WaitForUnpause(CancellationToken ct = default)
+    {
+        while (_queriesPaused)
+        {
+            try { _unpauseEvent.Wait(ct); }
+            catch (OperationCanceledException) { return false; }
+        }
+        return true;
+    }
+
+    [ExcelCommand(Name = "DuckPauseQueries")]
+    public static void DuckPauseQueriesCommand() => SetQueriesPaused(true);
+
+    [ExcelCommand(Name = "DuckResumeQueries")]
+    public static void DuckResumeQueriesCommand() => SetQueriesPaused(false);
 
     internal static DuckDBConnection GetConnection()
     {

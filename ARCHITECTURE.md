@@ -271,6 +271,36 @@ The Cancel Query ribbon button (and `DuckInterrupt` macro) cancels the running q
 
 This ensures a single interrupt cancels all in-flight work. The connection remains valid; new queries after the interrupt use the new epoch and execute normally.
 
+### Query Pausing
+
+The Pause Queries ribbon toggle lets users freeze all query execution while editing formulas, then resume to execute everything at once. This complements Cancel Query — pause defers work for later, cancel kills it with errors.
+
+**State**: A `volatile bool _queriesPaused` flag and a `ManualResetEventSlim _unpauseEvent` (initially signaled). The event provides efficient thread wake-up without polling.
+
+**Toggling pause ON** (`SetQueriesPaused(true)`):
+
+1. Sets `_queriesPaused = true` and resets `_unpauseEvent` (blocks future waiters)
+2. Calls `Interrupt()` to cancel any running/queued queries
+3. Cancelled queries catch `OperationCanceledException` — instead of pushing errors, they detect the paused flag and spawn deferred threads, pushing `PausedBlockedStatus` to the cell
+4. New `ConnectData` calls check the flag early and also spawn deferred threads
+
+**Toggling pause OFF** (`SetQueriesPaused(false)`):
+
+1. Sets `_queriesPaused = false` and signals `_unpauseEvent`
+2. All deferred threads wake from `WaitForUnpause()`, acquire fresh epochs, and execute via `_queryLock` serialization
+3. Results flow to cells via `topic.UpdateValue()` — no manual recalc needed
+
+**Deferred threads** (`SpawnDeferredThread`):
+
+Each deferred thread is a `ThreadPool` work item that:
+1. Waits on `_unpauseEvent` via `WaitForUnpause(ct)` — the `CancellationToken` comes from a `CancellationTokenSource` on the `TopicInfo`, so `DisconnectData` can cancel it if the cell is deleted while paused
+2. Checks for stale args (blocked/error status from unresolved dependencies) — if found, skips execution silently and lets Excel's natural recalculation chain propagate correct args when dependencies resolve
+3. Acquires a fresh epoch and calls `ExecuteQuery`
+
+**Dependency chains and stale args**: When a query depends on another paused query, its RTD topic args contain the blocked status string (e.g. `#duck://blocked/paused|...`). If the deferred thread tried to execute with these stale args, it would fail (DuckDB would try to interpret the blocked string as a file path), push an error, trigger cascading recalculations of downstream cells, and create an O(N²) storm of doomed queries. The stale-args check prevents this entirely: dependent queries skip, stay showing blocked status, and get fresh `ConnectData` calls with correct args once their dependencies resolve.
+
+**Interaction with config-blocked**: The `dependsOnBlocked` check in `ConnectData` matches `ConfigBlockedStatus` exactly (not the general `BlockedPrefix`), so paused-blocked values in saved workbooks don't accidentally trigger config-wait loops.
+
 ## Preview Pane
 
 The XLDuck ribbon tab includes a "Preview Pane" toggle button that opens a task pane for inspecting handles.

@@ -65,6 +65,24 @@ public class RibbonController : ExcelRibbon
         }
     }
 
+    public void OnQueryPauseToggle(IRibbonControl control, bool pressed)
+    {
+        try
+        {
+            DuckFunctions.SetQueriesPaused(pressed);
+            _ribbon?.InvalidateControl("QueryPauseToggle");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("OnQueryPauseToggle", ex);
+        }
+    }
+
+    public bool GetQueryPaused(IRibbonControl control)
+    {
+        return DuckFunctions.QueriesPaused;
+    }
+
     public void OnCancelQuery(IRibbonControl control)
     {
         try
