@@ -256,9 +256,22 @@ Downstream queries that depend on a blocked query (input starts with `#duck://bl
 
 ## Concurrency Model
 
-The add-in uses a single shared DuckDB connection. RTD query threads serialize on a `_queryLock` so that only one query executes at a time. Excel function calls (UDFs) may occur on different threads.
+### Connection Ownership
 
-**Future consideration**: A dedicated worker thread (actor pattern) that owns the DuckDB connection would be cleaner. All database operations would be queued to this worker, eliminating lock contention and ensuring operations like temp table drops don't race with queries. Deferred for now as current locking is sufficient, but may be needed as complexity grows.
+The add-in uses a single shared DuckDB in-memory connection (`_connection`). DuckDB connections support only one active statement at a time — concurrent access blocks at the native level.
+
+### `_queryLock`
+
+A `Monitor` lock serializing all DuckDB connection access:
+
+- **Background RTD threads** (`ExecuteQueryInternal`, `CreateFragmentInternal`, `CreateCaptureTable`) use `lock(_queryLock)` — OK to wait since they run on ThreadPool threads.
+- **Synchronous UDFs** (`DuckOut` → `QueryTableToArray`, `DuckOut` → `ExecuteAndReturnArray`, `DuckQueryOut`, `DuckQueryOutScalar`, `DuckExecute`, `DuckLibraryVersion`) run on Excel's UI thread and use `Monitor.TryEnter(_queryLock, 100ms)` — returns a "busy" error if a background query holds the lock, preventing Excel from freezing.
+- **`DropTempTable`** fires on ThreadPool from `DisconnectData` and uses `lock(_queryLock)`.
+- **Preview pane** (`GetTablePreview`, `GetPlotPreview`) uses `TryAcquireQueryLock(500ms)` — shows a "busy" preview if the lock is held.
+
+### Why TryEnter, Not lock
+
+Excel's UI thread calls synchronous UDFs during calculation. If these blocked waiting for a long-running background query (which can take minutes for large datasets), the Excel window would freeze entirely. `Monitor.TryEnter` with a short timeout returns immediately with a user-friendly error, keeping Excel responsive. Users can press F9 to retry after the background query completes. Since `DuckOut` typically runs after its handle's RTD topic updates (background query already done), contention is rare in practice.
 
 ### Query Cancellation
 
@@ -453,8 +466,9 @@ All diagnostic output goes through `Log.Write()` in `Log.cs`, which writes to bo
 
 **What's logged**:
 - RTD lifecycle: `ConnectData`, `DisconnectData`, server start/stop
+- Structured topic headers with TopicId correlation and resolved SQL
 - Query timing: resolve, create, count durations in milliseconds
-- Handle lifecycle: refcount increments/decrements, evictions, temp table drops
+- Handle lifecycle: temp table drops
 - Pause/resume state changes
 - Preview pane events
 - Errors with full stack traces

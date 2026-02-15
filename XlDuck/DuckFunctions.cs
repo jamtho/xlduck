@@ -38,6 +38,13 @@ public static class DuckFunctions
     private static readonly object _connLock = new();
     private static volatile int _interruptEpoch;
     private static readonly object _queryLock = new();
+
+    internal static bool TryAcquireQueryLock(int timeoutMs = 100)
+        => Monitor.TryEnter(_queryLock, timeoutMs);
+
+    internal static void ReleaseQueryLock()
+        => Monitor.Exit(_queryLock);
+
     [ThreadStatic] private static int _threadEpoch;
     [ThreadStatic] private static int _threadTopicId;
 
@@ -204,10 +211,13 @@ public static class DuckFunctions
     {
         try
         {
-            var conn = GetConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"DROP TABLE IF EXISTS \"{tableName}\"";
-            cmd.ExecuteNonQuery();
+            lock (_queryLock)
+            {
+                var conn = GetConnection();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"DROP TABLE IF EXISTS \"{tableName}\"";
+                cmd.ExecuteNonQuery();
+            }
             Log.Write($"[XlDuck] Dropped temp table: {tableName}");
         }
         catch (Exception ex)
@@ -234,6 +244,8 @@ public static class DuckFunctions
     [ExcelFunction(Description = "Get the DuckDB library version")]
     public static string DuckLibraryVersion()
     {
+        if (!TryAcquireQueryLock())
+            return "Busy";
         try
         {
             var conn = GetConnection();
@@ -245,6 +257,7 @@ public static class DuckFunctions
         {
             return FormatException(ex);
         }
+        finally { ReleaseQueryLock(); }
     }
 
     [ExcelFunction(Description = "Convert an Excel date serial number to a SQL date string (yyyy-MM-dd).")]
@@ -409,11 +422,17 @@ public static class DuckFunctions
             var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
             try
             {
-                var conn = GetConnection();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = resolvedSql;
-                var result = cmd.ExecuteScalar();
-                return ConvertToExcelValue(result);
+                if (!TryAcquireQueryLock())
+                    return FormatError("busy", "Query engine busy - press F9 to retry");
+                try
+                {
+                    var conn = GetConnection();
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = resolvedSql;
+                    var result = cmd.ExecuteScalar();
+                    return ConvertToExcelValue(result);
+                }
+                finally { ReleaseQueryLock(); }
             }
             finally
             {
@@ -430,6 +449,8 @@ public static class DuckFunctions
     public static object DuckExecute(
         [ExcelArgument(Description = "SQL statement")] string sql)
     {
+        if (!TryAcquireQueryLock())
+            return FormatError("busy", "Query engine busy - press F9 to retry");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
@@ -445,6 +466,7 @@ public static class DuckFunctions
         {
             return FormatException(ex);
         }
+        finally { ReleaseQueryLock(); }
     }
 
     [ExcelFunction(Description = "Create a chart from data. Templates: bar, line, point, area, histogram, heatmap, boxplot. Overrides: x, y, color, label, tooltip, title, value, xmin, xmax, ymin, ymax.")]
@@ -960,65 +982,71 @@ public static class DuckFunctions
     /// </summary>
     private static object[,] QueryTableToArray(StoredResult stored)
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var conn = GetConnection();
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT * FROM \"{stored.DuckTableName}\" LIMIT {DuckOutMaxRows + 1}";
-        using var reader = cmd.ExecuteReader();
-
-        var cols = stored.ColumnNames.Length;
-        if (cols == 0)
+        if (!TryAcquireQueryLock())
+            return new object[,] { { FormatError("busy", "Query engine busy - press F9 to retry") } };
+        try
         {
-            return new object[,] { { FormatError("query", "No columns") } };
-        }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var conn = GetConnection();
 
-        var rows = new List<object?[]>(Math.Min((int)stored.RowCount + 1, DuckOutMaxRows + 1));
-        while (reader.Read())
-        {
-            var row = new object?[cols];
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT * FROM \"{stored.DuckTableName}\" LIMIT {DuckOutMaxRows + 1}";
+            using var reader = cmd.ExecuteReader();
+
+            var cols = stored.ColumnNames.Length;
+            if (cols == 0)
+            {
+                return new object[,] { { FormatError("query", "No columns") } };
+            }
+
+            var rows = new List<object?[]>(Math.Min((int)stored.RowCount + 1, DuckOutMaxRows + 1));
+            while (reader.Read())
+            {
+                var row = new object?[cols];
+                for (int j = 0; j < cols; j++)
+                {
+                    row[j] = reader.IsDBNull(j) ? null : reader.GetValue(j);
+                }
+                rows.Add(row);
+            }
+            var readTime = sw.ElapsedMilliseconds;
+
+            var truncated = rows.Count > DuckOutMaxRows;
+            var dataRowsToEmit = truncated ? DuckOutMaxRows : rows.Count;
+
+            // +1 for header, +1 for footer if truncated
+            var outRows = 1 + dataRowsToEmit + (truncated ? 1 : 0);
+            var result = new object[outRows, cols];
+
+            // Header row
             for (int j = 0; j < cols; j++)
             {
-                row[j] = reader.IsDBNull(j) ? null : reader.GetValue(j);
+                result[0, j] = stored.ColumnNames[j];
             }
-            rows.Add(row);
-        }
-        var readTime = sw.ElapsedMilliseconds;
 
-        var truncated = rows.Count > DuckOutMaxRows;
-        var dataRowsToEmit = truncated ? DuckOutMaxRows : rows.Count;
-
-        // +1 for header, +1 for footer if truncated
-        var outRows = 1 + dataRowsToEmit + (truncated ? 1 : 0);
-        var result = new object[outRows, cols];
-
-        // Header row
-        for (int j = 0; j < cols; j++)
-        {
-            result[0, j] = stored.ColumnNames[j];
-        }
-
-        // Data rows
-        for (int i = 0; i < dataRowsToEmit; i++)
-        {
-            for (int j = 0; j < cols; j++)
+            // Data rows
+            for (int i = 0; i < dataRowsToEmit; i++)
             {
-                result[i + 1, j] = ConvertToExcelValue(rows[i]![j]);
+                for (int j = 0; j < cols; j++)
+                {
+                    result[i + 1, j] = ConvertToExcelValue(rows[i]![j]);
+                }
             }
-        }
 
-        // Footer if truncated
-        if (truncated)
-        {
-            result[1 + dataRowsToEmit, 0] = $"(Truncated) Showing first {DuckOutMaxRows:N0} of {stored.RowCount:N0} rows";
-            for (int j = 1; j < cols; j++)
+            // Footer if truncated
+            if (truncated)
             {
-                result[1 + dataRowsToEmit, j] = "";
+                result[1 + dataRowsToEmit, 0] = $"(Truncated) Showing first {DuckOutMaxRows:N0} of {stored.RowCount:N0} rows";
+                for (int j = 1; j < cols; j++)
+                {
+                    result[1 + dataRowsToEmit, j] = "";
+                }
             }
-        }
 
-        Log.Write($"[DuckOut] read={readTime}ms rows={dataRowsToEmit} cols={cols} truncated={truncated}");
-        return result;
+            Log.Write($"[DuckOut] read={readTime}ms rows={dataRowsToEmit} cols={cols} truncated={truncated}");
+            return result;
+        }
+        finally { ReleaseQueryLock(); }
     }
 
     /// <summary>
@@ -1026,71 +1054,77 @@ public static class DuckFunctions
     /// </summary>
     private static object[,] ExecuteAndReturnArray(string sql)
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var conn = GetConnection();
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-        using var reader = cmd.ExecuteReader();
-
-        var fieldCount = reader.FieldCount;
-        if (fieldCount == 0)
+        if (!TryAcquireQueryLock())
+            return new object[,] { { FormatError("busy", "Query engine busy - press F9 to retry") } };
+        try
         {
-            return new object[,] { { FormatError("query", "No columns") } };
-        }
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var conn = GetConnection();
 
-        var columnNames = new string[fieldCount];
-        for (int i = 0; i < fieldCount; i++)
-        {
-            columnNames[i] = reader.GetName(i);
-        }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            using var reader = cmd.ExecuteReader();
 
-        var rows = new List<object?[]>(DuckOutMaxRows + 1);
-        while (reader.Read() && rows.Count <= DuckOutMaxRows)
-        {
-            var row = new object?[fieldCount];
+            var fieldCount = reader.FieldCount;
+            if (fieldCount == 0)
+            {
+                return new object[,] { { FormatError("query", "No columns") } };
+            }
+
+            var columnNames = new string[fieldCount];
+            for (int i = 0; i < fieldCount; i++)
+            {
+                columnNames[i] = reader.GetName(i);
+            }
+
+            var rows = new List<object?[]>(DuckOutMaxRows + 1);
+            while (reader.Read() && rows.Count <= DuckOutMaxRows)
+            {
+                var row = new object?[fieldCount];
+                for (int j = 0; j < fieldCount; j++)
+                {
+                    row[j] = reader.IsDBNull(j) ? null : reader.GetValue(j);
+                }
+                rows.Add(row);
+            }
+            var readTime = sw.ElapsedMilliseconds;
+
+            // Check if there are more rows (we read maxRows + 1 to detect truncation)
+            var truncated = rows.Count > DuckOutMaxRows;
+            var dataRowsToEmit = truncated ? DuckOutMaxRows : rows.Count;
+
+            var outRows = 1 + dataRowsToEmit + (truncated ? 1 : 0);
+            var result = new object[outRows, fieldCount];
+
+            // Header row
             for (int j = 0; j < fieldCount; j++)
             {
-                row[j] = reader.IsDBNull(j) ? null : reader.GetValue(j);
+                result[0, j] = columnNames[j];
             }
-            rows.Add(row);
-        }
-        var readTime = sw.ElapsedMilliseconds;
 
-        // Check if there are more rows (we read maxRows + 1 to detect truncation)
-        var truncated = rows.Count > DuckOutMaxRows;
-        var dataRowsToEmit = truncated ? DuckOutMaxRows : rows.Count;
-
-        var outRows = 1 + dataRowsToEmit + (truncated ? 1 : 0);
-        var result = new object[outRows, fieldCount];
-
-        // Header row
-        for (int j = 0; j < fieldCount; j++)
-        {
-            result[0, j] = columnNames[j];
-        }
-
-        // Data rows
-        for (int i = 0; i < dataRowsToEmit; i++)
-        {
-            for (int j = 0; j < fieldCount; j++)
+            // Data rows
+            for (int i = 0; i < dataRowsToEmit; i++)
             {
-                result[i + 1, j] = ConvertToExcelValue(rows[i]![j]);
+                for (int j = 0; j < fieldCount; j++)
+                {
+                    result[i + 1, j] = ConvertToExcelValue(rows[i]![j]);
+                }
             }
-        }
 
-        // Footer if truncated
-        if (truncated)
-        {
-            result[1 + dataRowsToEmit, 0] = $"(Truncated) Showing first {DuckOutMaxRows:N0} rows";
-            for (int j = 1; j < fieldCount; j++)
+            // Footer if truncated
+            if (truncated)
             {
-                result[1 + dataRowsToEmit, j] = "";
+                result[1 + dataRowsToEmit, 0] = $"(Truncated) Showing first {DuckOutMaxRows:N0} rows";
+                for (int j = 1; j < fieldCount; j++)
+                {
+                    result[1 + dataRowsToEmit, j] = "";
+                }
             }
-        }
 
-        Log.Write($"[DuckQueryOut] read={readTime}ms rows={dataRowsToEmit} cols={fieldCount} truncated={truncated}");
-        return result;
+            Log.Write($"[DuckQueryOut] read={readTime}ms rows={dataRowsToEmit} cols={fieldCount} truncated={truncated}");
+            return result;
+        }
+        finally { ReleaseQueryLock(); }
     }
 
     /// <summary>

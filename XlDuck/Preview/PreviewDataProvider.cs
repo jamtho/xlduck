@@ -139,6 +139,15 @@ public static class PreviewDataProvider
             };
         }
 
+        if (!DuckFunctions.TryAcquireQueryLock(500))
+        {
+            return new ErrorPreviewModel
+            {
+                Title = "Busy",
+                Handle = handle,
+                Message = "Query in progress - preview will update when complete"
+            };
+        }
         try
         {
             var conn = DuckFunctions.GetConnection();
@@ -215,6 +224,7 @@ public static class PreviewDataProvider
                 Message = ex.Message
             };
         }
+        finally { DuckFunctions.ReleaseQueryLock(); }
     }
 
     private static PreviewModel GetFragmentPreview(string handle)
@@ -349,40 +359,54 @@ public static class PreviewDataProvider
                 };
             }
 
-            var conn = DuckFunctions.GetConnection();
-
-            // Get column types via PRAGMA table_info
-            var columnTypes = new List<string>();
-            using (var cmd = conn.CreateCommand())
+            if (!DuckFunctions.TryAcquireQueryLock(500))
             {
-                cmd.CommandText = $"PRAGMA table_info('{duckTableName}')";
-                using var reader = cmd.ExecuteReader();
-                while (reader.Read())
+                plotData.Error = "Query in progress - preview will update when complete";
+                return new PlotPreviewModel
                 {
-                    columnTypes.Add(reader.GetString(reader.GetOrdinal("type")));
-                }
+                    Title = $"Plot ({plot.Template})",
+                    Handle = handle,
+                    Plot = plotData
+                };
             }
-
-            plotData.Columns = columnNames.ToList();
-            plotData.Types = columnTypes;
-
-            // Get all rows (within limit)
-            using (var cmd = conn.CreateCommand())
+            try
             {
-                cmd.CommandText = $"SELECT * FROM \"{duckTableName}\" LIMIT {PlotRowLimit}";
-                using var reader = cmd.ExecuteReader();
+                var conn = DuckFunctions.GetConnection();
 
-                var fieldCount = reader.FieldCount;
-                while (reader.Read())
+                // Get column types via PRAGMA table_info
+                var columnTypes = new List<string>();
+                using (var cmd = conn.CreateCommand())
                 {
-                    var row = new string?[fieldCount];
-                    for (int i = 0; i < fieldCount; i++)
+                    cmd.CommandText = $"PRAGMA table_info('{duckTableName}')";
+                    using var reader = cmd.ExecuteReader();
+                    while (reader.Read())
                     {
-                        row[i] = reader.IsDBNull(i) ? null : ConvertForJson(reader.GetValue(i));
+                        columnTypes.Add(reader.GetString(reader.GetOrdinal("type")));
                     }
-                    plotData.Rows.Add(row);
+                }
+
+                plotData.Columns = columnNames.ToList();
+                plotData.Types = columnTypes;
+
+                // Get all rows (within limit)
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = $"SELECT * FROM \"{duckTableName}\" LIMIT {PlotRowLimit}";
+                    using var reader = cmd.ExecuteReader();
+
+                    var fieldCount = reader.FieldCount;
+                    while (reader.Read())
+                    {
+                        var row = new string?[fieldCount];
+                        for (int i = 0; i < fieldCount; i++)
+                        {
+                            row[i] = reader.IsDBNull(i) ? null : ConvertForJson(reader.GetValue(i));
+                        }
+                        plotData.Rows.Add(row);
+                    }
                 }
             }
+            finally { DuckFunctions.ReleaseQueryLock(); }
 
             return new PlotPreviewModel
             {

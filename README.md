@@ -291,6 +291,10 @@ Application.Run "DuckResumeQueries"  ' resume
 
 Pausing while a query is running will cancel it and defer it for re-execution on resume. Queries that depend on other paused queries resolve naturally through Excel's recalculation chain — root queries execute first, then dependents recalculate with the correct handles.
 
+## Query Engine Busy
+
+Synchronous functions (`DuckOut`, `DuckQueryOut`, `DuckQueryOutScalar`, `DuckExecute`) may show a "Query engine busy" error if a background query is running. This prevents Excel from freezing during long-running queries. Press F9 to recalculate once the background query completes.
+
 ## Cancel Query
 
 The XLDuck ribbon tab includes a **Cancel Query** button that interrupts the running query and cancels all pending queued queries. The connection remains valid after cancellation — subsequent queries work normally.

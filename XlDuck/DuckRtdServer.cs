@@ -174,7 +174,9 @@ public class DuckRtdServer : ExcelRtdServer
                 }
                 info.IsComplete = true;
                 newValues = true;
-                return DuckFunctions.FormatException(error);
+                var errorResult = DuckFunctions.FormatException(error);
+                Log.Write($"[{topic.TopicId}] -> {errorResult} ({connectSw.ElapsedMilliseconds}ms)");
+                return errorResult;
             }
 
             info.Handle = result;
@@ -360,8 +362,8 @@ public class DuckRtdServer : ExcelRtdServer
                     var evicted = ResultStore.DecrementRefCount(info.Handle);
                     if (evicted != null)
                     {
-                        // Drop the DuckDB temp table now that it's no longer referenced
-                        DuckFunctions.DropTempTable(evicted.DuckTableName);
+                        var tableName = evicted.DuckTableName;
+                        ThreadPool.QueueUserWorkItem(_ => DuckFunctions.DropTempTable(tableName));
                     }
                 }
                 else if (FragmentStore.IsHandle(info.Handle))
