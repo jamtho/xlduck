@@ -75,6 +75,8 @@ Where A1 contains a handle like `duck://table/1234`.
 
 Arguments are passed positionally after the SQL string, replacing `?` placeholders left-to-right.
 
+**Type preservation**: Excel passes numbers as `double`, text as `string`, and booleans as `bool`. Since RTD topic info is `IList<string>`, type information would be lost during serialization. To preserve it, `FormatArgForTopic` tags string args with a `'` prefix (e.g., text cell "0.2" → `'0.2`), while numbers pass through untagged (e.g., numeric cell 0.2 → `0.2`). `ResolveParameters` uses these tags to emit the correct SQL: untagged `0.2` becomes the numeric literal `0.2`, while tagged `'0.2` becomes the string literal `'0.2'`. Handles, errors, and blocked status values pass through untagged so they remain recognizable by their `duck://` or `#duck://` prefix.
+
 ## Data Flow
 
 ### Query Execution
@@ -96,7 +98,10 @@ DuckQuery("SELECT * FROM ?", "duck://table/1")
     → For each argument:
         → If table handle: substitute DuckDB table name directly
         → If fragment handle: recursively resolve and inline as subquery
-        → If string: escape and quote as SQL literal
+        → If number (double or untagged numeric string): emit as numeric literal
+        → If boolean (bool or "TRUE"/"FALSE"): emit as boolean literal
+        → If tagged string ('prefix): strip prefix, escape and quote as SQL literal
+        → Otherwise: escape and quote as SQL literal
     → Increment refcount on referenced tables (prevents drop during query)
     → CREATE TEMP TABLE _xlduck_res_xxx AS [resolved SQL]
     → Decrement refcounts (may trigger table drops if count reaches zero)

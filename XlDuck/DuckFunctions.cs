@@ -291,7 +291,7 @@ public static class DuckFunctions
             var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
             // Build topic info: ["query", sql, arg1, arg2, ...]
             var topicInfo = new List<string> { "query", sql };
-            topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
+            topicInfo.AddRange(args.Select(FormatArgForTopic));
 
             return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
         }
@@ -318,7 +318,7 @@ public static class DuckFunctions
             var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
             // Build topic info: ["query-config", sql, arg1, arg2, ...]
             var topicInfo = new List<string> { "query-config", sql };
-            topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
+            topicInfo.AddRange(args.Select(FormatArgForTopic));
 
             return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
         }
@@ -564,7 +564,7 @@ public static class DuckFunctions
             var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
             // Build topic info: ["frag", sql, arg1, arg2, ...]
             var topicInfo = new List<string> { "frag", sql };
-            topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
+            topicInfo.AddRange(args.Select(FormatArgForTopic));
 
             return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
         }
@@ -591,7 +591,7 @@ public static class DuckFunctions
             var args = CollectArgs(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
             // Build topic info: ["frag-config", sql, arg1, arg2, ...]
             var topicInfo = new List<string> { "frag-config", sql };
-            topicInfo.AddRange(args.Select(a => a?.ToString() ?? ""));
+            topicInfo.AddRange(args.Select(FormatArgForTopic));
 
             return XlCall.RTD("XlDuck.DuckRtdServer", null, topicInfo.ToArray());
         }
@@ -1128,6 +1128,29 @@ public static class DuckFunctions
     }
 
     /// <summary>
+    /// Format an arg for RTD topic info, preserving its Excel type.
+    /// Strings are prefixed with ' so ResolveParameters can distinguish
+    /// text "0.2" (tagged as '0.2) from number 0.2 (untagged).
+    /// </summary>
+    private static string FormatArgForTopic(object arg) => arg switch
+    {
+        double d => d.ToString(CultureInfo.InvariantCulture),
+        bool b => b ? "TRUE" : "FALSE",
+        string s when ResultStore.IsHandle(s) || FragmentStore.IsHandle(s)
+                   || s.StartsWith(ErrorPrefix) || s.StartsWith(BlockedPrefix) => s,
+        _ => "'" + (arg?.ToString() ?? "")
+    };
+
+    /// <summary>
+    /// Strip the type tag added by FormatArgForTopic for display purposes.
+    /// </summary>
+    internal static string DisplayArg(object? arg)
+    {
+        var s = arg?.ToString() ?? "";
+        return s.StartsWith('\'') ? s[1..] : s;
+    }
+
+    /// <summary>
     /// Collect optional positional values into an array, stopping at the first missing value.
     /// </summary>
     private static object[] CollectArgs(params object[] values)
@@ -1197,9 +1220,37 @@ public static class DuckFunctions
                 // Wrap fragment SQL in parentheses as a subquery
                 resolvedValues.Add($"({resolvedFragmentSql})");
             }
+            else if (arg is double dVal)
+            {
+                // Direct path: Excel number cell
+                resolvedValues.Add(dVal.ToString(CultureInfo.InvariantCulture));
+            }
+            else if (arg is bool b)
+            {
+                // Direct path: Excel boolean cell
+                resolvedValues.Add(b ? "TRUE" : "FALSE");
+            }
+            else if (value.StartsWith('\''))
+            {
+                // RTD path: tagged string arg - strip prefix, quote for SQL
+                var sqlValue = value[1..];
+                var escaped = sqlValue.Replace("'", "''");
+                resolvedValues.Add($"'{escaped}'");
+            }
+            else if (value is "TRUE" or "FALSE")
+            {
+                // RTD path: boolean
+                resolvedValues.Add(value);
+            }
+            else if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
+                     && double.IsFinite(d))
+            {
+                // RTD path: numeric (untagged - numbers never need quoting)
+                resolvedValues.Add(value);
+            }
             else
             {
-                // Quote string values for SQL (escape single quotes)
+                // Untagged string fallback
                 var escaped = value.Replace("'", "''");
                 resolvedValues.Add($"'{escaped}'");
             }

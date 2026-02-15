@@ -165,11 +165,10 @@ public static class PreviewDataProvider
                 tableData.Args = new List<FragmentArg>();
                 foreach (var arg in stored.Args)
                 {
-                    var value = arg?.ToString() ?? "";
                     tableData.Args.Add(new FragmentArg
                     {
                         Name = $"?{tableData.Args.Count + 1}",
-                        Value = value
+                        Value = DuckFunctions.DisplayArg(arg)
                     });
                 }
             }
@@ -248,11 +247,10 @@ public static class PreviewDataProvider
         // Parse positional args
         for (int i = 0; i < fragment.Args.Length; i++)
         {
-            var value = fragment.Args[i]?.ToString() ?? "";
             fragData.Args.Add(new FragmentArg
             {
                 Name = $"?{i + 1}",
-                Value = value
+                Value = DuckFunctions.DisplayArg(fragment.Args[i])
             });
         }
 
