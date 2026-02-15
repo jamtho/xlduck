@@ -16,7 +16,7 @@
           <toggleButton id="QueryPauseToggle"
                         label="Pause Queries"
                         size="large"
-                        imageMso="Pause"
+                        imageMso="MacroRecorderPause"
                         onAction="OnQueryPauseToggle"
                         getPressed="GetQueryPaused"
                         screentip="Pause/Resume Queries"
