@@ -432,6 +432,7 @@ Templates are hardcoded Vega-Lite specs. Users specify field bindings via overri
 | `histogram` | bar (binned) | Distribution of a single column |
 | `heatmap` | rect | Two categories with color intensity |
 | `boxplot` | boxplot | Distribution comparison across categories |
+| `map` | Leaflet markers + polyline | Vessel tracks, geospatial points (uses Leaflet.js + OSM tiles) |
 
 ### PlotStore
 

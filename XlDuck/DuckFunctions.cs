@@ -550,11 +550,11 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Create a chart from data. Templates: bar, line, point, area, histogram, heatmap, boxplot. Overrides: x, y, color, label, tooltip, title, value, xmin, xmax, ymin, ymax.")]
+    [ExcelFunction(Description = "Create a chart from data. Templates: bar, line, point, area, histogram, heatmap, boxplot, map. Overrides: x, y, color, label, tooltip, title, value, xmin, xmax, ymin, ymax, lat, lon.")]
     public static object DuckPlot(
         [ExcelArgument(Description = "Data handle (table or fragment)")] string dataHandle,
-        [ExcelArgument(Description = "bar, line, point, area, histogram, heatmap, boxplot")] string template,
-        [ExcelArgument(Description = "bar/line/point/area: x,y. histogram: x. heatmap: x,y,value. boxplot: x,y. All: color, label, tooltip, title, xmin, xmax, ymin, ymax")] object name1 = null!,
+        [ExcelArgument(Description = "bar, line, point, area, histogram, heatmap, boxplot, map")] string template,
+        [ExcelArgument(Description = "bar/line/point/area: x,y. histogram: x. heatmap: x,y,value. boxplot: x,y. map: lat,lon. All: color, label, tooltip, title")] object name1 = null!,
         [ExcelArgument(Description = "Column name or literal for this override")] object value1 = null!,
         [ExcelArgument(Description = "Override name (see name1 for allowed names)")] object name2 = null!,
         [ExcelArgument(Description = "Column name or literal for this override")] object value2 = null!,
@@ -594,7 +594,7 @@ public static class DuckFunctions
                                    name5, value5, name6, value6, name7, value7, name8, value8);
 
             // Validate overrides
-            var validKeys = new HashSet<string> { "x", "y", "color", "value", "label", "tooltip", "title", "xmin", "xmax", "ymin", "ymax" };
+            var validKeys = new HashSet<string> { "x", "y", "color", "value", "label", "tooltip", "title", "xmin", "xmax", "ymin", "ymax", "lat", "lon" };
             var overrides = new Dictionary<string, string>();
             for (int i = 0; i + 1 < args.Length; i += 2)
             {
@@ -608,16 +608,27 @@ public static class DuckFunctions
                 }
             }
 
-            if (!overrides.ContainsKey("x"))
-                return FormatError("invalid", "Missing required override: x");
+            // Map template requires lat/lon instead of x/y
+            if (PlotTemplates.IsLatLonTemplate(template))
+            {
+                if (!overrides.ContainsKey("lat"))
+                    return FormatError("invalid", "Missing required override: lat");
+                if (!overrides.ContainsKey("lon"))
+                    return FormatError("invalid", "Missing required override: lon");
+            }
+            else
+            {
+                if (!overrides.ContainsKey("x"))
+                    return FormatError("invalid", "Missing required override: x");
 
-            // y is required for most templates, but not histogram
-            if (template != "histogram" && !overrides.ContainsKey("y"))
-                return FormatError("invalid", "Missing required override: y");
+                // y is required for most templates, but not histogram
+                if (template != "histogram" && !overrides.ContainsKey("y"))
+                    return FormatError("invalid", "Missing required override: y");
 
-            // heatmap requires value for color intensity
-            if (template == "heatmap" && !overrides.ContainsKey("value"))
-                return FormatError("invalid", "Missing required override: value (for color intensity)");
+                // heatmap requires value for color intensity
+                if (template == "heatmap" && !overrides.ContainsKey("value"))
+                    return FormatError("invalid", "Missing required override: value (for color intensity)");
+            }
 
             // Build topic info: ["plot", dataHandle, template, arg1, arg2, ...]
             var topicInfo = new List<string> { "plot", dataHandle, template };

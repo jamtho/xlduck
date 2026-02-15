@@ -761,6 +761,37 @@ function Test-DuckPlot {
     Write-TestResult "Missing x override rejected" ($result4 -match "#duck://error/\d+/invalid\|.*Missing.*x") "Got: $result4"
 }
 
+function Test-DuckPlotMap {
+    Write-Host "`nTest Suite: DuckPlot Map Template" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Setup: Create data with lat/lon columns
+    Set-Formula "A1" '=DuckQuery("SELECT 51.5 as latitude, -0.1 as longitude, ''London'' as city")'
+    Start-Sleep -Milliseconds 500
+
+    # Test 1: Valid map plot returns handle
+    Set-Formula "B1" '=DuckPlot(A1, "map", "lat", "latitude", "lon", "longitude")'
+    Start-Sleep -Milliseconds 300
+    $result = Get-CellValue "B1"
+    Write-TestResult "Valid map plot returns handle" ($result -match "^duck://plot/\d+") "Got: $result"
+
+    # Test 2: Map without lat rejected
+    Set-Formula "C1" '=DuckPlot(A1, "map", "lon", "longitude")'
+    $result2 = Get-CellValue "C1"
+    Write-TestResult "Map without lat rejected" ($result2 -match "#duck://error/\d+/invalid\|.*Missing.*lat") "Got: $result2"
+
+    # Test 3: Map without lon rejected
+    Set-Formula "D1" '=DuckPlot(A1, "map", "lat", "latitude")'
+    $result3 = Get-CellValue "D1"
+    Write-TestResult "Map without lon rejected" ($result3 -match "#duck://error/\d+/invalid\|.*Missing.*lon") "Got: $result3"
+
+    # Test 4: Map does not require x/y
+    Set-Formula "E1" '=DuckPlot(A1, "map", "lat", "latitude", "lon", "longitude", "color", "city")'
+    Start-Sleep -Milliseconds 300
+    $result4 = Get-CellValue "E1"
+    Write-TestResult "Map with color returns handle" ($result4 -match "^duck://plot/\d+") "Got: $result4"
+}
+
 # ============================================
 # Main
 # ============================================
@@ -798,6 +829,7 @@ Test-DuckQueryOutScalar
 Test-DuckDateFunctions
 Test-ReadCSV
 Test-DuckPlot
+Test-DuckPlotMap
 Test-PauseQueries
 Test-CancelQuery
 

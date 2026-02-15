@@ -254,11 +254,20 @@
             font-size: 12px;
             white-space: pre-wrap;
         }
+
+        /* Map container */
+        .map-container {
+            width: 100%;
+            height: 400px;
+        }
     </style>
     <!-- Vega-Lite libraries from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+    <!-- Leaflet for map template -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1/dist/leaflet.js"></script>
     <!-- SQL formatter from CDN (UMD build for browser global) -->
     <script src="https://cdn.jsdelivr.net/npm/sql-formatter@15/dist/sql-formatter.min.js"></script>
 </head>
@@ -482,6 +491,14 @@
                 dataValues.push(obj);
             }
 
+            // Branch: map template uses Leaflet, everything else uses Vega-Lite
+            if (plotData.template === 'map') {
+                requestAnimationFrame(() => {
+                    renderMap(document.getElementById('plot-target'), plotData, dataValues);
+                });
+                return;
+            }
+
             // Build Vega-Lite spec
             const spec = buildVegaSpec(plotData.template, plotData.overrides, plotData.columns, plotData.types, dataValues);
 
@@ -505,6 +522,120 @@
                         '<div class="plot-error">Vega-Lite libraries not loaded. Check internet connection.</div>';
                 }
             });
+        }
+
+        function renderMap(target, plotData, dataValues) {
+            if (typeof L === 'undefined') {
+                target.innerHTML = '<div class="plot-error">Leaflet library not loaded. Check internet connection.</div>';
+                return;
+            }
+
+            const latField = plotData.overrides.lat;
+            const lonField = plotData.overrides.lon;
+            const colorField = plotData.overrides.color;
+            const title = plotData.overrides.title;
+
+            if (!latField || !lonField) {
+                target.innerHTML = '<div class="plot-error">Map requires lat and lon overrides.</div>';
+                return;
+            }
+
+            // Set up the map container
+            target.classList.add('map-container');
+            const map = L.map(target);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Color palette for groups
+            const palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'];
+
+            // Build popup content for a data row
+            function popupContent(row) {
+                let html = '<table style="font-size:11px;border-collapse:collapse">';
+                for (const [key, val] of Object.entries(row)) {
+                    html += `<tr><td style="font-weight:600;padding:1px 6px 1px 0">${escapeHtml(key)}</td><td>${escapeHtml(String(val ?? ''))}</td></tr>`;
+                }
+                html += '</table>';
+                return html;
+            }
+
+            const allPoints = [];
+
+            if (colorField) {
+                // Group by color field
+                const groups = {};
+                for (const row of dataValues) {
+                    const key = String(row[colorField] ?? '');
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(row);
+                }
+
+                let colorIdx = 0;
+                for (const [groupName, rows] of Object.entries(groups)) {
+                    const color = palette[colorIdx % palette.length];
+                    colorIdx++;
+                    const points = [];
+
+                    for (const row of rows) {
+                        const lat = parseFloat(row[latField]);
+                        const lon = parseFloat(row[lonField]);
+                        if (isNaN(lat) || isNaN(lon)) continue;
+                        const pt = [lat, lon];
+                        points.push(pt);
+                        allPoints.push(pt);
+
+                        L.circleMarker(pt, {
+                            radius: 4, color: color, fillColor: color, fillOpacity: 0.7, weight: 1
+                        }).bindPopup(popupContent(row)).addTo(map);
+                    }
+
+                    if (points.length > 1) {
+                        L.polyline(points, { color: color, weight: 2, opacity: 0.6 }).addTo(map);
+                    }
+                }
+            } else {
+                // Single group
+                const points = [];
+                const color = palette[0];
+
+                for (const row of dataValues) {
+                    const lat = parseFloat(row[latField]);
+                    const lon = parseFloat(row[lonField]);
+                    if (isNaN(lat) || isNaN(lon)) continue;
+                    const pt = [lat, lon];
+                    points.push(pt);
+                    allPoints.push(pt);
+
+                    L.circleMarker(pt, {
+                        radius: 4, color: color, fillColor: color, fillOpacity: 0.7, weight: 1
+                    }).bindPopup(popupContent(row)).addTo(map);
+                }
+
+                if (points.length > 1) {
+                    L.polyline(points, { color: color, weight: 2, opacity: 0.6 }).addTo(map);
+                }
+            }
+
+            // Fit bounds to data extent
+            if (allPoints.length > 0) {
+                map.fitBounds(allPoints, { padding: [20, 20] });
+            } else {
+                map.setView([0, 0], 2);
+            }
+
+            if (title) {
+                const titleControl = L.control({ position: 'topleft' });
+                titleControl.onAdd = function() {
+                    const div = L.DomUtil.create('div', '');
+                    div.style.cssText = 'background:white;padding:4px 8px;border-radius:4px;font-weight:600;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.3)';
+                    div.textContent = title;
+                    return div;
+                };
+                titleControl.addTo(map);
+            }
         }
 
         function buildVegaSpec(template, overrides, columns, types, dataValues) {

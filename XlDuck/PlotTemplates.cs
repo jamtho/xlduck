@@ -16,13 +16,16 @@ public static class PlotTemplates
     /// <summary>
     /// Available template names.
     /// </summary>
-    public static readonly string[] TemplateNames = { "bar", "line", "point", "area", "histogram", "heatmap", "boxplot" };
+    public static readonly string[] TemplateNames = { "bar", "line", "point", "area", "histogram", "heatmap", "boxplot", "map" };
 
     // Templates that only require x (y is auto-generated)
     private static readonly HashSet<string> _xOnlyTemplates = new() { "histogram" };
 
     // Templates that require a 'value' field for color intensity
     private static readonly HashSet<string> _valueTemplates = new() { "heatmap" };
+
+    // Templates that use lat/lon instead of x/y (rendered client-side, not via Vega-Lite)
+    private static readonly HashSet<string> _latLonTemplates = new() { "map" };
 
     private static readonly Dictionary<string, JsonObject> _templates = new()
     {
@@ -33,6 +36,7 @@ public static class PlotTemplates
         ["histogram"] = CreateHistogramTemplate(),
         ["heatmap"] = CreateHeatmapTemplate(),
         ["boxplot"] = CreateBoxplotTemplate(),
+        ["map"] = CreateMapTemplate(),
     };
 
     /// <summary>
@@ -41,6 +45,14 @@ public static class PlotTemplates
     public static bool IsValidTemplate(string name)
     {
         return _templates.ContainsKey(name);
+    }
+
+    /// <summary>
+    /// Check if a template uses lat/lon instead of x/y.
+    /// </summary>
+    public static bool IsLatLonTemplate(string name)
+    {
+        return _latLonTemplates.Contains(name);
     }
 
     /// <summary>
@@ -260,6 +272,17 @@ public static class PlotTemplates
                 ["extent"] = "min-max"
             },
             ["encoding"] = new JsonObject()
+        };
+    }
+
+    /// <summary>
+    /// Create map template (placeholder — rendered client-side with Leaflet, not Vega-Lite).
+    /// </summary>
+    private static JsonObject CreateMapTemplate()
+    {
+        return new JsonObject
+        {
+            ["template"] = "map"
         };
     }
 
