@@ -6,14 +6,18 @@
 namespace XlDuck;
 
 /// <summary>
-/// Simple file logger for debugging.
+/// File logger with per-session log files and weekly rotation.
+/// Logs to %LOCALAPPDATA%\XlDuck\xlduck-{timestamp}.log
 /// </summary>
 public static class Log
 {
-    private static readonly string LogPath = Path.Combine(
+    private static readonly string LogDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "XlDuck",
-        "xlduck.log");
+        "XlDuck");
+
+    private static readonly string LogPath = Path.Combine(
+        LogDir,
+        $"xlduck-{DateTime.Now:yyyyMMdd-HHmmss}.log");
 
     private static readonly object _lock = new();
 
@@ -21,11 +25,10 @@ public static class Log
     {
         try
         {
-            var dir = Path.GetDirectoryName(LogPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
+            if (!Directory.Exists(LogDir))
+                Directory.CreateDirectory(LogDir);
+
+            PurgeOldLogs();
         }
         catch { }
     }
@@ -51,4 +54,18 @@ public static class Log
     }
 
     public static string GetLogPath() => LogPath;
+
+    private static void PurgeOldLogs()
+    {
+        try
+        {
+            var cutoff = DateTime.Now.AddDays(-7);
+            foreach (var file in Directory.GetFiles(LogDir, "xlduck-*.log"))
+            {
+                if (File.GetCreationTime(file) < cutoff)
+                    File.Delete(file);
+            }
+        }
+        catch { }
+    }
 }

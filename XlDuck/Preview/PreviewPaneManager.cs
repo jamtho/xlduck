@@ -143,7 +143,7 @@ public class PreviewPaneManager : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[PreviewPaneManager] IsPaneVisible error: {ex.Message}");
+            Log.Write($"[PreviewPaneManager] IsPaneVisible error: {ex.Message}");
         }
         return false;
     }
@@ -211,7 +211,7 @@ public class PreviewPaneManager : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[PreviewPaneManager] OnSheetSelectionChange error: {ex.Message}");
+            Log.Write($"[PreviewPaneManager] OnSheetSelectionChange error: {ex.Message}");
         }
     }
 
@@ -232,7 +232,7 @@ public class PreviewPaneManager : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[PreviewPaneManager] RefreshCurrentSelection error: {ex.Message}");
+            Log.Write($"[PreviewPaneManager] RefreshCurrentSelection error: {ex.Message}");
         }
     }
 
@@ -247,7 +247,7 @@ public class PreviewPaneManager : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[PreviewPaneManager] GetActiveWindowHwnd error: {ex.Message}");
+            Log.Write($"[PreviewPaneManager] GetActiveWindowHwnd error: {ex.Message}");
         }
         return 0;
     }
@@ -276,7 +276,7 @@ public class PreviewPaneManager : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[PreviewPaneManager] Dispose error: {ex.Message}");
+            Log.Write($"[PreviewPaneManager] Dispose error: {ex.Message}");
         }
     }
 }

@@ -72,7 +72,7 @@ public static class FragmentStore
         {
             _refCounts.TryGetValue(handle, out var count);
             _refCounts[handle] = count + 1;
-            System.Diagnostics.Debug.WriteLine($"[FragmentStore] RefCount++ {handle}: {count + 1}");
+            Log.Write($"[FragmentStore] RefCount++ {handle}: {count + 1}");
         }
     }
 
@@ -86,13 +86,13 @@ public static class FragmentStore
             if (_refCounts.TryGetValue(handle, out var count))
             {
                 count--;
-                System.Diagnostics.Debug.WriteLine($"[FragmentStore] RefCount-- {handle}: {count}");
+                Log.Write($"[FragmentStore] RefCount-- {handle}: {count}");
 
                 if (count <= 0)
                 {
                     _refCounts.Remove(handle);
                     _fragments.Remove(handle);
-                    System.Diagnostics.Debug.WriteLine($"[FragmentStore] Evicted {handle}");
+                    Log.Write($"[FragmentStore] Evicted {handle}");
                 }
                 else
                 {

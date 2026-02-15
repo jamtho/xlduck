@@ -443,6 +443,24 @@ Field types are inferred from DuckDB column types:
 
 The preview pane loads Vega-Lite from CDN and renders charts via `vegaEmbed()`. Data is sent as column arrays and converted to Vega-Lite's `values` format in JavaScript.
 
+## Logging
+
+All diagnostic output goes through `Log.Write()` in `Log.cs`, which writes to both the log file and `Debug.WriteLine` (for debugger/DebugView).
+
+**Location**: `%LOCALAPPDATA%\XlDuck\xlduck-{yyyyMMdd-HHmmss}.log` — one file per Excel session.
+
+**Rotation**: On startup, files older than 7 days are deleted.
+
+**What's logged**:
+- RTD lifecycle: `ConnectData`, `DisconnectData`, server start/stop
+- Query timing: resolve, create, count durations in milliseconds
+- Handle lifecycle: refcount increments/decrements, evictions, temp table drops
+- Pause/resume state changes
+- Preview pane events
+- Errors with full stack traces
+
+The logger uses `File.AppendAllText` under a lock — simple and correct but not high-throughput. This is fine for the current use case (tens of log lines per query, not thousands per second).
+
 ## Future Considerations
 
 - **Handle comments**: Allow user annotations on handles for readability

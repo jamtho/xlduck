@@ -90,7 +90,7 @@ public static class ResultStore
             var baseHandle = GetBaseHandle(handle);
             _refCounts.TryGetValue(baseHandle, out var count);
             _refCounts[baseHandle] = count + 1;
-            System.Diagnostics.Debug.WriteLine($"[ResultStore] RefCount++ {baseHandle}: {count + 1}");
+            Log.Write($"[ResultStore] RefCount++ {baseHandle}: {count + 1}");
         }
     }
 
@@ -106,13 +106,13 @@ public static class ResultStore
             if (_refCounts.TryGetValue(baseHandle, out var count))
             {
                 count--;
-                System.Diagnostics.Debug.WriteLine($"[ResultStore] RefCount-- {baseHandle}: {count}");
+                Log.Write($"[ResultStore] RefCount-- {baseHandle}: {count}");
 
                 if (count <= 0)
                 {
                     _refCounts.Remove(baseHandle);
                     _results.Remove(baseHandle, out var evicted);
-                    System.Diagnostics.Debug.WriteLine($"[ResultStore] Evicted {baseHandle}");
+                    Log.Write($"[ResultStore] Evicted {baseHandle}");
                     return evicted;
                 }
                 else

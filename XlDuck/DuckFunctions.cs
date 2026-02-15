@@ -20,14 +20,12 @@ public class AddIn : IExcelAddIn
 {
     public void AutoOpen()
     {
-        Log.Write("[AddIn] AutoOpen called - add-in loading");
-        System.Diagnostics.Debug.WriteLine("[XlDuck] Add-in loaded");
+        Log.Write("[AddIn] AutoOpen - add-in loaded");
     }
 
     public void AutoClose()
     {
-        Log.Write("[AddIn] AutoClose called - add-in unloading");
-        System.Diagnostics.Debug.WriteLine("[XlDuck] Add-in unloaded");
+        Log.Write("[AddIn] AutoClose - add-in unloaded");
     }
 }
 
@@ -207,11 +205,11 @@ public static class DuckFunctions
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $"DROP TABLE IF EXISTS \"{tableName}\"";
             cmd.ExecuteNonQuery();
-            System.Diagnostics.Debug.WriteLine($"[XlDuck] Dropped temp table: {tableName}");
+            Log.Write($"[XlDuck] Dropped temp table: {tableName}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[XlDuck] Error dropping table {tableName}: {ex.Message}");
+            Log.Write($"[XlDuck] Error dropping table {tableName}: {ex.Message}");
         }
     }
 
@@ -225,7 +223,7 @@ public static class DuckFunctions
     [ExcelFunction(Description = "Signal that configuration is complete. DuckQueryAfterConfig/DuckFragAfterConfig wait until this is called.")]
     public static string DuckConfigReady()
     {
-        System.Diagnostics.Debug.WriteLine("[XlDuck] DuckConfigReady called");
+        Log.Write("[XlDuck] DuckConfigReady called");
         IsReady = true;
         return "OK";
     }
@@ -437,7 +435,7 @@ public static class DuckFunctions
             using var cmd = conn.CreateCommand();
             cmd.CommandText = sql;
             var rowsAffected = cmd.ExecuteNonQuery();
-            System.Diagnostics.Debug.WriteLine($"[DuckExecute] conn={connTime}ms exec={sw.ElapsedMilliseconds - connTime}ms sql={sql.Substring(0, Math.Min(50, sql.Length))}");
+            Log.Write($"[DuckExecute] conn={connTime}ms exec={sw.ElapsedMilliseconds - connTime}ms sql={sql.Substring(0, Math.Min(50, sql.Length))}");
             return $"OK ({rowsAffected} rows affected)";
         }
         catch (Exception ex)
@@ -621,7 +619,7 @@ public static class DuckFunctions
                 var stored = new StoredResult(duckTableName, columnNames, rowCount, sql, args);
                 var handle = ResultStore.Store(stored);
 
-                System.Diagnostics.Debug.WriteLine($"[DuckQuery] resolve={resolveTime}ms create={createTime}ms count={countTime}ms rows={rowCount} cols={columnNames.Length}");
+                Log.Write($"[DuckQuery] resolve={resolveTime}ms create={createTime}ms count={countTime}ms rows={rowCount} cols={columnNames.Length}");
                 return handle;
             }
         }
@@ -1009,7 +1007,7 @@ public static class DuckFunctions
             }
         }
 
-        System.Diagnostics.Debug.WriteLine($"[DuckOut] read={readTime}ms rows={dataRowsToEmit} cols={cols} truncated={truncated}");
+        Log.Write($"[DuckOut] read={readTime}ms rows={dataRowsToEmit} cols={cols} truncated={truncated}");
         return result;
     }
 
@@ -1081,7 +1079,7 @@ public static class DuckFunctions
             }
         }
 
-        System.Diagnostics.Debug.WriteLine($"[DuckQueryOut] read={readTime}ms rows={dataRowsToEmit} cols={fieldCount} truncated={truncated}");
+        Log.Write($"[DuckQueryOut] read={readTime}ms rows={dataRowsToEmit} cols={fieldCount} truncated={truncated}");
         return result;
     }
 

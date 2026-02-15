@@ -311,6 +311,16 @@ The XLDuck ribbon tab includes a toggle to open a preview pane on the right side
 
 Requires WebView2 Runtime (falls back to plain text if not installed).
 
+## Logging
+
+Log files are written to `%LOCALAPPDATA%\XlDuck\` (typically `C:\Users\<you>\AppData\Local\XlDuck\`). Each Excel session creates a new log file named `xlduck-{timestamp}.log`. Files older than 7 days are automatically deleted on startup.
+
+Logs include query timing, RTD lifecycle events, handle reference counting, and error details. To tail the current session's log:
+
+```powershell
+Get-ChildItem "$env:LOCALAPPDATA\XlDuck\xlduck-*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content -Wait
+```
+
 ## Credits
 
 Several design ideas take inspiration from the superb [PyXLL add-in](https://www.pyxll.com), which you should check out immediately if you've ever considered integrating Python code with your sheets.

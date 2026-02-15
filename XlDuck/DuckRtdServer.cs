@@ -34,18 +34,18 @@ public class DuckRtdServer : ExcelRtdServer
 
     protected override bool ServerStart()
     {
-        System.Diagnostics.Debug.WriteLine("[DuckRTD] Server started");
+        Log.Write("[DuckRTD] Server started");
         return true;
     }
 
     protected override void ServerTerminate()
     {
-        System.Diagnostics.Debug.WriteLine("[DuckRTD] Server terminated");
+        Log.Write("[DuckRTD] Server terminated");
     }
 
     protected override object ConnectData(Topic topic, IList<string> topicInfo, ref bool newValues)
     {
-        System.Diagnostics.Debug.WriteLine($"[DuckRTD] ConnectData: TopicId={topic.TopicId}, IsReady={DuckFunctions.IsReady}, Info=[{string.Join(", ", topicInfo)}]");
+        Log.Write($"[DuckRTD] ConnectData: TopicId={topic.TopicId}, IsReady={DuckFunctions.IsReady}, Info=[{string.Join(", ", topicInfo)}]");
 
         // topicInfo[0] = query type: "query", "query-config", "frag", "frag-config", "plot", "capture"
         // topicInfo[1] = sql (or content hash for capture)
@@ -75,7 +75,7 @@ public class DuckRtdServer : ExcelRtdServer
 
         if ((requiresConfig || dependsOnBlocked) && !DuckFunctions.IsReady)
         {
-            System.Diagnostics.Debug.WriteLine($"[DuckRTD] Config required, waiting for DuckConfigReady()...");
+            Log.Write($"[DuckRTD] Config required, waiting for DuckConfigReady()...");
             newValues = true;
 
             // Poll for ready flag in background, then execute query
@@ -85,7 +85,7 @@ public class DuckRtdServer : ExcelRtdServer
                 {
                     Thread.Sleep(100);
                 }
-                System.Diagnostics.Debug.WriteLine($"[DuckRTD] DuckConfigReady() called, executing deferred query");
+                Log.Write($"[DuckRTD] DuckConfigReady() called, executing deferred query");
                 DuckFunctions.SetThreadEpoch(info.Epoch);
                 ExecuteQuery(topic, info);
             });
@@ -185,13 +185,13 @@ public class DuckRtdServer : ExcelRtdServer
             }
 
             newValues = true;
-            System.Diagnostics.Debug.WriteLine($"[DuckRTD] Completed in budget: {result}");
+            Log.Write($"[DuckRTD] Completed in budget: {result}");
             return result ?? DuckFunctions.FormatError("internal", "No result");
         }
         else
         {
             // Query still running - return placeholder and complete async
-            System.Diagnostics.Debug.WriteLine($"[DuckRTD] Timeout, showing Loading...");
+            Log.Write($"[DuckRTD] Timeout, showing Loading...");
 
             // Continue waiting on another thread and update when done
             ThreadPool.QueueUserWorkItem(_ =>
@@ -232,7 +232,7 @@ public class DuckRtdServer : ExcelRtdServer
                 }
 
                 // Update the topic with the result
-                System.Diagnostics.Debug.WriteLine($"[DuckRTD] Async complete: {finalResult}");
+                Log.Write($"[DuckRTD] Async complete: {finalResult}");
                 topic.UpdateValue(finalResult);
             });
 
@@ -315,7 +315,7 @@ public class DuckRtdServer : ExcelRtdServer
                 PlotStore.IncrementRefCount(finalResult);
         }
 
-        System.Diagnostics.Debug.WriteLine($"[DuckRTD] Deferred complete: {finalResult}");
+        Log.Write($"[DuckRTD] Deferred complete: {finalResult}");
         topic.UpdateValue(finalResult);
     }
 
@@ -339,7 +339,7 @@ public class DuckRtdServer : ExcelRtdServer
 
     protected override void DisconnectData(Topic topic)
     {
-        System.Diagnostics.Debug.WriteLine($"[DuckRTD] DisconnectData: TopicId={topic.TopicId}");
+        Log.Write($"[DuckRTD] DisconnectData: TopicId={topic.TopicId}");
 
         if (_topics.TryRemove(topic.TopicId, out var info))
         {

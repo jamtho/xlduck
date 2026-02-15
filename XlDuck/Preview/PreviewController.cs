@@ -87,7 +87,7 @@ public class PreviewController : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[PreviewController] Error: {ex.Message}");
+            Log.Write($"[PreviewController] Error: {ex.Message}");
 
             // Show error in pane
             try
@@ -166,7 +166,7 @@ public class PreviewController : IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[PreviewController] RefreshNow error: {ex.Message}");
+            Log.Write($"[PreviewController] RefreshNow error: {ex.Message}");
         }
     }
 
