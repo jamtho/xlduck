@@ -81,7 +81,8 @@ public static class PreviewDataProvider
                 {
                     Title = $"Error ({fullError.Value.Category})",
                     Handle = handle,
-                    Message = fullError.Value.Message
+                    Message = fullError.Value.Message,
+                    ResolvedSql = fullError.Value.ResolvedSql
                 };
             }
         }

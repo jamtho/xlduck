@@ -47,6 +47,7 @@ public static class DuckFunctions
 
     [ThreadStatic] private static int _threadEpoch;
     [ThreadStatic] private static int _threadTopicId;
+    [ThreadStatic] private static string? _threadResolvedSql;
 
     internal static void SetThreadTopicId(int topicId) => _threadTopicId = topicId;
 
@@ -81,7 +82,7 @@ public static class DuckFunctions
     private static readonly ConcurrentDictionary<string, object[,]> _pendingCaptures = new();
 
     // Full error messages keyed by error ID (RTD truncates values to 255 chars)
-    private static readonly ConcurrentDictionary<long, (string Category, string Message)> _fullErrors = new();
+    private static readonly ConcurrentDictionary<long, (string Category, string Message, string? ResolvedSql)> _fullErrors = new();
     private static long _nextErrorId;
 
     // Status URL prefixes (# prefix follows Excel convention)
@@ -101,14 +102,16 @@ public static class DuckFunctions
         // Remove newlines for single-line cell display
         var cleanMessage = message.Replace("\r", "").Replace("\n", " ");
         var id = Interlocked.Increment(ref _nextErrorId);
-        _fullErrors[id] = (category, cleanMessage);
+        var resolvedSql = _threadResolvedSql;
+        _threadResolvedSql = null;
+        _fullErrors[id] = (category, cleanMessage, resolvedSql);
         return $"{ErrorPrefix}{id}/{category}|{cleanMessage}";
     }
 
     /// <summary>
     /// Look up full error details by ID. Used by preview pane to bypass RTD 255-char truncation.
     /// </summary>
-    internal static (string Category, string Message)? GetFullError(long id)
+    internal static (string Category, string Message, string? ResolvedSql)? GetFullError(long id)
     {
         return _fullErrors.TryGetValue(id, out var error) ? error : null;
     }
@@ -608,6 +611,7 @@ public static class DuckFunctions
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
+        _threadResolvedSql = resolvedSql;
         var resolveTime = sw.ElapsedMilliseconds;
 
         if (args.Length > 0)
@@ -685,6 +689,7 @@ public static class DuckFunctions
     {
         // Validate the SQL by resolving parameters and running EXPLAIN
         var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
+        _threadResolvedSql = resolvedSql;
 
         if (args.Length > 0)
             Log.Write($"[{_threadTopicId}] resolved: {resolvedSql}");
@@ -1184,9 +1189,15 @@ public static class DuckFunctions
 
         // Resolve each positional value
         var resolvedValues = new List<string>();
-        foreach (var arg in args)
+        for (int argIdx = 0; argIdx < args.Length; argIdx++)
         {
+            var arg = args[argIdx];
             var value = arg?.ToString() ?? "";
+
+            if (IsErrorOrBlocked(value))
+            {
+                throw new ArgumentException($"?{argIdx + 1} has an error - check upstream cell");
+            }
 
             if (ResultStore.IsHandle(value))
             {

@@ -298,7 +298,14 @@
                     break;
 
                 case 'error':
-                    contentEl.innerHTML = `<div class="error-message">${escapeHtml(state.message || 'Error')}</div>`;
+                    let errorHtml = `<div class="error-message">${escapeHtml(state.message || 'Error')}</div>`;
+                    if (state.resolvedSql) {
+                        errorHtml += '<div class="frag-section">';
+                        errorHtml += '<div class="section-title">Resolved SQL</div>';
+                        errorHtml += `<pre class="frag-sql">${escapeHtml(formatSql(state.resolvedSql))}</pre>`;
+                        errorHtml += '</div>';
+                    }
+                    contentEl.innerHTML = errorHtml;
                     break;
 
                 case 'table':

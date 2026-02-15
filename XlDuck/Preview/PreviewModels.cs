@@ -45,6 +45,9 @@ public class EmptyPreviewModel : PreviewModel
 public class ErrorPreviewModel : PreviewModel
 {
     public override string Kind => "error";
+
+    [JsonPropertyName("resolvedSql")]
+    public string? ResolvedSql { get; set; }
 }
 
 /// <summary>
