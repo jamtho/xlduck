@@ -39,6 +39,9 @@ public static class DuckFunctions
     private static volatile int _interruptEpoch;
     private static readonly object _queryLock = new();
     [ThreadStatic] private static int _threadEpoch;
+    [ThreadStatic] private static int _threadTopicId;
+
+    internal static void SetThreadTopicId(int topicId) => _threadTopicId = topicId;
 
     private static volatile bool _queriesPaused;
     private static readonly ManualResetEventSlim _unpauseEvent = new(true);
@@ -585,6 +588,9 @@ public static class DuckFunctions
         var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
         var resolveTime = sw.ElapsedMilliseconds;
 
+        if (args.Length > 0)
+            Log.Write($"[{_threadTopicId}] resolved: {resolvedSql}");
+
         try
         {
             lock (_queryLock)
@@ -619,7 +625,7 @@ public static class DuckFunctions
                 var stored = new StoredResult(duckTableName, columnNames, rowCount, sql, args);
                 var handle = ResultStore.Store(stored);
 
-                Log.Write($"[DuckQuery] resolve={resolveTime}ms create={createTime}ms count={countTime}ms rows={rowCount} cols={columnNames.Length}");
+                Log.Write($"[{_threadTopicId}] resolve={resolveTime}ms create={createTime}ms count={countTime}ms rows={rowCount} cols={columnNames.Length}");
                 return handle;
             }
         }
@@ -657,6 +663,10 @@ public static class DuckFunctions
     {
         // Validate the SQL by resolving parameters and running EXPLAIN
         var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
+
+        if (args.Length > 0)
+            Log.Write($"[{_threadTopicId}] resolved: {resolvedSql}");
+
         try
         {
             lock (_queryLock)

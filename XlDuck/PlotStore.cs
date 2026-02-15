@@ -76,7 +76,6 @@ public static class PlotStore
         {
             _refCounts.TryGetValue(handle, out var count);
             _refCounts[handle] = count + 1;
-            Log.Write($"[PlotStore] RefCount++ {handle}: {count + 1}");
         }
     }
 
@@ -90,13 +89,11 @@ public static class PlotStore
             if (_refCounts.TryGetValue(handle, out var count))
             {
                 count--;
-                Log.Write($"[PlotStore] RefCount-- {handle}: {count}");
 
                 if (count <= 0)
                 {
                     _refCounts.Remove(handle);
                     _plots.Remove(handle);
-                    Log.Write($"[PlotStore] Evicted {handle}");
                 }
                 else
                 {
