@@ -544,7 +544,7 @@
             target.classList.add('map-container');
             const map = L.map(target);
 
-            const layer = (plotData.overrides.baselayer || 'osm').toLowerCase();
+            const layer = (plotData.overrides.basemap || 'osm').toLowerCase();
             if (layer === 'satellite') {
                 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                     attribution: 'Tiles &copy; Esri',

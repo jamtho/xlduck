@@ -474,13 +474,13 @@ The `map` template renders geospatial data on an interactive slippy map using Le
 ```excel
 =DuckPlot(data, "map", "lat", "latitude", "lon", "longitude")
 =DuckPlot(data, "map", "lat", "latitude", "lon", "longitude", "color", "status")
-=DuckPlot(data, "map", "lat", "latitude", "lon", "longitude", "baselayer", "satellite")
+=DuckPlot(data, "map", "lat", "latitude", "lon", "longitude", "basemap", "satellite")
 ```
 
 **Overrides:**
 - `lat` (required) — column containing latitude values
 - `lon` (required) — column containing longitude values
-- `baselayer` — tile source: `osm` (default, OpenStreetMap) or `satellite` (Esri World Imagery, no API key)
+- `basemap` — tile source: `osm` (default, OpenStreetMap) or `satellite` (Esri World Imagery, no API key)
 - `color` — group by this column; each group gets a distinct color with separate polylines
 - `title` — overlay title control on the map
 - `tooltip` — standard tooltip override
