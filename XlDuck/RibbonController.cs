@@ -19,6 +19,7 @@ namespace XlDuck;
 public class RibbonController : ExcelRibbon
 {
     private IRibbonUI? _ribbon;
+    internal static RibbonController? Instance { get; private set; }
 
     public override string GetCustomUI(string ribbonId)
     {
@@ -31,7 +32,13 @@ public class RibbonController : ExcelRibbon
     public void OnRibbonLoad(IRibbonUI ribbon)
     {
         _ribbon = ribbon;
+        Instance = this;
         Log.Write("[Ribbon] OnRibbonLoad called - ribbon loaded successfully");
+    }
+
+    internal void InvalidatePreviewToggle()
+    {
+        _ribbon?.InvalidateControl("PreviewPaneToggle");
     }
 
     public void OnPreviewPaneToggle(IRibbonControl control, bool pressed)

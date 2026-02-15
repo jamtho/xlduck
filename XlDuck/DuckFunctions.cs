@@ -21,11 +21,26 @@ public class AddIn : IExcelAddIn
     public void AutoOpen()
     {
         Log.Write("[AddIn] AutoOpen - add-in loaded");
+        try
+        {
+            // Ctrl+Shift+P → toggle preview pane
+            XlCall.Excel(XlCall.xlcOnKey, "^+P", "DuckTogglePreview");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("AutoOpen shortcut registration", ex);
+        }
     }
 
     public void AutoClose()
     {
         Log.Write("[AddIn] AutoClose - add-in unloaded");
+        try
+        {
+            // Unregister shortcut
+            XlCall.Excel(XlCall.xlcOnKey, "^+P");
+        }
+        catch { }
     }
 }
 
@@ -186,6 +201,17 @@ public static class DuckFunctions
             catch (OperationCanceledException) { return false; }
         }
         return true;
+    }
+
+    [ExcelCommand(Name = "DuckTogglePreview")]
+    public static void DuckTogglePreviewCommand()
+    {
+        try
+        {
+            Preview.PreviewPaneManager.Instance.TogglePane();
+            RibbonController.Instance?.InvalidatePreviewToggle();
+        }
+        catch (Exception ex) { Log.Error("DuckTogglePreviewCommand", ex); }
     }
 
     [ExcelCommand(Name = "DuckPauseQueries")]
