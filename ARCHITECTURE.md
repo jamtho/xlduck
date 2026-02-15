@@ -184,7 +184,7 @@ The trade-off is that all intermediate results consume DuckDB memory until their
 | `DuckOut(handle)` | Output handle (table or frag) as spilled array with headers. |
 | `DuckQueryOut(sql, [arg1, arg2, ...])` | Execute SQL and output directly as spilled array. Combo of DuckQuery + DuckOut. |
 | `DuckQueryOutScalar(sql, [arg1, arg2, ...])` | Execute SQL and return a single value (first column, first row). |
-| `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) |
+| `DuckExecute(sql)` | Execute DDL/DML (CREATE, INSERT, etc.) from VBA. Blocks until the connection is available. |
 | `DuckConfigReady()` | Signal that configuration is complete. `AfterConfig` functions wait for this. |
 | `DuckVersion()` | Return add-in version (0.1) |
 | `DuckLibraryVersion()` | Return DuckDB library version |
@@ -265,7 +265,8 @@ The add-in uses a single shared DuckDB in-memory connection (`_connection`). Duc
 A `Monitor` lock serializing all DuckDB connection access:
 
 - **Background RTD threads** (`ExecuteQueryInternal`, `CreateFragmentInternal`, `CreateCaptureTable`) use `lock(_queryLock)` — OK to wait since they run on ThreadPool threads.
-- **Synchronous UDFs** (`DuckOut` → `QueryTableToArray`, `DuckOut` → `ExecuteAndReturnArray`, `DuckQueryOut`, `DuckQueryOutScalar`, `DuckExecute`, `DuckLibraryVersion`) run on Excel's UI thread and use `Monitor.TryEnter(_queryLock, 100ms)` — returns a "busy" error if a background query holds the lock, preventing Excel from freezing.
+- **Synchronous UDFs** (`DuckOut` → `QueryTableToArray`, `DuckOut` → `ExecuteAndReturnArray`, `DuckQueryOut`, `DuckQueryOutScalar`, `DuckLibraryVersion`) run on Excel's UI thread and use `Monitor.TryEnter(_queryLock, 100ms)` — returns a "busy" error if a background query holds the lock, preventing Excel from freezing.
+- **`DuckExecute`** uses `lock(_queryLock)` — blocks until the connection is available. This is intentional: `DuckExecute` runs DDL/DML (CREATE, SET, INSERT) from VBA startup where the statement must succeed, and returning a "busy" error would silently drop configuration.
 - **`DropTempTable`** fires on ThreadPool from `DisconnectData` and uses `lock(_queryLock)`.
 - **Preview pane** (`GetTablePreview`, `GetPlotPreview`) uses `TryAcquireQueryLock(500ms)` — shows a "busy" preview if the lock is held.
 

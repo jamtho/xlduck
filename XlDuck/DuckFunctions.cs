@@ -445,28 +445,28 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Execute a DuckDB SQL statement (CREATE, INSERT, etc.)")]
+    [ExcelFunction(Description = "Execute a DuckDB SQL statement (CREATE, INSERT, etc.). Intended for VBA startup configuration; blocks until the connection is available.")]
     public static object DuckExecute(
         [ExcelArgument(Description = "SQL statement")] string sql)
     {
-        if (!TryAcquireQueryLock())
-            return FormatError("busy", "Query engine busy - press F9 to retry");
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        try
+        lock (_queryLock)
         {
-            var conn = GetConnection();
-            var connTime = sw.ElapsedMilliseconds;
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = sql;
-            var rowsAffected = cmd.ExecuteNonQuery();
-            Log.Write($"[DuckExecute] conn={connTime}ms exec={sw.ElapsedMilliseconds - connTime}ms sql={sql.Substring(0, Math.Min(50, sql.Length))}");
-            return $"OK ({rowsAffected} rows affected)";
+            try
+            {
+                var conn = GetConnection();
+                var connTime = sw.ElapsedMilliseconds;
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
+                var rowsAffected = cmd.ExecuteNonQuery();
+                Log.Write($"[DuckExecute] conn={connTime}ms exec={sw.ElapsedMilliseconds - connTime}ms sql={sql.Substring(0, Math.Min(50, sql.Length))}");
+                return $"OK ({rowsAffected} rows affected)";
+            }
+            catch (Exception ex)
+            {
+                return FormatException(ex);
+            }
         }
-        catch (Exception ex)
-        {
-            return FormatException(ex);
-        }
-        finally { ReleaseQueryLock(); }
     }
 
     [ExcelFunction(Description = "Create a chart from data. Templates: bar, line, point, area, histogram, heatmap, boxplot. Overrides: x, y, color, label, tooltip, title, value, xmin, xmax, ymin, ymax.")]

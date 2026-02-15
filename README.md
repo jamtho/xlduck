@@ -39,7 +39,7 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
 | `=DuckQueryOutScalar(sql, ...)` | Execute SQL and return a single value (first column, first row) |
 | `=DuckPlot(data, template, ...)` | Create a chart from data (`duck://plot/...`) |
-| `=DuckExecute(sql)` | Execute DDL/DML statements |
+| `=DuckExecute(sql)` | Execute DDL/DML statements (intended for VBA startup) |
 | `=DuckConfigReady()` | Signal that configuration is complete |
 | `=DuckVersion()` | XLDuck add-in version (0.1) |
 | `=DuckLibraryVersion()` | DuckDB library version |
@@ -293,7 +293,9 @@ Pausing while a query is running will cancel it and defer it for re-execution on
 
 ## Query Engine Busy
 
-Synchronous functions (`DuckOut`, `DuckQueryOut`, `DuckQueryOutScalar`, `DuckExecute`) may show a "Query engine busy" error if a background query is running. This prevents Excel from freezing during long-running queries. Press F9 to recalculate once the background query completes.
+Synchronous functions (`DuckOut`, `DuckQueryOut`, `DuckQueryOutScalar`) may show a "Query engine busy" error if a background query is running. This prevents Excel from freezing during long-running queries. Press F9 to recalculate once the background query completes.
+
+`DuckExecute` blocks until the connection is available rather than returning an error, since it runs DDL/DML that must succeed (e.g. `SET s3_endpoint`, `CREATE TABLE`). It should only be called from VBA (e.g. `Auto_Open`), not from worksheet formulas.
 
 ## Cancel Query
 
