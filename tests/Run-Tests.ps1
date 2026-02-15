@@ -735,6 +735,8 @@ function Test-CancelQuery {
 # Main
 # ============================================
 
+$totalSw = [System.Diagnostics.Stopwatch]::StartNew()
+
 Write-Host "XlDuck Integration Tests" -ForegroundColor White
 Write-Host "========================" -ForegroundColor White
 
@@ -769,8 +771,10 @@ Test-PauseQueries
 Test-CancelQuery
 
 # Summary
+$totalSw.Stop()
+$elapsed = $totalSw.Elapsed
 Write-Host "`n========================" -ForegroundColor White
-Write-Host "Results: $script:TestsPassed passed, $script:TestsFailed failed" -ForegroundColor $(if ($script:TestsFailed -eq 0) { "Green" } else { "Red" })
+Write-Host "Results: $script:TestsPassed passed, $script:TestsFailed failed ($("{0:F1}s" -f $elapsed.TotalSeconds))" -ForegroundColor $(if ($script:TestsFailed -eq 0) { "Green" } else { "Red" })
 
 if ($script:TestsFailed -gt 0) {
     exit 1
