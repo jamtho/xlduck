@@ -609,6 +609,15 @@ public static class DuckFunctions
     /// </summary>
     internal static string ExecuteQueryInternal(string sql, object[] args)
     {
+        // If the SQL is a fragment handle, materialize it
+        if (FragmentStore.IsHandle(sql))
+        {
+            var fragment = FragmentStore.Get(sql)
+                ?? throw new ArgumentException($"Fragment not found: {sql}");
+            sql = fragment.Sql;
+            args = fragment.Args;
+        }
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var (resolvedSql, referencedHandles) = ResolveParameters(sql, args, new HashSet<string>());
         _threadResolvedSql = resolvedSql;
