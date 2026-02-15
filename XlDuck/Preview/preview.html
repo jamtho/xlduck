@@ -578,6 +578,11 @@
                     }
                 };
 
+                // Line/area: draw in data order instead of sorting by x
+                if (template === 'line' || template === 'area') {
+                    spec.encoding.order = false;
+                }
+
                 // Add point markers for lines
                 if (template === 'line') {
                     spec.mark.point = true;
