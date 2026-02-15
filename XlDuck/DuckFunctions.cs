@@ -1327,6 +1327,10 @@ public static class DuckFunctions
         if (value is DateTimeOffset dto)
             return dto.DateTime.ToOADate();
 
+        // Handle interval/duration types that COM interop cannot marshal
+        if (value is TimeSpan ts)
+            return ts.ToString();
+
         // Handle other numeric types that might cause issues
         var type = value.GetType();
         if (type.FullName?.Contains("HugeInt") == true ||

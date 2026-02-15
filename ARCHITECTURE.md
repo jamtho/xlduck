@@ -209,6 +209,10 @@ The trade-off is that all intermediate results consume DuckDB memory until their
 
 DuckDB's aggregate functions (SUM, etc.) return HUGEINT/INT128 types that .NET and Excel don't handle natively. The add-in automatically converts these to `double` for Excel compatibility. This may lose precision for very large integers.
 
+### Interval/TimeSpan Conversion
+
+DuckDB INTERVAL values arrive as `System.TimeSpan` in .NET, which COM interop cannot marshal to Excel (shows as a hash value). The add-in converts these to their string representation (e.g. `"01:30:00"`).
+
 ### Parameter Limit
 
 Excel-DNA doesn't support `params` arrays in UDFs. Instead, we use explicit optional parameters, limiting queries to 8 positional arguments. This covers most use cases; complex joins needing more can use subqueries or intermediate handles.
