@@ -550,11 +550,11 @@ public static class DuckFunctions
         }
     }
 
-    [ExcelFunction(Description = "Create a chart from data. Templates: bar, line, point, area, histogram, heatmap, boxplot, map. Overrides: x, y, color, label, tooltip, title, value, xmin, xmax, ymin, ymax, lat, lon.")]
+    [ExcelFunction(Description = "Create a chart from data. Templates: bar, line, point, area, histogram, heatmap, boxplot, map. Overrides: x, y, color, label, tooltip, title, value, xmin, xmax, ymin, ymax, lat, lon, layer.")]
     public static object DuckPlot(
         [ExcelArgument(Description = "Data handle (table or fragment)")] string dataHandle,
         [ExcelArgument(Description = "bar, line, point, area, histogram, heatmap, boxplot, map")] string template,
-        [ExcelArgument(Description = "bar/line/point/area: x,y. histogram: x. heatmap: x,y,value. boxplot: x,y. map: lat,lon. All: color, label, tooltip, title")] object name1 = null!,
+        [ExcelArgument(Description = "bar/line/point/area: x,y. histogram: x. heatmap: x,y,value. boxplot: x,y. map: lat,lon,baselayer(osm|satellite). All: color, label, tooltip, title")] object name1 = null!,
         [ExcelArgument(Description = "Column name or literal for this override")] object value1 = null!,
         [ExcelArgument(Description = "Override name (see name1 for allowed names)")] object name2 = null!,
         [ExcelArgument(Description = "Column name or literal for this override")] object value2 = null!,
@@ -594,7 +594,7 @@ public static class DuckFunctions
                                    name5, value5, name6, value6, name7, value7, name8, value8);
 
             // Validate overrides
-            var validKeys = new HashSet<string> { "x", "y", "color", "value", "label", "tooltip", "title", "xmin", "xmax", "ymin", "ymax", "lat", "lon" };
+            var validKeys = new HashSet<string> { "x", "y", "color", "value", "label", "tooltip", "title", "xmin", "xmax", "ymin", "ymax", "lat", "lon", "baselayer" };
             var overrides = new Dictionary<string, string>();
             for (int i = 0; i + 1 < args.Length; i += 2)
             {

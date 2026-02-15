@@ -467,6 +467,26 @@ Field types are inferred from DuckDB column types:
 
 The preview pane loads Vega-Lite from CDN and renders charts via `vegaEmbed()`. Data is sent as column arrays and converted to Vega-Lite's `values` format in JavaScript.
 
+### Map Template
+
+The `map` template renders geospatial data on an interactive slippy map using Leaflet.js instead of Vega-Lite. It requires `lat` and `lon` overrides (column names containing latitude/longitude values) instead of the usual `x`/`y`.
+
+```excel
+=DuckPlot(data, "map", "lat", "latitude", "lon", "longitude")
+=DuckPlot(data, "map", "lat", "latitude", "lon", "longitude", "color", "status")
+=DuckPlot(data, "map", "lat", "latitude", "lon", "longitude", "baselayer", "satellite")
+```
+
+**Overrides:**
+- `lat` (required) — column containing latitude values
+- `lon` (required) — column containing longitude values
+- `baselayer` — tile source: `osm` (default, OpenStreetMap) or `satellite` (Esri World Imagery, no API key)
+- `color` — group by this column; each group gets a distinct color with separate polylines
+- `title` — overlay title control on the map
+- `tooltip` — standard tooltip override
+
+**Rendering:** Points are drawn as circle markers connected by polylines in data order (track). Clicking a marker shows a popup with all column values for that row. The map auto-fits bounds to the data extent with padding. Pan and zoom are built in via Leaflet.
+
 ## Logging
 
 All diagnostic output goes through `Log.Write()` in `Log.cs`, which writes to both the log file and `Debug.WriteLine` (for debugger/DebugView).
