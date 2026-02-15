@@ -16,6 +16,11 @@ public class StoredResult
     public string Sql { get; }
     public object[] Args { get; }
 
+    /// <summary>
+    /// Cached DuckOut array. Populated on first DuckOut call, reused on subsequent calls.
+    /// </summary>
+    public object[,]? CachedArray { get; set; }
+
     public StoredResult(string duckTableName, string[] columnNames, long rowCount, string sql = "", object[]? args = null)
     {
         DuckTableName = duckTableName;

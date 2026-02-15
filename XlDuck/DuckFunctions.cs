@@ -1077,6 +1077,14 @@ public static class DuckFunctions
     /// </summary>
     private static object[,] QueryTableToArray(StoredResult stored)
     {
+        // Return cached array if available (avoids re-querying DuckDB on recalc)
+        var cached = stored.CachedArray;
+        if (cached != null)
+        {
+            Log.Write($"[DuckOut] cache hit rows={cached.GetLength(0) - 1} cols={cached.GetLength(1)}");
+            return cached;
+        }
+
         if (!TryAcquireQueryLock())
             return new object[,] { { FormatError("busy", "Query engine busy - press F9 to retry") } };
         try
@@ -1139,6 +1147,7 @@ public static class DuckFunctions
             }
 
             Log.Write($"[DuckOut] read={readTime}ms rows={dataRowsToEmit} cols={cols} truncated={truncated}");
+            stored.CachedArray = result;
             return result;
         }
         finally { ReleaseQueryLock(); }
