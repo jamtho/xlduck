@@ -731,6 +731,36 @@ function Test-CancelQuery {
     Write-TestResult "Connection valid after interrupt" ($header -eq "ok" -and $val -eq "1") "Got: header=$header, val=$val"
 }
 
+function Test-DuckPlot {
+    Write-Host "`nTest Suite: DuckPlot" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Setup: Create a data handle
+    Set-Formula "A1" '=DuckQuery("SELECT 1 as x, 2 as y, ''a'' as cat")'
+    Start-Sleep -Milliseconds 500
+
+    # Test 1: Valid plot returns handle
+    Set-Formula "B1" '=DuckPlot(A1, "point", "x", "x", "y", "y")'
+    Start-Sleep -Milliseconds 300
+    $result = Get-CellValue "B1"
+    Write-TestResult "Valid plot returns handle" ($result -match "^duck://plot/\d+") "Got: $result"
+
+    # Test 2: Unknown override name
+    Set-Formula "C1" '=DuckPlot(A1, "point", "x", "x", "y", "y", "colour", "cat")'
+    $result2 = Get-CellValue "C1"
+    Write-TestResult "Unknown override rejected" ($result2 -match "#duck://error/\d+/invalid\|.*Unknown override.*colour") "Got: $result2"
+
+    # Test 3: Unknown template
+    Set-Formula "D1" '=DuckPlot(A1, "pie", "x", "x", "y", "y")'
+    $result3 = Get-CellValue "D1"
+    Write-TestResult "Unknown template rejected" ($result3 -match "#duck://error/\d+/invalid\|.*Unknown template.*pie") "Got: $result3"
+
+    # Test 4: Missing required x
+    Set-Formula "E1" '=DuckPlot(A1, "point", "y", "y")'
+    $result4 = Get-CellValue "E1"
+    Write-TestResult "Missing x override rejected" ($result4 -match "#duck://error/\d+/invalid\|.*Missing.*x") "Got: $result4"
+}
+
 # ============================================
 # Main
 # ============================================
@@ -767,6 +797,7 @@ Test-DuckCapture
 Test-DuckQueryOutScalar
 Test-DuckDateFunctions
 Test-ReadCSV
+Test-DuckPlot
 Test-PauseQueries
 Test-CancelQuery
 

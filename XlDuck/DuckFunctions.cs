@@ -593,7 +593,8 @@ public static class DuckFunctions
             var args = CollectArgs(name1, value1, name2, value2, name3, value3, name4, value4,
                                    name5, value5, name6, value6, name7, value7, name8, value8);
 
-            // Validate required overrides
+            // Validate overrides
+            var validKeys = new HashSet<string> { "x", "y", "color", "value", "label", "tooltip", "title", "xmin", "xmax", "ymin", "ymax" };
             var overrides = new Dictionary<string, string>();
             for (int i = 0; i + 1 < args.Length; i += 2)
             {
@@ -601,6 +602,8 @@ public static class DuckFunctions
                 var value = args[i + 1]?.ToString() ?? "";
                 if (!string.IsNullOrEmpty(name))
                 {
+                    if (!validKeys.Contains(name))
+                        return FormatError("invalid", $"Unknown override: '{name}'. Valid: {string.Join(", ", validKeys.Order())}");
                     overrides[name] = value;
                 }
             }
