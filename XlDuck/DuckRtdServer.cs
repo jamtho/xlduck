@@ -110,6 +110,7 @@ public class DuckRtdServer : ExcelRtdServer
         // Start query on background thread
         string? result = null;
         Exception? error = null;
+        string? resolvedSql = null;
 
         var queryThread = new Thread(() =>
         {
@@ -146,6 +147,8 @@ public class DuckRtdServer : ExcelRtdServer
             catch (Exception ex)
             {
                 error = ex;
+                // Capture resolved SQL from this thread before it exits
+                resolvedSql = DuckFunctions.ConsumeThreadResolvedSql();
             }
             finally
             {
@@ -174,6 +177,7 @@ public class DuckRtdServer : ExcelRtdServer
                 }
                 info.IsComplete = true;
                 newValues = true;
+                DuckFunctions.SetThreadResolvedSql(resolvedSql);
                 var errorResult = DuckFunctions.FormatException(error);
                 Log.Write($"[{topic.TopicId}] -> {errorResult} ({connectSw.ElapsedMilliseconds}ms)");
                 return errorResult;
@@ -219,6 +223,7 @@ public class DuckRtdServer : ExcelRtdServer
                 string finalResult;
                 if (error != null)
                 {
+                    DuckFunctions.SetThreadResolvedSql(resolvedSql);
                     finalResult = DuckFunctions.FormatException(error);
                 }
                 else

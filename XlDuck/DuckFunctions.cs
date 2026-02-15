@@ -65,6 +65,8 @@ public static class DuckFunctions
     [ThreadStatic] private static string? _threadResolvedSql;
 
     internal static void SetThreadTopicId(int topicId) => _threadTopicId = topicId;
+    internal static string? ConsumeThreadResolvedSql() { var sql = _threadResolvedSql; _threadResolvedSql = null; return sql; }
+    internal static void SetThreadResolvedSql(string? sql) => _threadResolvedSql = sql;
 
     private static volatile bool _queriesPaused;
     private static readonly ManualResetEventSlim _unpauseEvent = new(true);
@@ -119,7 +121,8 @@ public static class DuckFunctions
         var id = Interlocked.Increment(ref _nextErrorId);
         var resolvedSql = _threadResolvedSql;
         _threadResolvedSql = null;
-        _fullErrors[id] = (category, cleanMessage, resolvedSql);
+        // Store original message (with newlines/caret) for preview pane
+        _fullErrors[id] = (category, message, resolvedSql);
         return $"{ErrorPrefix}{id}/{category}|{cleanMessage}";
     }
 
@@ -148,7 +151,56 @@ public static class DuckFunctions
         else
             category = "query";
 
+        // Strip CREATE TEMP TABLE wrapper from DuckDB error context lines
+        msg = StripCreateTablePrefix(msg);
+
         return FormatError(category, msg);
+    }
+
+    /// <summary>
+    /// Remove the CREATE TEMP TABLE "..." AS wrapper from DuckDB error context lines.
+    /// Handles both full and ...-truncated LINE formats from DuckDB.
+    /// </summary>
+    private static string StripCreateTablePrefix(string msg)
+    {
+        // DuckDB LINE 1 formats:
+        //   LINE 1: CREATE TEMP TABLE "_xlduck_res_abc" AS SELECT ...
+        //   LINE 1: ...CREATE TEMP TABLE "_xlduck_res_abc" AS SELECT ...
+        //   LINE 1: ... "_xlduck_res_abc" AS SELECT ...
+        // We need to find the "AS " after the table name and strip everything before it,
+        // then adjust the caret line accordingly.
+
+        // Find LINE 1: containing our internal table name
+        var lineMatch = Regex.Match(msg, @"LINE \d+: (.+?""_xlduck_res_\w+"" AS )(.*)");
+        if (!lineMatch.Success) return msg;
+
+        var prefixLen = lineMatch.Groups[1].Length;
+        var userSql = lineMatch.Groups[2].Value;
+        var lineStart = lineMatch.Index;
+        var lineEnd = lineMatch.Index + lineMatch.Length;
+
+        var before = msg[..lineStart];
+        var after = msg[lineEnd..];
+
+        // Adjust caret position on the next line if present
+        if (after.Length > 0 && after[0] == '\n')
+        {
+            var eol = after.IndexOf('\n', 1);
+            var caretLine = eol >= 0 ? after[1..eol] : after[1..];
+            var afterCaret = eol >= 0 ? after[eol..] : "";
+
+            var caretPos = caretLine.IndexOf('^');
+            if (caretPos >= 0)
+            {
+                var newPos = caretPos - prefixLen;
+                caretLine = newPos >= 0
+                    ? new string(' ', newPos) + "^"
+                    : "^";
+                after = "\n" + caretLine + afterCaret;
+            }
+        }
+
+        return before + "LINE 1: " + userSql + after;
     }
 
     /// <summary>
