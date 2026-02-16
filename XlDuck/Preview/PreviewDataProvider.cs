@@ -263,8 +263,8 @@ public static class PreviewDataProvider
         };
     }
 
-    private const int PlotRowLimit = 50_000;
-    private const int PlotCellLimit = 500_000;
+    private const int PlotRowLimit = 150_000;
+    private const int PlotCellLimit = 1_500_000;
 
     private static PreviewModel GetPlotPreview(string handle)
     {
@@ -346,7 +346,29 @@ public static class PreviewDataProvider
                 };
             }
 
-            var totalCells = rowCount * columnNames.Length;
+            // Project only columns referenced by overrides to minimize JSON payload
+            var neededColumns = new HashSet<string>(plot.Overrides.Values, StringComparer.OrdinalIgnoreCase);
+            var projectedNames = new List<string>();
+            var projectedTypeIndices = new List<int>();
+            for (int i = 0; i < columnNames.Length; i++)
+            {
+                if (neededColumns.Contains(columnNames[i]))
+                {
+                    projectedNames.Add(columnNames[i]);
+                    projectedTypeIndices.Add(i);
+                }
+            }
+            // Fallback: if no columns matched (shouldn't happen), use all
+            if (projectedNames.Count == 0)
+            {
+                for (int i = 0; i < columnNames.Length; i++)
+                {
+                    projectedNames.Add(columnNames[i]);
+                    projectedTypeIndices.Add(i);
+                }
+            }
+
+            var totalCells = rowCount * projectedNames.Count;
             if (totalCells > PlotCellLimit)
             {
                 plotData.Error = $"Dataset too large for plotting ({totalCells:N0} cells). Maximum: {PlotCellLimit:N0} cells.";
@@ -384,13 +406,16 @@ public static class PreviewDataProvider
                     }
                 }
 
-                plotData.Columns = columnNames.ToList();
-                plotData.Types = columnTypes;
+                plotData.Columns = projectedNames;
+                plotData.Types = projectedTypeIndices.Select(i => columnTypes[i]).ToList();
+
+                // Build SELECT with only the needed columns
+                var selectCols = string.Join(", ", projectedNames.Select(n => $"\"{n}\""));
 
                 // Get all rows (within limit)
                 using (var cmd = conn.CreateCommand())
                 {
-                    cmd.CommandText = $"SELECT * FROM \"{duckTableName}\" LIMIT {PlotRowLimit}";
+                    cmd.CommandText = $"SELECT {selectCols} FROM \"{duckTableName}\" LIMIT {PlotRowLimit}";
                     using var reader = cmd.ExecuteReader();
 
                     var fieldCount = reader.FieldCount;

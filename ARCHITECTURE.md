@@ -451,8 +451,10 @@ Uses RTD lifecycle for automatic cleanup when cells no longer reference the plot
 ### Data Caps
 
 To prevent browser crashes with large datasets, plots enforce hard limits:
-- Max rows: 50,000
-- Max cells: 500,000
+- Max rows: 150,000
+- Max cells: 1,500,000
+
+To minimize JSON serialization overhead, only columns referenced by overrides are sent to the preview pane (e.g. a map plot with lat/lon/color sends 3 columns, not all 20).
 
 Exceeding limits shows an error prompting the user to aggregate or filter in SQL.
 
