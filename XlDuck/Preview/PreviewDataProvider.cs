@@ -192,7 +192,8 @@ public static class PreviewDataProvider
             // Get preview rows
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = $"SELECT * FROM \"{stored.DuckTableName}\" LIMIT {PreviewRowLimit}";
+                var safeSelect = DuckFunctions.BuildSafeSelectClause(conn, stored.DuckTableName);
+                cmd.CommandText = $"SELECT {safeSelect} FROM \"{stored.DuckTableName}\" LIMIT {PreviewRowLimit}";
                 using var reader = cmd.ExecuteReader();
 
                 var fieldCount = reader.FieldCount;
@@ -201,7 +202,7 @@ public static class PreviewDataProvider
                     var row = new string?[fieldCount];
                     for (int i = 0; i < fieldCount; i++)
                     {
-                        row[i] = reader.IsDBNull(i) ? null : ConvertForJson(reader.GetValue(i));
+                        row[i] = reader.IsDBNull(i) ? null : ConvertForJson(DuckFunctions.SafeGetValue(reader, i) ?? "");
                     }
                     tableData.Rows.Add(row);
                 }
@@ -409,8 +410,17 @@ public static class PreviewDataProvider
                 plotData.Columns = projectedNames;
                 plotData.Types = projectedTypeIndices.Select(i => columnTypes[i]).ToList();
 
-                // Build SELECT with only the needed columns
-                var selectCols = string.Join(", ", projectedNames.Select(n => $"\"{n}\""));
+                // Build SELECT with only the needed columns, casting composite types to VARCHAR
+                var selectCols = string.Join(", ", projectedTypeIndices.Select(i =>
+                {
+                    var name = columnNames[i];
+                    var colType = columnTypes[i].ToUpperInvariant();
+                    var quoted = $"\"{name}\"";
+                    if (colType.Contains("[]") || colType.StartsWith("MAP") ||
+                        colType.StartsWith("STRUCT") || colType.StartsWith("UNION"))
+                        return $"CAST({quoted} AS VARCHAR) AS {quoted}";
+                    return quoted;
+                }));
 
                 // Get all rows (within limit)
                 using (var cmd = conn.CreateCommand())
@@ -424,7 +434,7 @@ public static class PreviewDataProvider
                         var row = new string?[fieldCount];
                         for (int i = 0; i < fieldCount; i++)
                         {
-                            row[i] = reader.IsDBNull(i) ? null : ConvertForJson(reader.GetValue(i));
+                            row[i] = reader.IsDBNull(i) ? null : ConvertForJson(DuckFunctions.SafeGetValue(reader, i) ?? "");
                         }
                         plotData.Rows.Add(row);
                     }
@@ -463,7 +473,25 @@ public static class PreviewDataProvider
             DateTime dt => dt.ToString("O"),
             DateTimeOffset dto => dto.ToString("O"),
             byte[] bytes => $"(blob, {bytes.Length} bytes)",
+            System.Collections.IList list => FormatList(list),
+            System.Collections.IDictionary dict => FormatDict(dict),
             _ => value.ToString() ?? ""
         };
+    }
+
+    private static string FormatList(System.Collections.IList list)
+    {
+        var elements = new List<string>(list.Count);
+        foreach (var e in list)
+            elements.Add(e?.ToString() ?? "NULL");
+        return "[" + string.Join(", ", elements) + "]";
+    }
+
+    private static string FormatDict(System.Collections.IDictionary dict)
+    {
+        var entries = new List<string>();
+        foreach (System.Collections.DictionaryEntry entry in dict)
+            entries.Add($"{entry.Key}: {entry.Value}");
+        return "{" + string.Join(", ", entries) + "}";
     }
 }

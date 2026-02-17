@@ -256,6 +256,60 @@ function Test-TypeConversions {
     Write-TestResult "COUNT(DISTINCT) works" ($cnt -eq "3") "Got: $cnt"
 }
 
+function Test-CompositeTypes {
+    Write-Host "`nTest Suite: Composite Types (LIST, STRUCT, MAP)" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Test 1: LIST<VARCHAR>
+    Set-Formula "A1" "=DuckQuery(""SELECT ['hello', 'world'] as tags"")"
+    Start-Sleep -Milliseconds 300
+    Set-Formula "B1" "=DuckOut(A1)"
+    $listStr = Get-CellValue "B2"
+    Write-TestResult "LIST<VARCHAR> renders" ($listStr -eq "[hello, world]") "Got: $listStr"
+
+    # Test 2: LIST<INTEGER>
+    Set-Formula "C1" "=DuckQuery(""SELECT [1, 2, 3] as nums"")"
+    Start-Sleep -Milliseconds 300
+    Set-Formula "D1" "=DuckOut(C1)"
+    $listInt = Get-CellValue "D2"
+    Write-TestResult "LIST<INTEGER> renders" ($listInt -eq "[1, 2, 3]") "Got: $listInt"
+
+    # Test 3: LIST<DOUBLE>
+    Set-Formula "E1" "=DuckQuery(""SELECT [1.5, 2.5] as vals"")"
+    Start-Sleep -Milliseconds 300
+    Set-Formula "F1" "=DuckOut(E1)"
+    $listDbl = Get-CellValue "F2"
+    Write-TestResult "LIST<DOUBLE> renders" ($listDbl -eq "[1.5, 2.5]") "Got: $listDbl"
+
+    # Test 4: Empty list
+    Set-Formula "G1" "=DuckQuery(""SELECT []::INTEGER[] as empty_list"")"
+    Start-Sleep -Milliseconds 300
+    Set-Formula "H1" "=DuckOut(G1)"
+    $listEmpty = Get-CellValue "H2"
+    Write-TestResult "Empty list renders" ($listEmpty -eq "[]") "Got: $listEmpty"
+
+    # Test 5: STRUCT
+    Set-Formula "I1" "=DuckQuery(""SELECT {'name': 'alice', 'age': 30} as person"")"
+    Start-Sleep -Milliseconds 300
+    Set-Formula "J1" "=DuckOut(I1)"
+    $struct = Get-CellValue "J2"
+    Write-TestResult "STRUCT renders" ($struct -match "name.*alice" -and $struct -match "age.*30") "Got: $struct"
+
+    # Test 6: MAP
+    Set-Formula "K1" "=DuckQuery(""SELECT MAP {'a': 1, 'b': 2} as lookup"")"
+    Start-Sleep -Milliseconds 300
+    Set-Formula "L1" "=DuckOut(K1)"
+    $map = Get-CellValue "L2"
+    Write-TestResult "MAP renders" ($map -match "a.*1" -and $map -match "b.*2") "Got: $map"
+
+    # Test 7: LIST with NULL element
+    Set-Formula "M1" "=DuckQuery(""SELECT [1, NULL, 3] as sparse"")"
+    Start-Sleep -Milliseconds 300
+    Set-Formula "N1" "=DuckOut(M1)"
+    $listNull = Get-CellValue "N2"
+    Write-TestResult "LIST with NULL renders" ($listNull -eq "[1, NULL, 3]") "Got: $listNull"
+}
+
 function Test-ErrorHandling {
     Write-Host "`nTest Suite: Error Handling" -ForegroundColor Cyan
     Clear-TestRange
@@ -815,6 +869,7 @@ Test-DuckQueryOut
 Test-ParameterBinding
 Test-ChainedQueries
 Test-TypeConversions
+Test-CompositeTypes
 Test-ErrorHandling
 Test-DuckConfigReady
 Test-DuckExecute

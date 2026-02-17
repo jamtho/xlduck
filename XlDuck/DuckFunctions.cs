@@ -1102,9 +1102,10 @@ public static class DuckFunctions
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var conn = GetConnection();
+            var selectClause = BuildSafeSelectClause(conn, stored.DuckTableName);
 
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"SELECT * FROM \"{stored.DuckTableName}\" LIMIT {DuckOutMaxRows + 1}";
+            cmd.CommandText = $"SELECT {selectClause} FROM \"{stored.DuckTableName}\" LIMIT {DuckOutMaxRows + 1}";
             using var reader = cmd.ExecuteReader();
 
             var cols = stored.ColumnNames.Length;
@@ -1119,7 +1120,7 @@ public static class DuckFunctions
                 var row = new object?[cols];
                 for (int j = 0; j < cols; j++)
                 {
-                    row[j] = reader.IsDBNull(j) ? null : reader.GetValue(j);
+                    row[j] = SafeGetValue(reader, j);
                 }
                 rows.Add(row);
             }
@@ -1198,7 +1199,7 @@ public static class DuckFunctions
                 var row = new object?[fieldCount];
                 for (int j = 0; j < fieldCount; j++)
                 {
-                    row[j] = reader.IsDBNull(j) ? null : reader.GetValue(j);
+                    row[j] = SafeGetValue(reader, j);
                 }
                 rows.Add(row);
             }
@@ -1441,6 +1442,24 @@ public static class DuckFunctions
         if (value is TimeSpan ts)
             return ts.ToString();
 
+        // Handle list/array types (DuckDB LIST<T> → List<T>)
+        if (value is System.Collections.IList list)
+        {
+            var elements = new List<string>(list.Count);
+            foreach (var e in list)
+                elements.Add(e?.ToString() ?? "NULL");
+            return "[" + string.Join(", ", elements) + "]";
+        }
+
+        // Handle struct/map types (DuckDB STRUCT → Dictionary)
+        if (value is System.Collections.IDictionary dict)
+        {
+            var entries = new List<string>();
+            foreach (System.Collections.DictionaryEntry entry in dict)
+                entries.Add($"{entry.Key}: {entry.Value}");
+            return "{" + string.Join(", ", entries) + "}";
+        }
+
         // Handle other numeric types that might cause issues
         var type = value.GetType();
         if (type.FullName?.Contains("HugeInt") == true ||
@@ -1452,5 +1471,56 @@ public static class DuckFunctions
         }
 
         return value;
+    }
+
+    /// <summary>
+    /// Read a column value from a DuckDB reader, falling back to string
+    /// representation if GetValue() throws (e.g. LIST with NULL elements).
+    /// </summary>
+    internal static object? SafeGetValue(DuckDB.NET.Data.DuckDBDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+            return null;
+        try
+        {
+            return reader.GetValue(ordinal);
+        }
+        catch
+        {
+            // DuckDB.NET throws for some composite types (e.g. LIST with NULLs).
+            // SafeGetValue is the last resort — the caller should prefer
+            // BuildSafeSelectClause to CAST composite columns in SQL.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Build a SELECT clause that CASTs composite columns (LIST, STRUCT, MAP, UNION)
+    /// to VARCHAR so DuckDB.NET doesn't choke on nullable elements.
+    /// Simple columns pass through unchanged.
+    /// </summary>
+    internal static string BuildSafeSelectClause(DuckDBConnection conn, string tableName)
+    {
+        var columns = new List<string>();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info('{tableName}')";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var name = reader.GetString(reader.GetOrdinal("name"));
+            var type = reader.GetString(reader.GetOrdinal("type")).ToUpperInvariant();
+            var quoted = $"\"{name}\"";
+
+            if (type.Contains("[]") || type.StartsWith("MAP") ||
+                type.StartsWith("STRUCT") || type.StartsWith("UNION"))
+            {
+                columns.Add($"CAST({quoted} AS VARCHAR) AS {quoted}");
+            }
+            else
+            {
+                columns.Add(quoted);
+            }
+        }
+        return columns.Count > 0 ? string.Join(", ", columns) : "*";
     }
 }
