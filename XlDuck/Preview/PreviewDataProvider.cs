@@ -347,29 +347,7 @@ public static class PreviewDataProvider
                 };
             }
 
-            // Project only columns referenced by overrides to minimize JSON payload
-            var neededColumns = new HashSet<string>(plot.Overrides.Values, StringComparer.OrdinalIgnoreCase);
-            var projectedNames = new List<string>();
-            var projectedTypeIndices = new List<int>();
-            for (int i = 0; i < columnNames.Length; i++)
-            {
-                if (neededColumns.Contains(columnNames[i]))
-                {
-                    projectedNames.Add(columnNames[i]);
-                    projectedTypeIndices.Add(i);
-                }
-            }
-            // Fallback: if no columns matched (shouldn't happen), use all
-            if (projectedNames.Count == 0)
-            {
-                for (int i = 0; i < columnNames.Length; i++)
-                {
-                    projectedNames.Add(columnNames[i]);
-                    projectedTypeIndices.Add(i);
-                }
-            }
-
-            var totalCells = rowCount * projectedNames.Count;
+            var totalCells = rowCount * columnNames.Length;
             if (totalCells > PlotCellLimit)
             {
                 plotData.Error = $"Dataset too large for plotting ({totalCells:N0} cells). Maximum: {PlotCellLimit:N0} cells.";
@@ -407,25 +385,16 @@ public static class PreviewDataProvider
                     }
                 }
 
-                plotData.Columns = projectedNames;
-                plotData.Types = projectedTypeIndices.Select(i => columnTypes[i]).ToList();
+                plotData.Columns = columnNames.ToList();
+                plotData.Types = columnTypes;
 
-                // Build SELECT with only the needed columns, casting composite types to VARCHAR
-                var selectCols = string.Join(", ", projectedTypeIndices.Select(i =>
-                {
-                    var name = columnNames[i];
-                    var colType = columnTypes[i].ToUpperInvariant();
-                    var quoted = $"\"{name}\"";
-                    if (colType.Contains("[]") || colType.StartsWith("MAP") ||
-                        colType.StartsWith("STRUCT") || colType.StartsWith("UNION"))
-                        return $"CAST({quoted} AS VARCHAR) AS {quoted}";
-                    return quoted;
-                }));
+                // Build SELECT, casting composite types to VARCHAR
+                var safeSelect = DuckFunctions.BuildSafeSelectClause(conn, duckTableName);
 
                 // Get all rows (within limit)
                 using (var cmd = conn.CreateCommand())
                 {
-                    cmd.CommandText = $"SELECT {selectCols} FROM \"{duckTableName}\" LIMIT {PlotRowLimit}";
+                    cmd.CommandText = $"SELECT {safeSelect} FROM \"{duckTableName}\" LIMIT {PlotRowLimit}";
                     using var reader = cmd.ExecuteReader();
 
                     var fieldCount = reader.FieldCount;
