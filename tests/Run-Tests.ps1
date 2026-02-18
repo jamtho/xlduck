@@ -815,6 +815,21 @@ function Test-DuckPlot {
     Write-TestResult "Missing x override rejected" ($result4 -match "#duck://error/\d+/invalid\|.*Missing.*x") "Got: $result4"
 }
 
+function Test-DuckPlotInterval {
+    Write-Host "`nTest Suite: DuckPlot INTERVAL" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Setup: Create data with an INTERVAL column
+    Set-Formula "A1" '=DuckQuery("SELECT x, INTERVAL (x * 37) SECOND as dur FROM range(20) t(x)")'
+    Start-Sleep -Milliseconds 500
+
+    # Test 1: Plot INTERVAL column returns handle (not an error)
+    Set-Formula "B1" '=DuckPlot(A1, "line", "x", "x", "y", "dur")'
+    Start-Sleep -Milliseconds 300
+    $result = Get-CellValue "B1"
+    Write-TestResult "INTERVAL plot returns handle" ($result -match "^duck://plot/\d+") "Got: $result"
+}
+
 function Test-DuckPlotMap {
     Write-Host "`nTest Suite: DuckPlot Map Template" -ForegroundColor Cyan
     Clear-TestRange
@@ -884,6 +899,7 @@ Test-DuckQueryOutScalar
 Test-DuckDateFunctions
 Test-ReadCSV
 Test-DuckPlot
+Test-DuckPlotInterval
 Test-DuckPlotMap
 Test-PauseQueries
 Test-CancelQuery

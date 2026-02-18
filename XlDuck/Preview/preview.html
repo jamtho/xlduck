@@ -483,8 +483,13 @@
                     const col = plotData.columns[i];
                     let val = row[i];
                     // Parse numeric values
-                    if (plotData.types[i] && isQuantitative(plotData.types[i]) && val !== null) {
-                        val = parseFloat(val);
+                    if (plotData.types[i] && val !== null) {
+                        if (isIntervalType(plotData.types[i])) {
+                            val = parseDurationToSeconds(val);
+                            obj[col + '__dur'] = formatDuration(val);
+                        } else if (isQuantitative(plotData.types[i])) {
+                            val = parseFloat(val);
+                        }
                     }
                     obj[col] = val;
                 }
@@ -574,36 +579,65 @@
             const layers = L.layerGroup();
 
             if (colorField) {
-                // Group by color field
-                const groups = {};
+                // Assign a color per distinct value
+                const colorMap = {};
+                let colorIdx = 0;
                 for (const row of dataValues) {
                     const key = String(row[colorField] ?? '');
-                    if (!groups[key]) groups[key] = [];
-                    groups[key].push(row);
+                    if (!(key in colorMap)) {
+                        colorMap[key] = palette[colorIdx % palette.length];
+                        colorIdx++;
+                    }
                 }
 
-                let colorIdx = 0;
-                for (const [groupName, rows] of Object.entries(groups)) {
-                    const color = palette[colorIdx % palette.length];
-                    colorIdx++;
-                    const points = [];
+                // Count group sizes for z-ordering (largest first, smallest on top)
+                const groupSizes = {};
+                for (const row of dataValues) {
+                    const key = String(row[colorField] ?? '');
+                    groupSizes[key] = (groupSizes[key] || 0) + 1;
+                }
 
-                    for (const row of rows) {
-                        const lat = parseFloat(row[latField]);
-                        const lon = parseFloat(row[lonField]);
-                        if (isNaN(lat) || isNaN(lon)) continue;
-                        const pt = [lat, lon];
-                        points.push(pt);
-                        allPoints.push(pt);
+                // Draw per-segment polylines in data order: split when color changes
+                let segPoints = [];
+                let segColor = null;
+                for (const row of dataValues) {
+                    const lat = parseFloat(row[latField]);
+                    const lon = parseFloat(row[lonField]);
+                    if (isNaN(lat) || isNaN(lon)) continue;
+                    const pt = [lat, lon];
+                    allPoints.push(pt);
+                    const color = colorMap[String(row[colorField] ?? '')];
 
-                        layers.addLayer(L.circleMarker(pt, {
-                            radius: 4, color: color, fillColor: color, fillOpacity: 0.7, weight: 1
-                        }).bindPopup(popupContent(row)));
+                    if (segColor !== null && color !== segColor) {
+                        // Color changed — flush segment (include last point for continuity)
+                        if (segPoints.length > 1) {
+                            layers.addLayer(L.polyline(segPoints, { color: segColor, weight: 2, opacity: 0.6, interactive: false }));
+                        }
+                        segPoints = [segPoints[segPoints.length - 1]]; // bridge point
                     }
+                    segColor = color;
+                    segPoints.push(pt);
+                }
+                if (segPoints.length > 1) {
+                    layers.addLayer(L.polyline(segPoints, { color: segColor, weight: 2, opacity: 0.6, interactive: false }));
+                }
 
-                    if (points.length > 1) {
-                        layers.addLayer(L.polyline(points, { color: color, weight: 2, opacity: 0.6, interactive: false }));
-                    }
+                // Draw circle markers sorted by group size desc (largest/most common first,
+                // smallest/rarest on top so they remain visible)
+                const sortedRows = [...dataValues].sort((a, b) => {
+                    const sA = groupSizes[String(a[colorField] ?? '')] || 0;
+                    const sB = groupSizes[String(b[colorField] ?? '')] || 0;
+                    return sB - sA;
+                });
+                for (const row of sortedRows) {
+                    const lat = parseFloat(row[latField]);
+                    const lon = parseFloat(row[lonField]);
+                    if (isNaN(lat) || isNaN(lon)) continue;
+                    const pt = [lat, lon];
+                    const color = colorMap[String(row[colorField] ?? '')];
+                    layers.addLayer(L.circleMarker(pt, {
+                        radius: 4, color: color, fillColor: color, fillOpacity: 0.7, weight: 1
+                    }).bindPopup(popupContent(row)));
                 }
             } else {
                 // Single group
@@ -774,6 +808,33 @@
             // Fit the entire chart (including axes/labels) within the container
             spec.autosize = { "type": "fit", "contains": "padding" };
 
+            // Format INTERVAL axes as H:MM:SS instead of raw seconds
+            const durationLabelExpr =
+                "(datum.value < 0 ? '-' : '') + floor(abs(datum.value) / 3600) + ':' + " +
+                "pad('' + floor((abs(datum.value) % 3600) / 60), 2, '0') + ':' + " +
+                "pad('' + floor(abs(datum.value) % 60), 2, '0')";
+            if (spec.encoding) {
+                if (xField && isIntervalType((types[columns.indexOf(xField)] || ''))) {
+                    spec.encoding.x.axis = Object.assign({}, spec.encoding.x.axis, { "labelExpr": durationLabelExpr });
+                }
+                if (yField && isIntervalType((types[columns.indexOf(yField)] || ''))) {
+                    spec.encoding.y.axis = Object.assign({}, spec.encoding.y.axis, { "labelExpr": durationLabelExpr });
+                }
+
+                // Show formatted H:MM:SS in tooltips instead of raw seconds
+                if (!tooltipField && columns.some((c, i) => isIntervalType(types[i]))) {
+                    spec.encoding.tooltip = columns.map((col, i) => {
+                        if (isIntervalType(types[i])) {
+                            return {"field": col + "__dur", "type": "nominal", "title": col};
+                        }
+                        return {"field": col, "type": getVegaType(col, columns, types)};
+                    });
+                    if (spec.mark && spec.mark.tooltip) {
+                        delete spec.mark.tooltip;
+                    }
+                }
+            }
+
             // Enable interactive pan and zoom (drag to pan, scroll to zoom)
             const zoomParams = [{ "name": "grid", "select": "interval", "bind": "scales" }];
 
@@ -815,12 +876,27 @@
             return null;
         }
 
+        // Format total seconds as H:MM:SS (matches axis labels)
+        function formatDuration(secs) {
+            if (secs == null) return null;
+            const sign = secs < 0 ? '-' : '';
+            const abs = Math.abs(secs);
+            const h = Math.floor(abs / 3600);
+            const m = String(Math.floor((abs % 3600) / 60)).padStart(2, '0');
+            const s = String(Math.floor(abs % 60)).padStart(2, '0');
+            return sign + h + ':' + m + ':' + s;
+        }
+
         function getVegaType(fieldName, columns, types) {
             const idx = columns.indexOf(fieldName);
             if (idx < 0) return 'nominal';
 
             const duckType = (types[idx] || '').toUpperCase();
 
+            // INTERVAL is duration data - plot as quantitative (seconds), not temporal
+            if (duckType === 'INTERVAL') {
+                return 'quantitative';
+            }
             if (duckType.includes('DATE') || duckType.includes('TIME') || duckType.includes('TIMESTAMP')) {
                 return 'temporal';
             }
@@ -836,6 +912,25 @@
                    t.includes('DECIMAL') || t.includes('NUMERIC') || t.includes('REAL') ||
                    t.includes('BIGINT') || t.includes('SMALLINT') || t.includes('TINYINT') ||
                    t.includes('HUGEINT');
+        }
+
+        function isIntervalType(duckType) {
+            return (duckType || '').toUpperCase() === 'INTERVAL';
+        }
+
+        // Parse .NET TimeSpan format [-][d.]hh:mm:ss[.fffffff] to total seconds
+        function parseDurationToSeconds(str) {
+            if (str == null) return null;
+            const s = String(str).trim();
+            if (!s) return null;
+            const m = s.match(/^(-)?(?:(\d+)\.)?(\d+):(\d+):(\d+)(?:\.(\d+))?$/);
+            if (!m) return null;
+            const sign = m[1] ? -1 : 1;
+            const days = m[2] ? parseInt(m[2], 10) : 0;
+            const hours = parseInt(m[3], 10);
+            const mins = parseInt(m[4], 10);
+            const secs = parseInt(m[5], 10);
+            return sign * (days * 86400 + hours * 3600 + mins * 60 + secs);
         }
     </script>
 </body>

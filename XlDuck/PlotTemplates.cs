@@ -300,6 +300,10 @@ public static class PlotTemplates
 
         var duckType = columnTypes[index].ToUpperInvariant();
 
+        // INTERVAL is duration data (TimeSpan) - plot as quantitative, not temporal
+        if (duckType == "INTERVAL")
+            return "quantitative";
+
         // Temporal types
         if (duckType.Contains("DATE") || duckType.Contains("TIME") || duckType.Contains("TIMESTAMP"))
             return "temporal";

@@ -213,6 +213,8 @@ DuckDB's aggregate functions (SUM, etc.) return HUGEINT/INT128 types that .NET a
 
 DuckDB INTERVAL values arrive as `System.TimeSpan` in .NET, which COM interop cannot marshal to Excel (shows as a hash value). The add-in converts these to their string representation (e.g. `"01:30:00"`).
 
+For plotting, INTERVAL columns are classified as `quantitative` (not `temporal`) to avoid misclassification — `"INTERVAL"` contains `"INT"` but is not a numeric type. The JavaScript layer parses the `.NET` TimeSpan string format (`[-][d.]hh:mm:ss[.fff]`) into total seconds for Vega-Lite, and applies a custom axis label expression to display values as `H:MM:SS`.
+
 ### Parameter Limit
 
 Excel-DNA doesn't support `params` arrays in UDFs. Instead, we use explicit optional parameters, limiting queries to 8 positional arguments. This covers most use cases; complex joins needing more can use subqueries or intermediate handles.
@@ -464,6 +466,7 @@ Field types are inferred from DuckDB column types:
 - VARCHAR, TEXT → `nominal`
 - INTEGER, DOUBLE, etc. → `quantitative`
 - DATE, TIMESTAMP → `temporal`
+- INTERVAL → `quantitative` (duration converted to seconds; axes formatted as H:MM:SS)
 
 ### Vega-Lite Integration
 

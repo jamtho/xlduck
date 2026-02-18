@@ -444,6 +444,8 @@ public static class PreviewDataProvider
             byte[] bytes => $"(blob, {bytes.Length} bytes)",
             System.Collections.IList list => FormatList(list),
             System.Collections.IDictionary dict => FormatDict(dict),
+            DateOnly dateOnly => dateOnly.ToString("yyyy-MM-dd"),
+            TimeOnly timeOnly => timeOnly.ToString("HH:mm:ss"),
             _ => value.ToString() ?? ""
         };
     }
