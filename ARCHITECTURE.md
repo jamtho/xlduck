@@ -246,7 +246,30 @@ Queries needing runtime configuration (e.g., S3 endpoints) use the `AfterConfig`
 =DuckFragAfterConfig("SELECT * FROM read_parquet(?)", A1)
 ```
 
-`DuckQueryAfterConfig` and `DuckFragAfterConfig` wait until `DuckConfigReady()` is called, typically from VBA `Auto_Open`:
+`DuckQueryAfterConfig` and `DuckFragAfterConfig` wait until configuration is signalled, then execute.
+
+#### DuckConfig (worksheet-based, recommended)
+
+`DuckConfig` is a synchronous UDF that executes a range of SQL configuration statements and sets `IsReady`. This allows plain `.xlsx` files to configure DuckDB without VBA:
+
+```excel
+' DuckConfig sheet:
+A1: CREATE SECRET s3 (TYPE S3, KEY_ID 'xxx', SECRET 'yyy', ENDPOINT '127.0.0.1:9000', USE_SSL false)
+A2: SET s3_url_style = 'path'
+B1: =DuckConfig(A1:A2)   → returns duck://config|OK
+```
+
+Calling `=DuckConfig()` with no arguments just sets `IsReady` without executing any statements.
+
+DuckConfig is marked volatile so it recalculates on workbook open, ensuring configuration runs even when Excel would otherwise serve the cached cell value.
+
+DuckConfig is idempotent on recalculation — if the inputs haven't changed, it returns the cached handle (no lock acquired). If the inputs have changed (a cell in the config range was edited), it returns a config error because queries that already ran may depend on the original configuration. The **Reset Config** ribbon button clears the stored config state for development iteration.
+
+The return value (`duck://config|OK`) can be passed as an argument to downstream queries to create an explicit calc-chain dependency, ensuring config completes before queries execute. Config handles are silently filtered from argument lists in `CollectArgs` so they don't count as SQL parameters.
+
+#### DuckConfigReady (VBA-based, legacy)
+
+For `.xlsm` workbooks, configuration can also be done via VBA `Auto_Open` with `DuckExecute` and `DuckConfigReady`:
 
 ```vba
 Sub Auto_Open()
@@ -254,6 +277,8 @@ Sub Auto_Open()
     Application.Run "DuckConfigReady"
 End Sub
 ```
+
+#### Dependency chain propagation
 
 Downstream queries that depend on a blocked query (input starts with `#duck://blocked/`) also wait automatically.
 
@@ -264,6 +289,16 @@ Downstream queries that depend on a blocked query (input starts with `#duck://bl
 - No persistence to disk (yet)
 - DuckDB runs in-memory mode
 - Reference counting automatically cleans up unused handles and drops their temp tables
+
+### Process isolation
+
+The DuckDB connection, configuration state (`IsReady`, `_configStatements`), and all stores (ResultStore, FragmentStore, PlotStore) are static — shared across all workbooks within a single Excel process. This means:
+
+- `DuckConfig` runs once per process; a second workbook with different config inputs will get a config error
+- Table handles from one workbook are accessible to formulas in another workbook in the same process
+- Temp tables persist until their reference count drops to zero or Excel closes
+
+For workbooks requiring different DuckDB configurations, users must launch separate Excel processes (`excel /x`).
 
 ## Concurrency Model
 

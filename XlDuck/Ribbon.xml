@@ -27,6 +27,13 @@
                   screentip="Cancel Running Query"
                   supertip="Cancels the running query and all pending queries." />
         </group>
+        <group id="ConfigGroup" label="Config">
+          <button id="ResetConfigButton" label="Reset Config"
+                  imageMso="Refresh" size="large"
+                  onAction="OnResetConfig"
+                  screentip="Reset Configuration"
+                  supertip="Clears the stored DuckConfig state so it can be re-executed with different inputs. Use while developing a sheet." />
+        </group>
         <group id="InfoGroup" label="Info">
           <button id="VersionButton"
                   label="Version"

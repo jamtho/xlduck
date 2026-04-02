@@ -102,6 +102,19 @@ public class RibbonController : ExcelRibbon
         }
     }
 
+    public void OnResetConfig(IRibbonControl control)
+    {
+        try
+        {
+            DuckFunctions.ResetConfig();
+            Log.Write("[Ribbon] Config reset");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("OnResetConfig", ex);
+        }
+    }
+
     public void OnVersionClick(IRibbonControl control)
     {
         try

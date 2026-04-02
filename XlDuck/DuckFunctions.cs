@@ -30,6 +30,7 @@ public class AddIn : IExcelAddIn
         {
             Log.Error("AutoOpen shortcut registration", ex);
         }
+
     }
 
     public void AutoClose()
@@ -92,8 +93,24 @@ public static class DuckFunctions
             throw new OperationCanceledException("Query cancelled");
     }
 
-    // Ready flag - DuckQueryAfterConfig/DuckFragAfterConfig wait until DuckConfigReady() is called
+    // Ready flag - DuckQueryAfterConfig/DuckFragAfterConfig wait until DuckConfig/DuckConfigReady() is called
     internal static bool IsReady { get; private set; } = false;
+
+    // DuckConfig state: stashed statements from first execution, and cached return handle
+    private static List<string>? _configStatements;
+    private static string? _configHandle;
+
+    /// <summary>
+    /// Reset DuckConfig state so it can be re-executed with different inputs.
+    /// Called from the ribbon during sheet development.
+    /// </summary>
+    internal static void ResetConfig()
+    {
+        _configStatements = null;
+        _configHandle = null;
+        IsReady = false;
+        Log.Write("[DuckConfig] Config state reset");
+    }
 
     // Stash for pending DuckCapture data (hash → array), consumed by RTD ConnectData
     private static readonly ConcurrentDictionary<string, object[,]> _pendingCaptures = new();
@@ -106,6 +123,7 @@ public static class DuckFunctions
     internal const string BlockedPrefix = "#duck://blocked/";
     internal const string ErrorPrefix = "#duck://error/";
     internal const string ConfigBlockedStatus = "#duck://blocked/config|Waiting for DuckConfigReady()";
+    internal const string ConfigHandle = "duck://config|";
     internal const string PausedBlockedStatus = "#duck://blocked/paused|Queries paused";
 
     /// <summary>
@@ -320,6 +338,89 @@ public static class DuckFunctions
         Log.Write("[XlDuck] DuckConfigReady called");
         IsReady = true;
         return "OK";
+    }
+
+    [ExcelFunction(Description = "Configure DuckDB from a range of SQL statements. Sets IsReady when complete. Only one instance per workbook.", IsVolatile = true)]
+    public static object DuckConfig(
+        [ExcelArgument(Description = "Single-column range of SQL configuration statements (optional)")] object statements = null!)
+    {
+        var incoming = ExtractConfigStatements(statements);
+
+        // Already executed — check for consistency
+        if (_configStatements != null)
+        {
+            if (incoming.SequenceEqual(_configStatements))
+            {
+                Log.Write("[DuckConfig] Re-execution with same statements, returning cached handle");
+                return _configHandle!;
+            }
+            return FormatError("config", "DuckConfig called with different statements than the initial execution. The workbook has a design flaw — config inputs must be constant.");
+        }
+
+        // First execution: run each statement under the query lock
+        lock (_queryLock)
+        {
+            // Double-check after acquiring lock (another thread could have raced)
+            if (_configStatements != null)
+            {
+                if (incoming.SequenceEqual(_configStatements))
+                    return _configHandle!;
+                return FormatError("config", "DuckConfig called with different statements than the initial execution. The workbook has a design flaw — config inputs must be constant.");
+            }
+
+            try
+            {
+                var conn = GetConnection();
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                foreach (var sql in incoming)
+                {
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = sql;
+                    cmd.ExecuteNonQuery();
+                    Log.Write($"[DuckConfig] Executed: {sql.Substring(0, Math.Min(80, sql.Length))}");
+                }
+                Log.Write($"[DuckConfig] {incoming.Count} statement(s) in {sw.ElapsedMilliseconds}ms");
+
+                _configStatements = incoming;
+                _configHandle = "duck://config|OK";
+                IsReady = true;
+                return _configHandle;
+            }
+            catch (Exception ex)
+            {
+                Log.Write($"[DuckConfig] Error: {ex.Message}");
+                return FormatException(ex);
+            }
+        }
+    }
+
+    private static List<string> ExtractConfigStatements(object statements)
+    {
+        var result = new List<string>();
+
+        if (statements is ExcelMissing || statements == null)
+            return result;
+
+        if (statements is object[,] range)
+        {
+            var rows = range.GetLength(0);
+            var cols = range.GetLength(1);
+            for (var r = 0; r < rows; r++)
+            {
+                // Single-column: take column 0. Multi-column: read left-to-right, top-to-bottom.
+                for (var c = 0; c < cols; c++)
+                {
+                    if (range[r, c] is string s && !string.IsNullOrWhiteSpace(s))
+                        result.Add(s.Trim());
+                }
+            }
+        }
+        else if (statements is string s && !string.IsNullOrWhiteSpace(s))
+        {
+            result.Add(s.Trim());
+        }
+
+        return result;
     }
 
     [ExcelFunction(Description = "Get the DuckDB library version")]
@@ -1278,6 +1379,9 @@ public static class DuckFunctions
                 break;
             if (value is string s && string.IsNullOrEmpty(s))
                 break;
+            // Skip config handles — they exist only for calc-chain dependency, not as SQL parameters
+            if (value is string sv && sv.StartsWith(ConfigHandle))
+                continue;
             result.Add(value);
         }
         return result.ToArray();

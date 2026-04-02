@@ -29,9 +29,9 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | Function | Description |
 |----------|-------------|
 | `=DuckQuery(sql, ...)` | Execute SQL, return a table handle (`duck://table/1\|10x4` = 10 rows, 4 cols) |
-| `=DuckQueryAfterConfig(sql, ...)` | Same as DuckQuery, but waits for `DuckConfigReady()` first |
+| `=DuckQueryAfterConfig(sql, ...)` | Same as DuckQuery, but waits for `DuckConfig` first |
 | `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://frag/...`) |
-| `=DuckFragAfterConfig(sql, ...)` | Same as DuckFrag, but waits for `DuckConfigReady()` first |
+| `=DuckFragAfterConfig(sql, ...)` | Same as DuckFrag, but waits for `DuckConfig` first |
 | `=DuckCapture(range)` | Capture a sheet range as a DuckDB table (first row = headers) |
 | `=DuckDate(cell)` | Convert Excel date to SQL date string (`2023-01-01`) |
 | `=DuckDateTime(cell)` | Convert Excel date/time to SQL datetime string (`2023-01-01 14:30:00`) |
@@ -39,8 +39,9 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
 | `=DuckQueryOutScalar(sql, ...)` | Execute SQL and return a single value (first column, first row) |
 | `=DuckPlot(data, template, ...)` | Create a chart from data (`duck://plot/...`) |
+| `=DuckConfig(range)` | Configure DuckDB from a range of SQL statements (recommended) |
 | `=DuckExecute(sql)` | Execute DDL/DML statements (intended for VBA startup) |
-| `=DuckConfigReady()` | Signal that configuration is complete |
+| `=DuckConfigReady()` | Signal that configuration is complete (legacy, for VBA) |
 | `=DuckVersion()` | XLDuck add-in version (0.1) |
 | `=DuckLibraryVersion()` | DuckDB library version |
 
@@ -267,6 +268,49 @@ A1: =DuckQuery("SELECT day, hour, temp FROM (SELECT d.d as day, h.h as hour, (15
 B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "day", "value", "temp")
 ```
 
+## Configuration
+
+Some DuckDB features (e.g., S3 access) require configuration statements before queries can run. `DuckConfig` lets you do this from a plain `.xlsx` file — no VBA macros or `.xlsm` format needed.
+
+Write your configuration SQL in cells and pass the range to `DuckConfig`:
+
+```excel
+' On a DuckConfig sheet:
+A1: CREATE SECRET s3 (TYPE S3, KEY_ID 'mykey', SECRET 'mysecret', ENDPOINT '127.0.0.1:9000', USE_SSL false)
+A2: SET s3_url_style = 'path'
+B1: =DuckConfig(A1:A2)
+→ duck://config|OK
+```
+
+Queries that need config should use the `AfterConfig` variants, which wait until `DuckConfig` completes:
+
+```excel
+C1: =DuckQueryAfterConfig("SELECT * FROM read_parquet('s3://bucket/data.parquet')")
+```
+
+Alternatively, pass the `DuckConfig` cell as an argument to create an explicit dependency:
+
+```excel
+C1: =DuckQuery("SELECT * FROM read_parquet('s3://bucket/data.parquet')", B1)
+```
+
+The config handle is silently ignored as a parameter — it only ensures Excel calculates `DuckConfig` first.
+
+If no configuration is needed but you want to use `AfterConfig` functions, call `=DuckConfig()` with no arguments.
+
+### Developing config
+
+`DuckConfig` is idempotent: recalculating with the same inputs is a no-op. If the inputs change (e.g., you edit a cell in the config range), it returns an error because queries that already ran may depend on the original configuration.
+
+While developing a sheet, use the **Reset Config** button in the XLDuck ribbon tab to clear the stored config state, then recalculate to re-run `DuckConfig` with the updated inputs.
+
+### Process isolation
+
+The DuckDB engine and configuration are shared across all workbooks in an Excel process. If you need different configurations for different workbooks (e.g., different S3 endpoints), open each in a separate Excel process:
+
+- **Windows**: `Win+R` → `excel /x` opens a new Excel process
+- **Programmatic**: `Start-Process excel -ArgumentList "/x"`
+
 ## Pause Queries
 
 The XLDuck ribbon tab includes a **Pause Queries** toggle button. When paused, all query execution is deferred — cells show `#duck://blocked/paused|Queries paused` instead of running. Toggle off to resume: all deferred queries execute automatically and results flow to cells.
@@ -295,7 +339,7 @@ Pausing while a query is running will cancel it and defer it for re-execution on
 
 Synchronous functions (`DuckOut`, `DuckQueryOut`, `DuckQueryOutScalar`) may show a "Query engine busy" error if a background query is running. This prevents Excel from freezing during long-running queries. Press F9 to recalculate once the background query completes.
 
-`DuckExecute` blocks until the connection is available rather than returning an error, since it runs DDL/DML that must succeed (e.g. `SET s3_endpoint`, `CREATE TABLE`). It should only be called from VBA (e.g. `Auto_Open`), not from worksheet formulas.
+`DuckExecute` blocks until the connection is available rather than returning an error, since it runs DDL/DML that must succeed (e.g. `SET s3_endpoint`, `CREATE TABLE`). It should only be called from VBA (e.g. `Auto_Open`), not from worksheet formulas. For worksheet-based configuration, use `DuckConfig` instead.
 
 ## Cancel Query
 

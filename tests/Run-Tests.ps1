@@ -330,6 +330,67 @@ function Test-ErrorHandling {
     Write-TestResult "Syntax error category" ($result3 -match "#duck://error/\d+/syntax\|") "Got: $result3"
 }
 
+function Test-DuckConfig {
+    Write-Host "`nTest Suite: DuckConfig" -ForegroundColor Cyan
+    Clear-TestRange
+
+    # Note: _configStatements is process-level state. Once DuckConfig succeeds,
+    # subsequent calls with different statements return an error. Tests are ordered
+    # so the invalid SQL test runs first (before any successful DuckConfig), then
+    # the successful path runs once, then idempotent/changed tests follow.
+
+    # Test 1: Invalid SQL returns error (must be first — _configStatements is null)
+    $script:Sheet.Range("A1").Value2 = "INVALID SQL STATEMENT HERE"
+    Set-Formula "B1" '=DuckConfig(A1:A1)'
+    $result1 = Get-CellValue "B1"
+    Write-TestResult "Invalid SQL returns error" ($result1 -match "#duck://error/") "Got: $result1"
+
+    Clear-TestRange
+
+    # Test 2: Config with SQL statements (first successful call — sets _configStatements)
+    $script:Sheet.Range("A1").Value2 = "CREATE TABLE duck_config_test (id INT, name VARCHAR)"
+    Set-Formula "B1" '=DuckConfig(A1:A1)'
+    $result2 = Get-CellValue "B1"
+    Write-TestResult "Config with statement returns handle" ($result2 -eq "duck://config|OK") "Got: $result2"
+
+    # Test 3: Config took effect (table was created)
+    Set-Formula "C1" '=DuckQuery("SELECT * FROM duck_config_test")'
+    Start-Sleep -Milliseconds 300
+    $result3 = Get-CellValue "C1"
+    Write-TestResult "Config statement took effect" ($result3 -match "^duck://table/\d+\|\d+x\d+$") "Got: $result3"
+
+    # Test 4: Idempotent recalc (re-set same formula, same inputs)
+    Set-Formula "B1" '=DuckConfig(A1:A1)'
+    $result4 = Get-CellValue "B1"
+    Write-TestResult "Idempotent recalc returns same handle" ($result4 -eq "duck://config|OK") "Got: $result4"
+
+    # Test 5: Changed inputs produce config error
+    $script:Sheet.Range("A1").Value2 = "CREATE TABLE duck_config_changed (id INT)"
+    Set-Formula "B1" '=DuckConfig(A1:A1)'
+    $result5 = Get-CellValue "B1"
+    Write-TestResult "Changed inputs return config error" ($result5 -match "#duck://error/\d+/config\|") "Got: $result5"
+
+    Clear-TestRange
+
+    # Test 6: AfterConfig unblocked (IsReady was set by Test 2)
+    Set-Formula "A1" '=DuckQueryAfterConfig("SELECT 42 as answer")'
+    Start-Sleep -Milliseconds 500
+    $result6 = Get-CellValue "A1"
+    Write-TestResult "AfterConfig unblocked by DuckConfig" ($result6 -match "^duck://table/\d+\|\d+x\d+$") "Got: $result6"
+
+    # Test 7: Config handle usable as dependency arg
+    $script:Sheet.Range("B1").Value2 = "CREATE TABLE duck_config_test (id INT, name VARCHAR)"
+    Set-Formula "C1" '=DuckConfig(B1:B1)'
+    Start-Sleep -Milliseconds 300
+    Set-Formula "D1" '=DuckQuery("SELECT 1 as num", C1)'
+    Start-Sleep -Milliseconds 300
+    $result7 = Get-CellValue "D1"
+    Write-TestResult "Config handle works as dependency arg" ($result7 -match "^duck://table/\d+\|\d+x\d+$") "Got: $result7"
+
+    # Cleanup
+    Set-Formula "E1" '=DuckExecute("DROP TABLE IF EXISTS duck_config_test")'
+}
+
 function Test-DuckConfigReady {
     Write-Host "`nTest Suite: DuckConfigReady" -ForegroundColor Cyan
     Clear-TestRange
@@ -886,6 +947,7 @@ Test-ChainedQueries
 Test-TypeConversions
 Test-CompositeTypes
 Test-ErrorHandling
+Test-DuckConfig
 Test-DuckConfigReady
 Test-DuckExecute
 Test-DuckFragBasic
