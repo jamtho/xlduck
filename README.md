@@ -307,6 +307,8 @@ No `DuckConfig`, no `AfterConfig`, no credentials in cells — queries just work
 A1: =DuckQueryOut("SELECT count(*) FROM read_parquet('s3://my-bucket/data/*.parquet')")
 ```
 
+You don't need `INSTALL httpfs` or `LOAD httpfs` in the sheet either: DuckDB auto-loads the `httpfs` extension the first time a query references an `s3://` URI (default `autoload_known_extensions = true`). **For common credentialed S3 reads, the workbook needs no `DuckConfig` at all.** A colleague opening a copy of the sheet on a machine without your secret will get `IO Error: No credentials found` — which is the correct security boundary.
+
 Sanity-check what DuckDB has loaded:
 
 ```excel
@@ -328,6 +330,8 @@ DROP PERSISTENT SECRET my_bucket;
 If queries from XLDuck come back with `IO Error: No credentials found` despite the persistent secret existing, the embedded DuckDB inside XLDuck may be using a non-default home directory for its secret store. In that case you can either point it at the right path via `SET secret_directory = '...'` early in `DuckConfig`, or use `PROVIDER credential_chain` and set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` as User-level Windows environment variables.
 
 ### `DuckConfig` for non-secret state
+
+Most workbooks don't actually need `DuckConfig` — common extensions like `httpfs`, `json`, and `spatial` auto-load on first reference. Reach for `DuckConfig` when you need to set things that don't auto-trigger: non-default extensions, memory limits, custom UDFs, or non-default settings that should apply to every query in the workbook.
 
 `DuckConfig` lets you configure DuckDB from a plain `.xlsx` file — no VBA macros or `.xlsm` format needed.
 
