@@ -270,15 +270,75 @@ B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "day", "value", "temp")
 
 ## Configuration
 
-Some DuckDB features (e.g., S3 access) require configuration statements before queries can run. `DuckConfig` lets you do this from a plain `.xlsx` file — no VBA macros or `.xlsm` format needed.
+DuckDB has two flavours of session-scope setup, and they belong in different places:
+
+1. **Non-secret state** — `INSTALL`, `LOAD`, `SET s3_url_style = 'path'`, custom UDFs, etc. These are safe to ship inside the workbook. Use [`DuckConfig`](#duckconfig-for-non-secret-state).
+2. **Credentials** — S3 access keys, HuggingFace tokens, and anything else you would not paste into Slack. **Do not put these in the workbook.** Use [persistent secrets](#persistent-secrets-for-credentials) instead — set up once in a regular DuckDB CLI, auto-loaded by every DuckDB process on your account (including XLDuck inside Excel). The workbook stays credential-free and safe to email, commit, or autosave to OneDrive.
+
+### Persistent secrets (for credentials)
+
+DuckDB persistent secrets live in a per-user store at `%USERPROFILE%\.duckdb\stored_secrets\` and are loaded automatically when any DuckDB process starts. The secret manager applies them per request via longest-prefix `SCOPE` match — so multiple credentialed S3 buckets can coexist with no conflict.
+
+#### One-time setup (run in a normal `duckdb` CLI, not in Excel)
+
+```sql
+INSTALL httpfs;
+LOAD httpfs;
+
+CREATE OR REPLACE PERSISTENT SECRET my_bucket (
+    TYPE       S3,
+    KEY_ID     '...',
+    SECRET     '...',
+    ENDPOINT   '127.0.0.1:9000',     -- or e.g. s3.amazonaws.com
+    USE_SSL    false,
+    URL_STYLE  'path',
+    REGION     'us-east-1',
+    SCOPE      's3://my-bucket'
+);
+```
+
+This writes a binary file to `%USERPROFILE%\.duckdb\stored_secrets\my_bucket.duckdb_secret`. The security boundary is the user-only NTFS ACL on your home directory — do not place that path on a roaming profile, OneDrive-synced folder, or shared volume.
+
+#### In the workbook
+
+No `DuckConfig`, no `AfterConfig`, no credentials in cells — queries just work:
+
+```excel
+A1: =DuckQueryOut("SELECT count(*) FROM read_parquet('s3://my-bucket/data/*.parquet')")
+```
+
+Sanity-check what DuckDB has loaded:
+
+```excel
+=DuckQueryOut("SELECT name, type, scope FROM duckdb_secrets()")
+```
+
+#### Rotation and removal
+
+```sql
+-- rotate, e.g. after issuing a fresh service-account credential
+CREATE OR REPLACE PERSISTENT SECRET my_bucket ( ... );
+
+-- remove
+DROP PERSISTENT SECRET my_bucket;
+```
+
+#### Caveat for embedded DuckDB
+
+If queries from XLDuck come back with `IO Error: No credentials found` despite the persistent secret existing, the embedded DuckDB inside XLDuck may be using a non-default home directory for its secret store. In that case you can either point it at the right path via `SET secret_directory = '...'` early in `DuckConfig`, or use `PROVIDER credential_chain` and set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` as User-level Windows environment variables.
+
+### `DuckConfig` for non-secret state
+
+`DuckConfig` lets you configure DuckDB from a plain `.xlsx` file — no VBA macros or `.xlsm` format needed.
 
 Write your configuration SQL in cells and pass the range to `DuckConfig`:
 
 ```excel
 ' On a DuckConfig sheet:
-A1: CREATE SECRET s3 (TYPE S3, KEY_ID 'mykey', SECRET 'mysecret', ENDPOINT '127.0.0.1:9000', USE_SSL false)
-A2: SET s3_url_style = 'path'
-B1: =DuckConfig(A1:A2)
+A1: INSTALL httpfs
+A2: LOAD httpfs
+A3: SET s3_url_style = 'path'
+B1: =DuckConfig(A1:A3)
 → duck://config|OK
 ```
 
@@ -298,7 +358,7 @@ The config handle is silently ignored as a parameter — it only ensures Excel c
 
 If no configuration is needed but you want to use `AfterConfig` functions, call `=DuckConfig()` with no arguments.
 
-### Developing config
+#### Developing config
 
 `DuckConfig` is idempotent: recalculating with the same inputs is a no-op. If the inputs change (e.g., you edit a cell in the config range), it returns an error because queries that already ran may depend on the original configuration.
 
