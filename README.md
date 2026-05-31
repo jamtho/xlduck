@@ -1,6 +1,16 @@
+<p align="center">
+  <img src="docs/assets/xlduck-logo.png" alt="XLDuck logo" width="720">
+</p>
+
 # XLDuck
 
 Excel add-in wrapping DuckDB for in-cell SQL queries.
+
+## Architecture At A Glance
+
+![XLDuck technical architecture overview](docs/assets/xlduck-architecture-infographic.png)
+
+The infographic summarizes the core spreadsheet workflow, handle model, RTD lifecycle, preview pane, and configuration trade-offs. For the full written design notes, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Prerequisites
 
