@@ -1,16 +1,12 @@
 <p align="center">
-  <img src="docs/assets/xlduck-logo.png" alt="XLDuck logo" width="720">
+  <img src="docs/assets/xlduck-logo.png" alt="XLDuck logo" width="360">
 </p>
 
 # XLDuck
 
 Excel add-in wrapping DuckDB for in-cell SQL queries.
 
-## Architecture At A Glance
-
-![XLDuck technical architecture overview](docs/assets/xlduck-architecture-infographic.png)
-
-The infographic summarizes the core spreadsheet workflow, handle model, RTD lifecycle, preview pane, and configuration trade-offs. For the full written design notes, see [ARCHITECTURE.md](ARCHITECTURE.md).
+For a visual tour of the handle model, RTD lifecycle, preview pane, and configuration flow, see the [architecture infographic](#architecture-infographic). For the full written design notes, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Prerequisites
 
@@ -54,6 +50,8 @@ XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
 | `=DuckConfigReady()` | Signal that configuration is complete (legacy, for VBA) |
 | `=DuckVersion()` | XLDuck add-in version (0.1) |
 | `=DuckLibraryVersion()` | DuckDB library version |
+
+The [architecture infographic](#architecture-infographic) shows how these functions compose into spreadsheet-native dataflows.
 
 ## Examples
 
@@ -444,6 +442,12 @@ Logs include query timing, RTD lifecycle events, handle reference counting, and 
 ```powershell
 Get-ChildItem "$env:LOCALAPPDATA\XlDuck\xlduck-*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content -Wait
 ```
+
+## Architecture Infographic
+
+![XLDuck technical architecture overview](docs/assets/xlduck-architecture-infographic.png)
+
+This visual overview summarizes the core spreadsheet workflow, handle model, RTD lifecycle, preview pane, and configuration trade-offs.
 
 ## Credits
 
