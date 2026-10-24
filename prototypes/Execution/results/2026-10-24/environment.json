@@ -1,0 +1,37 @@
+{
+  "recordedUtc": "2026-10-24T11:23:46.3651195Z",
+  "excelVersion": "16.0",
+  "excelBuild": 20430.0,
+  "excelArchitecture": "x64",
+  "windows": "Microsoft Windows NT 10.0.26200.0",
+  "processor": "AMD Ryzen 9 7940HS w/ Radeon 780M Graphics     ",
+  "sdk": "9.0.319",
+  "runtimes": [
+    "Microsoft.AspNetCore.App 9.0.21 [C:\\Program Files\\dotnet\\shared\\Microsoft.AspNetCore.App]",
+    "Microsoft.NETCore.App 8.0.32 [C:\\Program Files\\dotnet\\shared\\Microsoft.NETCore.App]",
+    "Microsoft.NETCore.App 9.0.21 [C:\\Program Files\\dotnet\\shared\\Microsoft.NETCore.App]",
+    "Microsoft.WindowsDesktop.App 8.0.32 [C:\\Program Files\\dotnet\\shared\\Microsoft.WindowsDesktop.App]",
+    "Microsoft.WindowsDesktop.App 9.0.21 [C:\\Program Files\\dotnet\\shared\\Microsoft.WindowsDesktop.App]"
+  ],
+  "baseCommit": "ef969ed9dd824bfd286cc9ae77b481547fa4e096",
+  "excelDna": "1.9.0",
+  "duckDbNet": "1.5.6.1",
+  "note": "Sequential exploratory samples on one machine. Core runtime is .NET 8. Source hashes identify the final experimental implementation; not all timing samples were collected from exactly the same intermediate revision. Later changes added diagnostics and cancellation/disposal checks. Core and targeted samples were rerun after those changes.",
+  "sourceSha256": {
+    "prototypes/Execution/AddIn/Functions.cs": "C1BD81848E914A73691F96EA93609D2ED56C173CA7BA882E6DC8BFF565F42EBD",
+    "prototypes/Execution/Engine/Protocol.cs": "8EAA6969D4AD1CFA3CFF8B1EB3F66CED979685BE0853F28E52211DC8FE331F89",
+    "prototypes/Execution/Engine/Engine.csproj": "A63420A069084FC15C7917B86236DD21652A55EC62348493D64A78181F0C5C81",
+    "prototypes/Execution/AddIn/AddIn.csproj": "86A7C8155DCDD8BF7432A958BAEBF955BBD7D14139037468FFA92FE98A8E8F2C",
+    "prototypes/Execution/Test-SlowTrunk.ps1": "360CEB238B71D6446656D57273401E0170FF1CDCBAEDFCCCA886950D7DC155C0",
+    "prototypes/Execution/Engine/LocalBackend.cs": "24C9787E33F238D3EA644EAD394B488B20C09C2EB748FE619A4419B1D1123139",
+    "prototypes/Execution/Engine/WorkerBackend.cs": "24AE7760EF601301D0C9640D5D3BD407C9E7632340418E3594DDF2DED4ED69ED",
+    "prototypes/Execution/Engine/Session.cs": "F7A5D42B2A53C01A7B34777F022165FB75840C52D3DBE6232A8F81678D808EEC",
+    "prototypes/Execution/Run-Experiment.ps1": "02BADBD31C5F24565BBD6372839E0C73EECEA4508E431C453136EE504CCCC713",
+    "prototypes/Execution/Worker/Worker.csproj": "D4847E79B1986F92DE7B5CC27F9034090BECF9B34E3A6DD3DCBFCAF5488E3877",
+    "prototypes/Execution/Worker/Program.cs": "EE7A62E003CE83617D01E370B5E858165B60F94D43411465BF82F1896065DFE1",
+    "prototypes/Execution/Test-Lifecycle.ps1": "0F6952BAF64BA02F007E262A1668F6AEB3CED5E0D4B4B280D2685AB2B87F283B",
+    "prototypes/Execution/Test-Coexistence.ps1": "154FB3D178525BE19E15EAA54D02D979922E20B899CD8EE3B34B30F8E1C2B261",
+    "prototypes/Execution/Checks/Program.cs": "2CF09E2FB91B86A5D088E7C9EC650D60D5B227342D91A6252AA6AD32208E6F78",
+    "prototypes/Execution/Checks/Checks.csproj": "D4847E79B1986F92DE7B5CC27F9034090BECF9B34E3A6DD3DCBFCAF5488E3877"
+  }
+}

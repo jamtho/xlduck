@@ -1,0 +1,25 @@
+﻿{
+    "mode":  "inproc",
+    "publisher":  "targeted",
+    "depth":  8,
+    "repeats":  3,
+    "rtdThrottleMs":  2000,
+    "coldMs":  167.60850000000002,
+    "editSamplesMs":  [
+                          22.282500000000002,
+                          32.4343,
+                          33.0461
+                      ],
+    "unchangedRecalcMs":  7.3341,
+    "checks":  [
+                   "chain",
+                   "changed input",
+                   "full recalc reuse",
+                   "formula reentry reuse",
+                   "scalar",
+                   "spill",
+                   "preview data",
+                   "workbook isolation",
+                   "restart"
+               ]
+}
