@@ -320,7 +320,7 @@ function Test-DuckConfig {
     # the successful path runs once, then idempotent/changed tests follow.
 
     # Test 1: Invalid SQL returns error (must be first — _configStatements is null)
-    $script:Sheet.Range("A1").Value2 = "INVALID SQL STATEMENT HERE"
+    Invoke-XlDuckExcel { $script:Sheet.Range("A1").Value2 = "INVALID SQL STATEMENT HERE" }
     Set-Formula "B1" '=DuckConfig(A1:A1)'
     $result1 = Get-CellValue "B1"
     Write-TestResult "Invalid SQL returns error" ($result1 -match "#duck://error/") "Got: $result1"
@@ -328,7 +328,7 @@ function Test-DuckConfig {
     Clear-TestRange
 
     # Test 2: Config with SQL statements (first successful call — sets _configStatements)
-    $script:Sheet.Range("A1").Value2 = "CREATE TABLE duck_config_test (id INT, name VARCHAR)"
+    Invoke-XlDuckExcel { $script:Sheet.Range("A1").Value2 = "CREATE TABLE duck_config_test (id INT, name VARCHAR)" }
     Set-Formula "B1" '=DuckConfig(A1:A1)'
     $result2 = Get-CellValue "B1"
     Write-TestResult "Config with statement returns handle" ($result2 -eq "duck://config|OK") "Got: $result2"
@@ -344,7 +344,7 @@ function Test-DuckConfig {
     Write-TestResult "Idempotent recalc returns same handle" ($result4 -eq "duck://config|OK") "Got: $result4"
 
     # Test 5: Changed inputs produce config error
-    $script:Sheet.Range("A1").Value2 = "CREATE TABLE duck_config_changed (id INT)"
+    Invoke-XlDuckExcel { $script:Sheet.Range("A1").Value2 = "CREATE TABLE duck_config_changed (id INT)" }
     Set-Formula "B1" '=DuckConfig(A1:A1)'
     $result5 = Get-CellValue "B1"
     Write-TestResult "Changed inputs return config error" ($result5 -match "#duck://error/\d+/config\|") "Got: $result5"
@@ -357,7 +357,7 @@ function Test-DuckConfig {
     Write-TestResult "AfterConfig unblocked by DuckConfig" ($result6 -match "^duck://table/\d+\|\d+x\d+$") "Got: $result6"
 
     # Test 7: Config handle usable as dependency arg
-    $script:Sheet.Range("B1").Value2 = "CREATE TABLE duck_config_test (id INT, name VARCHAR)"
+    Invoke-XlDuckExcel { $script:Sheet.Range("B1").Value2 = "CREATE TABLE duck_config_test (id INT, name VARCHAR)" }
     Set-Formula "C1" '=DuckConfig(B1:B1)'
     Set-Formula "D1" '=DuckQuery("SELECT 1 as num", C1)'
     $result7 = Get-CellValue "D1"
@@ -534,18 +534,18 @@ function Test-DuckCapture {
     Clear-TestRange
 
     # Setup: Put data into a range (headers + data)
-    $script:Sheet.Range("A1").Value2 = "name"
-    $script:Sheet.Range("B1").Value2 = "age"
-    $script:Sheet.Range("C1").Value2 = "city"
-    $script:Sheet.Range("A2").Value2 = "alice"
-    $script:Sheet.Range("B2").Value2 = 30
-    $script:Sheet.Range("C2").Value2 = "NYC"
-    $script:Sheet.Range("A3").Value2 = "bob"
-    $script:Sheet.Range("B3").Value2 = 25
-    $script:Sheet.Range("C3").Value2 = "LA"
-    $script:Sheet.Range("A4").Value2 = "charlie"
-    $script:Sheet.Range("B4").Value2 = 35
-    $script:Sheet.Range("C4").Value2 = "Chicago"
+    Invoke-XlDuckExcel { $script:Sheet.Range("A1").Value2 = "name" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("B1").Value2 = "age" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("C1").Value2 = "city" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("A2").Value2 = "alice" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("B2").Value2 = 30 }
+    Invoke-XlDuckExcel { $script:Sheet.Range("C2").Value2 = "NYC" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("A3").Value2 = "bob" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("B3").Value2 = 25 }
+    Invoke-XlDuckExcel { $script:Sheet.Range("C3").Value2 = "LA" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("A4").Value2 = "charlie" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("B4").Value2 = 35 }
+    Invoke-XlDuckExcel { $script:Sheet.Range("C4").Value2 = "Chicago" }
 
     # Test 1: Basic capture returns handle
     Set-Formula "E1" '=DuckCapture(A1:C4)'
@@ -578,10 +578,10 @@ function Test-DuckCapture {
 
     # Test 5: Empty cells become NULL
     Clear-TestRange
-    $script:Sheet.Range("A1").Value2 = "val"
-    $script:Sheet.Range("A2").Value2 = 10
+    Invoke-XlDuckExcel { $script:Sheet.Range("A1").Value2 = "val" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("A2").Value2 = 10 }
     # A3 intentionally left empty
-    $script:Sheet.Range("A4").Value2 = 30
+    Invoke-XlDuckExcel { $script:Sheet.Range("A4").Value2 = 30 }
 
     Set-Formula "B1" '=DuckCapture(A1:A4)'
     Set-Formula "C1" '=DuckQueryOut("SELECT COUNT(val) as cnt FROM ?", B1)'
@@ -616,19 +616,19 @@ function Test-DuckQueryOutScalar {
 
     # Test 5: DATE returns OLE Automation date double
     Set-Formula "F1" "=DuckQueryOutScalar(""SELECT DATE '2023-01-15'"")"
-    $script:Sheet.Range("F1").NumberFormat = "yyyy-mm-dd"
+    Invoke-XlDuckExcel { $script:Sheet.Range("F1").NumberFormat = "yyyy-mm-dd" }
     $dateVal = Get-CellValue "F1"
     Write-TestResult "DATE scalar" ($dateVal -eq ([datetime]'2023-01-15').ToOADate()) "Got: $dateVal"
 
     # Test 6: TIMESTAMP returns OLE Automation date double
     Set-Formula "G1" "=DuckQueryOutScalar(""SELECT TIMESTAMP '2023-06-15 14:30:00'"")"
-    $script:Sheet.Range("G1").NumberFormat = "yyyy-mm-dd hh:mm:ss"
+    Invoke-XlDuckExcel { $script:Sheet.Range("G1").NumberFormat = "yyyy-mm-dd hh:mm:ss" }
     $tsVal = Get-CellValue "G1"
     Write-TestResult "TIMESTAMP scalar" ([Math]::Abs($tsVal - ([datetime]'2023-06-15T14:30:00').ToOADate()) -lt 1e-9) "Got: $tsVal"
 
     # Test 7: TIME returns fractional day double
     Set-Formula "H1" "=DuckQueryOutScalar(""SELECT TIME '12:00:00'"")"
-    $script:Sheet.Range("H1").NumberFormat = "hh:mm:ss"
+    Invoke-XlDuckExcel { $script:Sheet.Range("H1").NumberFormat = "hh:mm:ss" }
     $timeVal = Get-CellValue "H1"
     Write-TestResult "TIME scalar" ($timeVal -eq 0.5) "Got: $timeVal"
 }
@@ -638,11 +638,11 @@ function Test-DuckDateFunctions {
     Clear-TestRange
 
     # Setup: Put dates into cells
-    $script:Sheet.Range("A1").Value2 = "2023-01-15"
-    $script:Sheet.Range("A1").NumberFormat = "yyyy-mm-dd"
+    Invoke-XlDuckExcel { $script:Sheet.Range("A1").Value2 = "2023-01-15" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("A1").NumberFormat = "yyyy-mm-dd" }
     # Force Excel to interpret as date by setting via NumberFormat
-    $script:Sheet.Range("B1").Formula2 = "=DATE(2023,6,15) + TIME(14,30,45)"
-    $script:Sheet.Range("B1").NumberFormat = "yyyy-mm-dd hh:mm:ss"
+    Invoke-XlDuckExcel { $script:Sheet.Range("B1").Formula2 = "=DATE(2023,6,15) + TIME(14,30,45)" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("B1").NumberFormat = "yyyy-mm-dd hh:mm:ss" }
 
     # Test 1: DuckDate returns ISO date string
     Set-Formula "C1" '=DuckDate(A1)'
@@ -656,8 +656,8 @@ function Test-DuckDateFunctions {
 
     # Test 3: DuckDate used as query parameter
     Set-Formula "E1" '=DuckQuery("SELECT * FROM range(5)")'
-    $script:Sheet.Range("F1").Formula2 = "=DATE(2023,1,1)"
-    $script:Sheet.Range("G1").Formula2 = "=DATE(2023,12,31)"
+    Invoke-XlDuckExcel { $script:Sheet.Range("F1").Formula2 = "=DATE(2023,1,1)" }
+    Invoke-XlDuckExcel { $script:Sheet.Range("G1").Formula2 = "=DATE(2023,12,31)" }
     Set-Formula "H1" '=DuckQueryOut("SELECT ? as start_date, ? as end_date", DuckDate(F1), DuckDate(G1))'
     $startDate = Get-CellValue "H2"
     $endDate = Get-CellValue "I2"
@@ -698,7 +698,7 @@ function Test-ReadCSV {
 
     # Test 3: String parameter binding (path as parameter)
     Clear-TestRange
-    $script:Sheet.Range("A1").Value2 = $csvPath
+    Invoke-XlDuckExcel { $script:Sheet.Range("A1").Value2 = $csvPath }
     Set-Formula "B1" '=DuckFrag("SELECT * FROM read_csv_auto(?)", A1)'
     Set-Formula "C1" '=DuckQueryOut("SELECT name FROM ? WHERE id = 1", B1)'
 
