@@ -5,14 +5,15 @@ using System.Text.Json;
 
 namespace XlDuck.Core;
 
-public enum WorkerOperation { Execute, Read, Drop, Cancel, Inspect }
-public sealed record WorkerRequest(Guid Id, WorkerOperation Operation, BackendRequest? Execution = null, ResultHandle? Handle = null, ReadRequest? Read = null, int Version = 1);
-public sealed record WorkerResponse(Guid Id, ComputationResult? Result = null, TablePage? Page = null, string? Error = null, bool Cancelled = false, bool Ready = false, int Version = 1, int? StoredTables = null);
+public enum WorkerOperation { Execute, Read, Drop, Cancel, Inspect, Validate }
+public sealed record WorkerStartup(ConnectionSettings Settings, int Version = WorkerProtocol.Version);
+public sealed record WorkerRequest(Guid Id, WorkerOperation Operation, BackendRequest? Execution = null, ResultHandle? Handle = null, ReadRequest? Read = null, int Version = WorkerProtocol.Version, PreparedQuery? Query = null);
+public sealed record WorkerResponse(Guid Id, ComputationResult? Result = null, TablePage? Page = null, string? Error = null, bool Cancelled = false, bool Ready = false, int Version = WorkerProtocol.Version, int? StoredTables = null);
 
 /// <summary>Length-prefixed UTF-8 frames keep malformed or oversized transfers from growing without bounds.</summary>
 public static class WorkerProtocol
 {
-    public const int Version = 1;
+    public const int Version = 2;
     public const int MaxFrameBytes = 32 * 1024 * 1024;
     public static async Task WriteAsync<T>(Stream stream, T message, CancellationToken token = default)
     {

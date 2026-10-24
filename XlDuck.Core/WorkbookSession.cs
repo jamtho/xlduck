@@ -253,7 +253,11 @@ public sealed class WorkbookSession : IAsyncDisposable
             {
                 linked.Token.ThrowIfCancellationRequested();
                 foreach (var dependency in entry.Dependencies) await dependency.Completion.Task.WaitAsync(linked.Token).ConfigureAwait(false);
-                if (entry.Request.Kind == RequestKind.Fragment) result = new(entry.Handle, [], 0);
+                if (entry.Request.Kind == RequestKind.Fragment)
+                {
+                    await (await _backend.Value.ConfigureAwait(false)).ValidateAsync(entry.Prepared!, linked.Token).ConfigureAwait(false);
+                    result = new(entry.Handle, [], 0);
+                }
                 else if (entry.Request.Kind == RequestKind.Plot)
                 {
                     var source = await entry.Dependencies[0].Completion.Task.ConfigureAwait(false);

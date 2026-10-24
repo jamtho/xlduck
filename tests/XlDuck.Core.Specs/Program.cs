@@ -239,6 +239,12 @@ await Check("worker framing preserves typed data and rejects oversized/truncated
     await WorkerProtocol.WriteAsync(stream, request);
     stream.Position = 0;
     Equal(request, await WorkerProtocol.ReadAsync<WorkerRequest>(stream));
+    using var startupStream = new MemoryStream();
+    await WorkerProtocol.WriteAsync(startupStream, new WorkerStartup(new()));
+    startupStream.Position = 0;
+    var startup = await WorkerProtocol.ReadAsync<WorkerStartup>(startupStream);
+    Equal(0, startup!.Settings.S3.Length);
+    Equal(false, startup.Settings.EnableExternalReads);
     using var oversized = new MemoryStream(BitConverter.GetBytes(WorkerProtocol.MaxFrameBytes + 1));
     try { await WorkerProtocol.ReadAsync<WorkerRequest>(oversized); throw new Exception("Expected size rejection."); } catch (IOException) { }
     using var truncated = new MemoryStream([1, 0]);
@@ -270,6 +276,7 @@ return failed == 0 ? 0 : 1;
 
 sealed class FakeBackend(bool block = false) : IExecutionBackend
 {
+    public Task ValidateAsync(PreparedQuery query, CancellationToken cancellationToken) => Task.CompletedTask;
     public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource Continue { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public CancellationToken Token;

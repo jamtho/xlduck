@@ -48,11 +48,12 @@ public sealed class AddIn : IExcelAddIn
 public static class Functions
 {
     private sealed record Caller(string Book, string Sheet, int Row, int Column);
-    private sealed class BookState(string workerPath) : IDisposable
+    private sealed class BookState(string workerPath, ConnectionSettings settings) : IDisposable
     {
         internal readonly string WorkerPath = workerPath;
+        internal readonly ConnectionSettings Settings = settings;
         // Zero historical entries deliberately stress live ownership in the integration tests.
-        internal readonly WorkbookSession Session = new(id => new WorkerBackend(id, workerPath), new(HistoricalResults: 0));
+        internal readonly WorkbookSession Session = new(id => new WorkerBackend(id, workerPath, settings), new(HistoricalResults: 0));
         internal readonly Dictionary<Caller, Binding> Cells = new();
         public void Dispose()
         {
@@ -186,7 +187,15 @@ public static class Functions
     public static void CoreInitialize(string workerPath, string workbookName)
     {
         Close(workbookName);
-        Books[workbookName] = new(Path.GetFullPath(workerPath));
+        Books[workbookName] = new(Path.GetFullPath(workerPath), new());
+    }
+    [ExcelCommand]
+    public static void CoreInitializeWithSettings(string workerPath, string workbookName, string settingsJson)
+    {
+        var settings = JsonSerializer.Deserialize<ConnectionSettings>(settingsJson) ?? throw new ArgumentException("Missing settings.");
+        settings.Validate();
+        Close(workbookName);
+        Books[workbookName] = new(Path.GetFullPath(workerPath), settings);
     }
     [ExcelFunction]
     public static string CoreStatistics(string workbookName) => Books.TryGetValue(workbookName, out var book) ? JsonSerializer.Serialize(book.Session.Statistics) : "";
@@ -194,7 +203,9 @@ public static class Functions
     public static void CoreRestart(string workbookName)
     {
         var path = Books[workbookName].WorkerPath;
-        CoreInitialize(path, workbookName);
+        var settings = Books[workbookName].Settings;
+        Close(workbookName);
+        Books[workbookName] = new(path, settings);
         WithBook(workbookName, book =>
         {
             var sheets = book.Worksheets;

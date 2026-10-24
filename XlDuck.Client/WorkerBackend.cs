@@ -21,10 +21,11 @@ public sealed class WorkerBackend : IExecutionBackend
     public int ProcessId { get; }
     public string StoragePath => _storage.Path;
 
-    public WorkerBackend(Guid sessionId, string workerPath)
+    public WorkerBackend(Guid sessionId, string workerPath, ConnectionSettings? settings = null)
     {
         try
         {
+            (settings ??= new()).Validate();
             var start = new ProcessStartInfo(Path.GetFullPath(workerPath))
             {
                 UseShellExecute = false, CreateNoWindow = true,
@@ -39,8 +40,21 @@ public sealed class WorkerBackend : IExecutionBackend
         // Drain diagnostics without logging potentially sensitive SQL or values.
         _process.ErrorDataReceived += (_, _) => { };
         _process.BeginErrorReadLine();
-        _reader = ReadResponsesAsync();
+        _reader = StartAsync(settings);
     }
+    private async Task StartAsync(ConnectionSettings settings)
+    {
+        try
+        {
+            await _writes.WaitAsync().ConfigureAwait(false);
+            try { await WorkerProtocol.WriteAsync(_process.StandardInput.BaseStream, new WorkerStartup(settings)).ConfigureAwait(false); }
+            finally { _writes.Release(); }
+        }
+        catch (Exception error) { _ready.TrySetException(error); StopOwnedWorker(); }
+        await ReadResponsesAsync().ConfigureAwait(false);
+    }
+    public async Task ValidateAsync(PreparedQuery query, CancellationToken token) =>
+        _ = await CallAsync(new(Guid.NewGuid(), WorkerOperation.Validate, Query: query), token).ConfigureAwait(false);
     public async Task<ComputationResult> ExecuteAsync(BackendRequest request, CancellationToken token) =>
         (await CallAsync(new(Guid.NewGuid(), WorkerOperation.Execute, Execution: request), token).ConfigureAwait(false)).Result
         ?? throw new IOException("Worker response omitted the result.");

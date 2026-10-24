@@ -108,6 +108,25 @@ try {
     Wait-Value 'D2' 42
     if ($null -ne $sheet.Range('A1').Value2) { throw 'Late completion changed a deleted cell.' }
     Pass 'deleting a pending formula cancels work and allows recovery'
+    Invoke-XlDuckExcel { $sheet.Range('A1:M20').ClearContents() }
+    $sourcePath = (Resolve-Path (Join-Path $PSScriptRoot 'data/sample.csv')).Path
+    Invoke-XlDuckExcel { $sheet.Range('B1').Value2 = $sourcePath }
+    Formula 'A1' '=CoreQuery("SELECT sum(value) FROM read_csv(?)", B1)'
+    [void](Wait-XlDuckCell $sheet 'A1' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') -and $v.Contains('disabled') })
+    $settings = @{ EnableExternalReads = $true; S3 = @() } | ConvertTo-Json -Compress
+    $excel.Run('CoreInitializeWithSettings', $worker, $session.WorkbookName, $settings) | Out-Null
+    Formula 'A1' '=CoreQuery("SELECT sum(value) FROM read_csv(?)", B1)'; Formula 'D1' '=CoreScalar(A1)'
+    Wait-Value 'D1' 600
+    $excel.Run('CoreRestart', $session.WorkbookName) | Out-Null
+    Wait-Value 'D1' 600
+    Pass 'host enablement permits local reads and survives workbook restart'
+    foreach ($formula in @('=CoreQuery("CREATE TABLE forbidden(i INT)")', '=CoreQuery("SELECT * FROM enable_logging()")', '=CoreFragment("SELECT * FROM query(''SELECT 1'')")')) {
+        Formula 'F1' $formula
+        [void](Wait-XlDuckCell $sheet 'F1' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') -and $v.Contains('read-and-compute') })
+    }
+    Formula 'F2' '=CoreQuery("SELECT count(*) FROM duckdb_tables() WHERE table_name=''forbidden''")'; Formula 'G2' '=CoreScalar(F2)'
+    Wait-Value 'G2' 0
+    Pass 'worksheet queries and fragments reject mutation and dynamic SQL without effects'
     Write-Host "$passed Excel core checks passed."
 } finally {
     if ($session -and $session.Application) {

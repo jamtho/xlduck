@@ -5,10 +5,13 @@ using XlDuck.Core;
 using XlDuck.Engine;
 
 if (args.Length != 4 || args[0] != "--session" || args[2] != "--spill" || !Guid.TryParseExact(args[1], "N", out var session) || !Directory.Exists(args[3])) return 2;
-await using var backend = new DuckDbBackend(session, args[3]);
 using var outputGate = new SemaphoreSlim(1);
 using var input = Console.OpenStandardInput();
 using var output = Console.OpenStandardOutput();
+var startup = await WorkerProtocol.ReadAsync<WorkerStartup>(input) ?? throw new IOException("Missing startup settings.");
+if (startup.Version != WorkerProtocol.Version) throw new IOException("Unsupported startup protocol version.");
+startup.Settings.Validate();
+await using var backend = new DuckDbBackend(session, args[3], startup.Settings);
 var requests = new ConcurrentDictionary<Guid, CancellationTokenSource>();
 var running = new ConcurrentDictionary<Guid, Task>();
 await Send(new(Guid.Empty, Ready: true));
@@ -56,6 +59,7 @@ async Task Respond(WorkerRequest request, CancellationTokenSource cancellation)
             WorkerOperation.Read => new(request.Id, Page: await backend.ReadAsync(request.Handle ?? throw new ArgumentException("Missing handle."), request.Read ?? throw new ArgumentException("Missing read request."), cancellation.Token)),
             WorkerOperation.Drop => await Drop(request),
             WorkerOperation.Inspect => new(request.Id, StoredTables: backend.TableCount),
+            WorkerOperation.Validate => await Validate(request, cancellation.Token),
             _ => throw new ArgumentException("Unsupported worker operation.")
         };
     }
@@ -68,5 +72,10 @@ async Task Respond(WorkerRequest request, CancellationTokenSource cancellation)
 async Task<WorkerResponse> Drop(WorkerRequest request)
 {
     await backend.DropAsync(request.Handle ?? throw new ArgumentException("Missing handle."));
+    return new(request.Id);
+}
+async Task<WorkerResponse> Validate(WorkerRequest request, CancellationToken token)
+{
+    await backend.ValidateAsync(request.Query ?? throw new ArgumentException("Missing query."), token);
     return new(request.Id);
 }

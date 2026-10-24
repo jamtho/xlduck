@@ -32,7 +32,7 @@ Use positional `?` arguments. Scalar values are bound parameters, including text
 
 The scanner respects single-quoted strings, escaped `E'...'` strings, quoted identifiers, dollar-quoted strings, line comments and nested block comments. A final semicolon is accepted; multiple statements are rejected. Named `$parameters` are reserved for the binder. Identifiers containing `$` must be quoted. Placeholder count must match argument count. Nesting is capped at 64 and cumulative expansion work is bounded; materialize a shared intermediate result if fragment expansion becomes excessive.
 
-DuckDB's own SQL parser also validates the single SELECT query before internal materialization. This is only the statement check. The full reader/function/extension capability policy is not implemented, and **external access is disabled** in this stage. Do not enable external access or replace the normal worksheet path until that policy and workbook enablement are implemented. Worker isolation is not an OS security sandbox.
+DuckDB's own SQL parser validates the single SELECT query and its capabilities before binding or internal materialization. Fragments are also checked when acquired. The [read-and-compute policy](../XlDuck.Engine/README.md) covers functions, macros, readers, extensions and host-owned connection settings. External reads are disabled by default; the test host can explicitly enable local files and supported HTTP/S3 readers. Production workbook enablement remains to be implemented. Worker isolation is not an OS security sandbox.
 
 ## Values
 
@@ -68,7 +68,7 @@ The client owns a newly created temporary spill directory and removes it after s
 
 ## Evidence and remaining host work
 
-On 24 October 2026: 17 core specifications, 14 direct-engine cases, 17 worker cases and nine real Excel integration checks pass. Tests cover exact values, placeholder parsing, shared work, fragments/plots, bounded history/admission, native cancellation, physical table cleanup, worker failure, blocked transport and excessive fragment expansion. New regression cases were observed failing before the transport and expansion fixes.
+On 24 October 2026: 17 core specifications, 14 direct-engine cases, 17 worker cases, 17 capability/reader cases in each engine mode and 11 real Excel integration checks pass. Tests cover exact values, placeholder parsing, shared work, fragments/plots, bounded history/admission, native cancellation, physical table cleanup, worker failure, blocked transport, excessive fragment expansion and read-and-compute enforcement. New regression cases were observed failing before the transport, expansion and CTE ownership fixes. HTTP/S3 tests use local fixtures, not a live cloud account.
 
 The Excel path exercises a source plus eight dependent queries, scalar and spilled outputs, captured ranges and fragment plot data. Input edits settled in about 30–41 ms across the recorded checks on this development machine. Full calculation and unchanged formula reentry reused live results with historical caching disabled. Clearing formulas released all result nodes, and restart preserved another workbook's results.
 

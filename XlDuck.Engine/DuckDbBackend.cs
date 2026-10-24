@@ -10,14 +10,15 @@ using XlDuck.Core;
 
 namespace XlDuck.Engine;
 
-/// <summary>Serial, session-owned storage. External access stays disabled until the reader capability policy is implemented.</summary>
-public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null) : IExecutionBackend
+/// <summary>Serial, session-owned storage. Every worksheet query passes the read-and-compute policy.</summary>
+public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null, ConnectionSettings? settings = null) : IExecutionBackend
 {
     private readonly SessionDirectory? _ownedDirectory = spillDirectory is null ? new() : null;
     private readonly SemaphoreSlim _gate = new(1);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<ResultHandle, ComputationResult> _tables = new();
     private DuckDBConnection? _connection;
+    private ReadComputePolicy? _policy;
     private Task? _disposal;
     private readonly object _disposeSync = new();
     public int TableCount { get; private set; }
@@ -33,21 +34,12 @@ public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null)
                 linked.Token.ThrowIfCancellationRequested();
                 if (_connection is null)
                 {
-                    var connection = new DuckDBConnection("DataSource=:memory:");
-                    try
-                    {
-                        connection.Open();
-                        using var setup = connection.CreateCommand();
-                        var temporaryPath = spillDirectory ?? _ownedDirectory!.Path;
-                        setup.CommandText = $"SET threads=2; SET memory_limit='512MB'; SET temp_directory='{temporaryPath.Replace("'", "''", StringComparison.Ordinal)}'; SET max_temp_directory_size='1GiB'; SET autoinstall_known_extensions=false; SET autoload_known_extensions=false; SET enable_external_access=false;";
-                        setup.ExecuteNonQuery();
-                        _connection = connection;
-                    }
-                    catch { connection.Dispose(); throw; }
+                    _connection = ConnectionSetup.Open(settings ?? new(), spillDirectory ?? _ownedDirectory!.Path, out _policy);
                 }
                 using var interrupt = linked.Token.Register(() => _connection.NativeConnection.Interrupt());
                 try { return action(linked.Token); }
                 catch when (linked.IsCancellationRequested) { throw new OperationCanceledException(linked.Token); }
+                catch (DuckDBException error) { throw new InvalidOperationException(QueryDiagnostics.PublicMessage(error.Message)); }
             }, linked.Token).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
@@ -66,7 +58,7 @@ public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null)
             {
                 var query = request.Query ?? throw new ArgumentException("Query is missing.");
                 foreach (var input in query.Tables) Resolve(input);
-                ValidateSelect(query.Sql);
+                _policy!.Validate(query.Sql, query.Tables);
                 using var command = _connection!.CreateCommand();
                 command.CommandText = $"CREATE TEMP TABLE {name} AS {query.Sql}";
                 foreach (var parameter in query.Parameters) AddParameter(command, parameter.Name, parameter.Value);
@@ -93,17 +85,12 @@ public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null)
         }
     }, token);
 
-    // Use DuckDB's parser before execution, rather than a SELECT-prefix filter. This is not the full extension/function policy.
-    private void ValidateSelect(string sql)
+    public async Task ValidateAsync(PreparedQuery query, CancellationToken token) => await WithConnection(_ =>
     {
-        using var command = _connection!.CreateCommand();
-        command.CommandText = "SELECT json_serialize_sql(CAST($sql AS VARCHAR))";
-        command.Parameters.Add(new DuckDBParameter("sql", DbType.String, sql));
-        using var parsed = JsonDocument.Parse((string)command.ExecuteScalar()!);
-        var root = parsed.RootElement;
-        if (root.GetProperty("error").GetBoolean() || root.GetProperty("statements").GetArrayLength() != 1)
-            throw new ArgumentException("Only one read-and-compute SELECT query is supported. DDL, DML, settings and multiple statements are not allowed.");
-    }
+        foreach (var input in query.Tables) Resolve(input);
+        _policy!.Validate(query.Sql, query.Tables);
+        return true;
+    }, token).ConfigureAwait(false);
 
     public Task<TablePage> ReadAsync(ResultHandle handle, ReadRequest request, CancellationToken token) => WithConnection(ct =>
     {

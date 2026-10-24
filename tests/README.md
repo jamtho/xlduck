@@ -11,12 +11,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1 -Wit
 
 Use `-NoBuild` for an existing build, or `-NoRestore` when dependencies have already been restored. The default build needs NuGet access. `-WithExcel` creates and closes an owned Excel instance; it never selects an existing user workbook. Worker crash and blocked-pipe cases deliberately terminate only their own child processes.
 
-The suites can also run individually after building `XlDuck.Worker`, both specification projects and (for Excel) `tests/XlDuck.TestAddIn`:
+For HTTP/S3 integration, acquire the pinned official development readers once, then opt into loopback network tests:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Get-ReaderExtensions.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1 -WithExcel -WithReaders
+```
+
+The acquisition script needs internet access and verifies exact extension hashes. Queries never install extensions. Reader tests use an owned local server, temporary files and dummy AWS credentials in the test process and its child. They do not access a real bucket or change user credential files. Named-profile and authentication-header tests are not live AWS/SSO validation. The policy suite without `-WithReaders` still tests local readers and prohibited capabilities.
+
+The suites can also run individually after building `XlDuck.Worker`, the three specification projects and (for Excel) `tests/XlDuck.TestAddIn`:
 
 ```powershell
 dotnet run --project tests/XlDuck.Core.Specs --no-build --no-restore
 dotnet run --project tests/XlDuck.Engine.Specs --no-build --no-restore
 dotnet run --project tests/XlDuck.Engine.Specs --no-build --no-restore -- --worker
+dotnet run --project tests/XlDuck.Policy.Specs --no-build --no-restore -- --readers
+dotnet run --project tests/XlDuck.Policy.Specs --no-build --no-restore -- --worker --readers
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-NewCore.ps1 -NoBuild
 ```
 

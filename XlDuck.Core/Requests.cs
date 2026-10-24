@@ -77,6 +77,7 @@ public sealed record BackendRequest(ResultHandle Output, PreparedQuery? Query = 
 
 public interface IExecutionBackend : IAsyncDisposable
 {
+    Task ValidateAsync(PreparedQuery query, CancellationToken cancellationToken);
     Task<ComputationResult> ExecuteAsync(BackendRequest request, CancellationToken cancellationToken);
     Task<TablePage> ReadAsync(ResultHandle handle, ReadRequest request, CancellationToken cancellationToken);
     Task DropAsync(ResultHandle handle);
