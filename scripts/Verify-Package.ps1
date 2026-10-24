@@ -23,7 +23,7 @@ foreach ($required in @('XlDuck-AddIn64.xll','worker/XlDuck.Worker.exe','worker/
 }
 Write-Host "PASS package manifest: $($manifest.Count) files; x64 host, worker, readers and preview present."
 if (Test-Path -LiteralPath ($root + '.zip')) {
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    Add-Type -AssemblyName System.IO.Compression,System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::OpenRead($root + '.zip')
     try {
         $prefix = (Split-Path $root -Leaf) + '/'

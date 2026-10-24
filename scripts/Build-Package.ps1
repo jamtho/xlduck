@@ -67,7 +67,7 @@ $manifest = Get-ChildItem -LiteralPath $package -Recurse -File | ForEach-Object 
 $manifest | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $package 'manifest.json')
 # Windows PowerShell's Compress-Archive writes backslash entry names. Emit standard
 # ZIP paths explicitly so extraction works consistently across archive tools.
-Add-Type -AssemblyName System.IO.Compression.FileSystem
+Add-Type -AssemblyName System.IO.Compression,System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::Open(($package + '.zip'), [IO.Compression.ZipArchiveMode]::Create)
 try {
     $prefix = (Split-Path $package -Leaf) + '/'
