@@ -8,6 +8,8 @@ The modernized implementation is a development build, **0.2.0-dev**. It replaces
 
 ## Start an analysis
 
+The [research demo](examples/research-demo/README.md) provides a self-contained workbook with editable filters, a visible query graph and two preview charts. Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Open-Demo.ps1` to try a working copy in a separate Excel instance.
+
 Enable the workbook using **XlDuck > Enable / Connections**. Then enter:
 
 ```excel
