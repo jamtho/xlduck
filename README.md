@@ -6,6 +6,8 @@
 
 Excel add-in wrapping DuckDB for in-cell SQL queries.
 
+Modernization is underway: see the [implementation plan](PLAN-modernization.md) and [new core contract](XlDuck.Core/README.md). The new worker engine currently runs through a separate integration-test add-in. The functions and installation instructions below still describe the existing add-in.
+
 For a visual tour of the handle model, RTD lifecycle, preview pane, and configuration flow, see the [architecture infographic](#architecture-infographic). For the full written design notes, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Prerequisites

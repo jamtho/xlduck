@@ -1,5 +1,29 @@
 # XlDuck tests
 
+## New core and worker
+
+The new implementation has UI-independent core specifications, real DuckDB cases in both direct and worker modes, and a separate Excel test add-in. From the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1 -WithExcel
+```
+
+Use `-NoBuild` for an existing build, or `-NoRestore` when dependencies have already been restored. The default build needs NuGet access. `-WithExcel` creates and closes an owned Excel instance; it never selects an existing user workbook. Worker crash and blocked-pipe cases deliberately terminate only their own child processes.
+
+The suites can also run individually after building `XlDuck.Worker`, both specification projects and (for Excel) `tests/XlDuck.TestAddIn`:
+
+```powershell
+dotnet run --project tests/XlDuck.Core.Specs --no-build --no-restore
+dotnet run --project tests/XlDuck.Engine.Specs --no-build --no-restore
+dotnet run --project tests/XlDuck.Engine.Specs --no-build --no-restore -- --worker
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-NewCore.ps1 -NoBuild
+```
+
+The [core contract and limitations](../XlDuck.Core/README.md) describe what this validates. The Excel test add-in is not the public host. Its preview test checks plot data and retention, not rendered charts. Production `XlDuck/` still uses the legacy implementation.
+
+## Existing add-in and regression baseline
+
 The Excel suite creates a new Excel process and workbook, checks that it owns that process, and closes only its own workbook. It does not attach to the active workbook. Run it from the repository root on Windows with 64-bit Excel installed:
 
 ```powershell
@@ -18,7 +42,7 @@ The core regression executable links the existing computational source with mini
 dotnet run --project tests/XlDuck.Core.Tests
 ```
 
-For recording the current baseline, append `-- --allow-known-defects`. This permits only cases explicitly marked as known defects; unexpected failures still fail the run. The output reports known defects separately. Remove each known-defect marker when its fix lands. Milestone 3 will replace the legacy source links with the extracted core project.
+For recording the current baseline, append `-- --allow-known-defects`. This permits only cases explicitly marked as known defects; unexpected failures still fail the run. The output reports known defects separately. Keep these legacy tests until the production entry points are migrated; the new `XlDuck.Core.Specs` project independently verifies the corrected implementation. Do not remove legacy known-defect markers merely because the new core passes.
 
 Preview tests run the real embedded HTML in a separate headless Edge profile with all page network requests blocked. Install the pinned Playwright dependency in `tests/preview`, or supply an existing Playwright installation through `NODE_PATH`:
 

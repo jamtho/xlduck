@@ -21,6 +21,8 @@ The Excel workload contains a source query, eight dependent query cells, and a s
 
 Notification delay dominates the ordinary RTD chain. The worker and in-process edit timings overlap at this sample size. The cold timings start after loading the XLL and include lazy engine/worker initialization; they do not measure Excel launch or installation.
 
+The ordinary RTD column is the fully asynchronous prototype, not the existing production add-in. Production already waits briefly (up to one second) for a new topic to finish and can return short-query results immediately. These measurements therefore do not establish a 20-second-to-milliseconds speedup over production. The new approach removes that blocking wait while avoiding repeated RTD delays in a dependent chain: a completion queues targeted cell recalculation, and the UDF then returns the cached completed result directly. It does not force RTD to deliver faster than its global throttle.
+
 The separate engine harness excludes Excel and measures a chain of 20 queries:
 
 | Engine workload | In-process | Worker |
@@ -66,6 +68,6 @@ The installed .NET 8 runtime is a measurement baseline, not the intended public-
 
 Only one modern .NET runtime can be loaded into an Excel process. Moving DuckDB outside Excel does not remove the Excel host's own runtime compatibility constraint. Before changing the production target, test .NET 10 loading, both load orders with representative other add-ins, and the native/worker deployment layout. [Excel-DNA documents this constraint](https://excel-dna.net/docs/guides-basic/dotnet-runtime-support/). The current two-add-in .NET 8 test does not close that gate.
 
-The production core, host/runtime packaging, supported readers, WebView2 update, and clean-machine release tests remain unimplemented. The prototype also does not cover Save As, a user cancelling workbook closure, workbook reopen/trust persistence, full chart rendering, or large-data retention pressure. These are explicit remaining work, not implied successes of the lifecycle samples.
+At the time of this prototype checkpoint the production core, host/runtime packaging, supported readers, WebView2 update, and clean-machine release tests remained unimplemented. Subsequent core work is tracked in [the modernization plan](../../PLAN-modernization.md) and [core contract](../../XlDuck.Core/README.md). The prototype itself does not cover Save As, a user cancelling workbook closure, workbook reopen/trust persistence, full chart rendering, or large-data retention pressure. These are explicit remaining work, not implied successes of the lifecycle samples.
 
 Milestone 1 is complete. Milestone 2 has established the worker/publication decision and calculation-mode limit; its runtime/deployment compatibility gate remains open. The next production slice is the typed core and owned workbook sessions, followed by the read-and-compute boundary and one integrated research workflow.
