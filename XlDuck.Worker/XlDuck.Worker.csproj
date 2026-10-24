@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../XlDuck.Engine/XlDuck.Engine.csproj" /></ItemGroup>
 </Project>

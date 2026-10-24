@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "DuckDB.NET.Data.Full": {
+        "type": "Direct",
+        "requested": "[1.5.6.1, )",
+        "resolved": "1.5.6.1",
+        "contentHash": "I+pTZK34r63v+luh85DQwb64sgJ9jk31fZEiulGpog1XSJ5cwWcVcTleZHYJR+8ohvOXXminagL4EPJ3XGWF6w==",
+        "dependencies": {
+          "Apache.Arrow": "23.0.0",
+          "DuckDB.NET.Bindings.Full": "1.5.6.1"
+        }
+      },
+      "Apache.Arrow": {
+        "type": "Transitive",
+        "resolved": "23.0.0",
+        "contentHash": "cU4Zm7byFwnb82Ea9ZRvVnq2nJNf/TF9j+rj/MHlvu9RBYMqYtu4sJaR1JmMh3MmSIuwMafVg7PfJxPAMv9dGw==",
+        "dependencies": {
+          "Apache.Arrow.Scalars": "23.0.0"
+        }
+      },
+      "Apache.Arrow.Scalars": {
+        "type": "Transitive",
+        "resolved": "23.0.0",
+        "contentHash": "i53VmQ505ASXsStf7y29Z5qvhN6PGgFGNb6UUU7z1WmbzEgSjKQuIJkKKVbh+K5rtXRiKyr1Ah3Rmvbeb2BEHQ=="
+      },
+      "DuckDB.NET.Bindings.Full": {
+        "type": "Transitive",
+        "resolved": "1.5.6.1",
+        "contentHash": "Lk/w0DHTr2MjhTFnSkO0+al6FpdZBfxXESDzULKuNVrIOI6r+nUaFE4rlOo0L+ZgBSTVd6qqHriGL7gu4OSJDA=="
+      },
+      "xlduck.core": {
+        "type": "Project"
+      }
+    }
+  }
+}

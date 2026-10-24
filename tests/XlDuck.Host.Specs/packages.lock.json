@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "xlduck.core": {
+        "type": "Project"
+      },
+      "xlduck.host": {
+        "type": "Project",
+        "dependencies": {
+          "XlDuck.Core": "[0.2.0-dev, )"
+        }
+      }
+    }
+  }
+}

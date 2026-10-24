@@ -3,11 +3,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using XlDuck.Host;
 
 namespace XlDuck.Preview;
 
@@ -57,7 +57,7 @@ public class PreviewPane : UserControl, IPreviewPane
         base.OnLoad(e);
         Log.Write("[PreviewPane] OnLoad");
 
-        if (DesignMode) return;
+        if (DesignMode || _webView is not null) return;
 
         await InitializeWebViewAsync();
     }
@@ -81,16 +81,38 @@ public class PreviewPane : UserControl, IPreviewPane
 
             Log.Write($"[PreviewPane] Using WebView2 user data folder: {userDataFolder}");
             var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+            if (IsDisposed || Disposing) return;
 
             Log.Write("[PreviewPane] Calling EnsureCoreWebView2Async");
             await _webView.EnsureCoreWebView2Async(env);
+            if (IsDisposed || Disposing) return;
             Log.Write("[PreviewPane] WebView2 core initialized");
 
-            // Load embedded HTML
-            var html = LoadEmbeddedHtml();
-            _webView.NavigateToString(html);
-
+            var core = _webView.CoreWebView2;
+            core.Settings.AreHostObjectsAllowed = false;
+            core.Settings.AreDefaultScriptDialogsEnabled = false;
+            core.Settings.AreDefaultContextMenusEnabled = false;
+            core.Settings.AreDevToolsEnabled = false;
+            core.Settings.IsStatusBarEnabled = false;
+            core.Settings.IsWebMessageEnabled = true;
+            var folder = Path.Combine(WorkbookHost.InstallDirectory, "preview");
+            if (!File.Exists(Path.Combine(folder, "vega.min.js")))
+                throw new FileNotFoundException("Preview libraries are missing. Repair the XlDuck installation.");
+            core.SetVirtualHostNameToFolderMapping(PreviewAccess.Host, folder, CoreWebView2HostResourceAccessKind.Deny);
+            core.NavigationStarting += (_, args) => args.Cancel = !PreviewAccess.CanNavigate(args.Uri);
+            core.FrameNavigationStarting += (_, args) => args.Cancel = true;
+            core.NewWindowRequested += (_, args) => args.Handled = true;
+            core.DownloadStarting += (_, args) => args.Cancel = true;
+            core.PermissionRequested += (_, args) => args.State = CoreWebView2PermissionState.Deny;
+            core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+            core.WebResourceRequested += (_, args) =>
+            {
+                // Virtual-host assets are resolved by WebView2 before this event.
+                if (args.ResourceContext == CoreWebView2WebResourceContext.Image && args.Request.Method == "GET" && PreviewAccess.IsMapTile(args.Request.Uri)) return;
+                args.Response = env.CreateWebResourceResponse(null, 403, "Blocked", "Content-Type: text/plain");
+            };
             _webView.NavigationCompleted += OnNavigationCompleted;
+            core.Navigate(PreviewAccess.Document);
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -101,6 +123,7 @@ public class PreviewPane : UserControl, IPreviewPane
         }
         catch (Exception ex)
         {
+            if (IsDisposed || Disposing) return;
             Log.Error("PreviewPane.InitializeWebViewAsync", ex);
             ShowFallbackMessage($"Failed to initialize preview:\n{ex.Message}");
         }
@@ -109,7 +132,8 @@ public class PreviewPane : UserControl, IPreviewPane
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
         Log.Write($"[PreviewPane] NavigationCompleted, success={e.IsSuccess}");
-        _isWebViewReady = true;
+        _isWebViewReady = e.IsSuccess;
+        if (!e.IsSuccess) { ShowFallbackMessage("Preview failed to load. Repair the XlDuck installation."); return; }
 
         // Compensate for DPI double-scaling: the host task pane already handles
         // DPI scaling, so partially undo the extra scaling WebView2 applies.
@@ -183,25 +207,12 @@ public class PreviewPane : UserControl, IPreviewPane
         Controls.Add(_fallbackLabel);
     }
 
-    private static string LoadEmbeddedHtml()
-    {
-        var assembly = Assembly.GetExecutingAssembly();
-        var resourceName = "XlDuck.Preview.preview.html";
-
-        using var stream = assembly.GetManifestResourceStream(resourceName);
-        if (stream == null)
-        {
-            throw new InvalidOperationException($"Embedded resource not found: {resourceName}");
-        }
-
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
-    }
-
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            _isWebViewReady = false;
+            _pendingJson = null;
             _webView?.Dispose();
         }
         base.Dispose(disposing);

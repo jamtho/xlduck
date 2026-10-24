@@ -45,6 +45,8 @@ public sealed class WorkbookSession : IAsyncDisposable
     private readonly LinkedList<Entry> _history = new();
     private readonly HashSet<Task> _cleanup = new();
     private readonly HashSet<Task<TablePage>> _reads = new();
+    private readonly HashSet<CancellationTokenSource> _readCancellations = new();
+    private TaskCompletionSource? _resume;
     private readonly Channel<Entry> _queue;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Task _runner;
@@ -55,6 +57,41 @@ public sealed class WorkbookSession : IAsyncDisposable
     private int _executions;
     public Guid Id { get; } = Guid.NewGuid();
     public bool IsClosed { get { lock (_sync) return _closed; } }
+    public bool IsPaused { get { lock (_sync) return _resume is not null; } }
+
+    public void SetPaused(bool paused)
+    {
+        lock (_sync)
+        {
+            EnsureOpen();
+            if (paused) _resume ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
+            else { _resume?.TrySetResult(); _resume = null; }
+        }
+    }
+
+    public void CancelPending()
+    {
+        lock (_sync)
+        {
+            EnsureOpen();
+            foreach (var entry in _handles.Values.Where(entry => !entry.Completion.Task.IsCompleted).ToArray()) entry.Cancellation.Cancel();
+            foreach (var cancellation in _readCancellations.ToArray()) cancellation.Cancel();
+        }
+    }
+
+    public ComputationRequest GetDefinition(ResultHandle handle) { lock (_sync) return Find(handle).Request; }
+
+    /// <summary>Permit new attempts on the next calculation, including in manual mode.
+    /// Existing failed handles remain immutable until their owners release them.</summary>
+    public void InvalidateFailuresForRetry()
+    {
+        lock (_sync)
+        {
+            EnsureOpen();
+            foreach (var (key, entry) in _requests.ToArray())
+                if (entry.Completion.Task.IsFaulted || entry.Completion.Task.IsCanceled) _requests.Remove(key);
+        }
+    }
 
     public WorkbookSession(Func<Guid, IExecutionBackend> backendFactory, SessionOptions? options = null)
     {
@@ -86,7 +123,7 @@ public sealed class WorkbookSession : IAsyncDisposable
         lock (_sync)
         {
             EnsureOpen();
-            if (_requests.TryGetValue(key, out var cached) && !(retryFailed && cached.Completion.Task.IsFaulted)) return Lease(cached);
+            if (_requests.TryGetValue(key, out var cached) && !(retryFailed && (cached.Completion.Task.IsFaulted || cached.Completion.Task.IsCanceled))) return Lease(cached);
             if (_pending + _cleanup.Count >= _options.MaxPending)
                 throw new InvalidOperationException("This workbook's computation queue is full. Wait for pending work, then retry.");
 
@@ -152,9 +189,14 @@ public sealed class WorkbookSession : IAsyncDisposable
         {
             EnsureOpen();
             if (_reads.Count >= _options.MaxPending) throw new InvalidOperationException("This workbook's output queue is full. Retry after pending output finishes.");
-            var task = ReadCoreAsync(handle, request, token);
+            var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            _readCancellations.Add(cancellation);
+            var task = ReadCoreAsync(handle, request, cancellation.Token);
             _reads.Add(task);
-            _ = task.ContinueWith(completed => { lock (_sync) _reads.Remove(completed); }, TaskScheduler.Default);
+            _ = task.ContinueWith(completed =>
+            {
+                lock (_sync) { _reads.Remove(completed); _readCancellations.Remove(cancellation); cancellation.Dispose(); }
+            }, TaskScheduler.Default);
             return task;
         }
     }
@@ -252,6 +294,9 @@ public sealed class WorkbookSession : IAsyncDisposable
             try
             {
                 linked.Token.ThrowIfCancellationRequested();
+                Task resumed;
+                lock (_sync) resumed = _resume?.Task ?? Task.CompletedTask;
+                await resumed.WaitAsync(linked.Token).ConfigureAwait(false);
                 foreach (var dependency in entry.Dependencies) await dependency.Completion.Task.WaitAsync(linked.Token).ConfigureAwait(false);
                 if (entry.Request.Kind == RequestKind.Fragment)
                 {

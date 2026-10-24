@@ -1,456 +1,81 @@
-<p align="center">
-  <img src="docs/assets/xlduck-logo.png" alt="XLDuck logo" width="360">
-</p>
+<p align="center"><img src="docs/assets/xlduck-logo.png" alt="XlDuck" width="360"></p>
 
-# XLDuck
+# XlDuck
 
-Excel add-in wrapping DuckDB for in-cell SQL queries.
+XlDuck lets researchers build SQL analyses through Excel cells. DuckDB computes tables in a worker process; cells hold handles that connect sources, intermediate analyses, outputs and charts. Excel owns the dependency graph. AI working inside Excel can write the SQL and inspect results through the same worksheet functions.
 
-Modernization is underway: see the [implementation plan](PLAN-modernization.md) and [new core contract](XlDuck.Core/README.md). The new worker engine currently runs through a separate integration-test add-in. The functions and installation instructions below still describe the existing add-in.
+The modernized implementation is a development build, **0.2.0-dev**. It replaces the old shared engine and unrestricted configuration API. Public release checks remain in [the plan](PLAN-modernization.md).
 
-For a visual tour of the handle model, RTD lifecycle, preview pane, and configuration flow, see the [architecture infographic](#architecture-infographic). For the full written design notes, see [ARCHITECTURE.md](ARCHITECTURE.md).
+## Start an analysis
 
-## Prerequisites
-
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (required for Excel add-ins)
-- Microsoft Excel (64-bit)
-- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (optional, for preview pane)
-
-## Build
-
-```
-cd XlDuck
-dotnet build
-```
-
-## Run
-
-Open the add-in directly to launch Excel with it loaded:
-
-```
-XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll
-```
-
-## Excel Functions
-
-| Function | Description |
-|----------|-------------|
-| `=DuckQuery(sql, ...)` | Execute SQL, return a table handle (`duck://table/1\|10x4` = 10 rows, 4 cols) |
-| `=DuckQueryAfterConfig(sql, ...)` | Same as DuckQuery, but waits for `DuckConfig` first |
-| `=DuckFrag(sql, ...)` | Create SQL fragment for lazy evaluation (`duck://frag/...`) |
-| `=DuckFragAfterConfig(sql, ...)` | Same as DuckFrag, but waits for `DuckConfig` first |
-| `=DuckCapture(range)` | Capture a sheet range as a DuckDB table (first row = headers) |
-| `=DuckDate(cell)` | Convert Excel date to SQL date string (`2023-01-01`) |
-| `=DuckDateTime(cell)` | Convert Excel date/time to SQL datetime string (`2023-01-01 14:30:00`) |
-| `=DuckOut(handle)` | Output a handle as a spilled array |
-| `=DuckQueryOut(sql, ...)` | Execute SQL and output directly as array |
-| `=DuckQueryOutScalar(sql, ...)` | Execute SQL and return a single value (first column, first row) |
-| `=DuckPlot(data, template, ...)` | Create a chart from data (`duck://plot/...`) |
-| `=DuckConfig(range)` | Configure DuckDB from a range of SQL statements (recommended) |
-| `=DuckExecute(sql)` | Execute DDL/DML statements (intended for VBA startup) |
-| `=DuckConfigReady()` | Signal that configuration is complete (legacy, for VBA) |
-| `=DuckVersion()` | XLDuck add-in version (0.1) |
-| `=DuckLibraryVersion()` | DuckDB library version |
-
-The [architecture infographic](#architecture-infographic) shows how these functions compose into spreadsheet-native dataflows.
-
-## Examples
-
-### Basic Usage
+Enable the workbook using **XlDuck > Enable / Connections**. Then enter:
 
 ```excel
-A1: =DuckQueryOut("SELECT * FROM range(5)")
-→ | range |
-  | 0     |
-  | 1     |
-  | 2     |
-  | 3     |
-  | 4     |
+A1: =DuckQuery("SELECT range AS n FROM range(100)")
+A2: =DuckQuery("SELECT n, n*n AS square FROM ? WHERE n >= ?", A1, 10)
+A3: =DuckQueryOutScalar("SELECT sum(square) FROM ?", A2)
+A4: =DuckPlot(A2, "line", "x", "n", "y", "square")
+D1: =DuckOut(A2)
 ```
 
-### Using Handles for Chaining
+Select A4 and open **Preview Pane** (Ctrl+Shift+P) to see the chart. Select A1 or A2 for a table preview. Handles are opaque, workbook-session-specific references; use `DuckOut`, `DuckScalar` or `DuckInspect` to read them.
 
-```excel
-A1: =DuckQuery("SELECT * FROM range(10)")
-→ duck://table/1|10x1
+An unchanged query and unchanged typed inputs reuse their retained result. F9, Shift+F9 and unchanged F2/Enter do not fetch external data again. **Restart workbook** discards that workbook's results and recomputes them. Reopening a trusted saved workbook starts a fresh session. Fragments are recipes; materialize a table when multiple analyses should share one source snapshot.
 
-B1: =DuckQuery("SELECT * FROM ? WHERE range > 5", A1)
-→ duck://table/2|4x1
+## Worksheet functions
 
-C1: =DuckQuery("SELECT SUM(range) AS total FROM ?", B1)
-→ duck://table/3|1x1
+| Function | Result |
+| --- | --- |
+| `DuckQuery(sql, arg1, …, arg8)` | Materialized table handle |
+| `DuckFrag(sql, arg1, …, arg8)` | Validated SQL recipe for lazy composition |
+| `DuckCapture(range)` | Table from a range whose first row contains headers |
+| `DuckOut(handle, [maxRows])` | Spilled table with headers; default limit 10,000 rows |
+| `DuckScalar(handle)` | Exactly one row and one column |
+| `DuckQueryOut(sql, …)` | Compute and spill with headers, up to 10,000 rows |
+| `DuckQueryOutScalar(sql, …)` | Compute exactly one scalar |
+| `DuckPlot(handle, template, name, value, …)` | Plot handle; six option pairs |
+| `DuckInspect(handle, [field])` | `schema`, `rows`, or `definition` |
+| `DuckDate(serial)`, `DuckDateTime(serial)` | ISO text for explicit SQL date/timestamp casts |
+| `DuckStatus()` | Workbook enablement, session and computation counts as JSON |
+| `DuckVersion()`, `DuckLibraryVersion()` | Add-in and engine versions |
 
-D1: =DuckOut(C1)
-→ | total |
-  | 30    |
-```
+Read the [formula and agent reference](docs/FORMULAS.md) for types, limits, fragments, chart options, source connections and recovery. `DuckExecute`, `DuckConfig`, `DuckConfigReady` and the `AfterConfig` functions have been removed.
 
-### Parameter Binding
+## Data and access
 
-Use `?` placeholders for positional arguments (up to 8):
+Use positional `?` arguments for values and handles. Numeric-looking text stays text; blank cells become SQL NULL; empty text remains empty text. Exact decimals and integers beyond Excel's exact numeric range return text. Choose `CAST AS DOUBLE` explicitly when approximation is appropriate, including for decimal chart values. Mixed text/numeric captured columns fail with an actionable error instead of coercing the data silently.
 
-```excel
-=DuckQuery("SELECT * FROM ? JOIN ? ON t1.id = t2.id", A1, B1)
-```
+Worksheet SQL supports read-and-compute SELECT queries and curated CSV, JSON, Parquet, text and blob readers. It cannot write/export data, install extensions, attach databases or change settings. An enabled workbook has broad read access under your account and configured credentials. This is **not a sandbox for hostile workbooks**: readable data can be returned or sent to remote URLs. The separate worker provides fault isolation.
 
-### Lazy Evaluation with Fragments
+Enablement is remembered locally for the saved file path and its exact saved revision. Ordinary saves and Save As from an enabled open workbook update that record. Unfamiliar copies and externally changed files require enablement again. Unsaved workbooks are enabled only for that open session. Connection settings contain profile/routing choices, not secret keys; credentials stay in environment variables or AWS profiles.
 
-Fragments (`duck://frag/...`) defer SQL execution - the SQL is inlined as a subquery when used:
+Automatic calculation is the primary mode. In manual mode, explicitly calculate to start work and calculate again after completion to propagate it; an asynchronous chain may need several passes. XlDuck changes neither Excel's calculation mode nor its global RTD interval.
 
-```excel
-A1: =DuckFrag("SELECT * FROM range(10)")
-→ duck://frag/1
+## Development on Windows
 
-B1: =DuckFrag("SELECT * FROM ? WHERE range >= 5", A1)
-→ duck://frag/2
+Requires 64-bit desktop Excel, a .NET SDK supporting the .NET 8 API target, the **x64 .NET 10 Desktop Runtime** for the intended public deployment, and WebView2 for the pane. The add-in and worker roll forward to the newest available compatible runtime. See [release preparation](docs/RELEASE.md) for tested load orders and remaining deployment checks; this is an unsigned development candidate.
 
-C1: =DuckOut(B1)
-→ | range |
-  | 5     |
-  | 6     |
-  | 7     |
-  | 8     |
-  | 9     |
-```
-
-When `DuckOut(B1)` executes, it builds and runs:
-```sql
-SELECT * FROM (SELECT * FROM (SELECT * FROM range(10)) WHERE range >= 5)
-```
-
-Fragments are validated at creation time (EXPLAIN), so SQL errors appear early.
-
-Use fragments for:
-- Building query pipelines without materializing intermediate results
-- Allowing DuckDB to optimize the entire composed query
-- Reducing memory usage for complex transformations
-
-### Reading Files
-
-DuckDB can read CSV, Parquet, JSON, and other file formats directly:
-
-```excel
-=DuckQueryOut("SELECT * FROM read_csv_auto('C:/data/sales.csv')")
-
-=DuckQueryOut("SELECT * FROM read_parquet('C:/data/events.parquet') WHERE date > '2024-01-01'")
-
-=DuckQueryOut("SELECT * FROM read_json_auto('C:/data/config.json')")
-```
-
-Combine with fragments for reusable data sources:
-
-```excel
-A1: =DuckFrag("SELECT * FROM read_csv_auto('C:/data/sales.csv')")
-B1: =DuckQueryOut("SELECT region, SUM(amount) FROM ? GROUP BY region", A1)
-```
-
-DuckDB can also read from URLs and S3 - see [DuckDB documentation](https://duckdb.org/docs/data/overview) for details.
-
-### Capturing Sheet Data
-
-`DuckCapture` brings Excel range data into DuckDB for querying. The first row is treated as headers, the rest as data:
-
-```excel
-A1:C4 contains:
-  | name    | age | city    |
-  | alice   | 30  | NYC     |
-  | bob     | 25  | LA      |
-  | charlie | 35  | Chicago |
-
-D1: =DuckCapture(A1:C4)
-→ duck://table/1|3x3
-
-E1: =DuckQueryOut("SELECT * FROM ? WHERE age > 28", D1)
-→ | name    | age | city    |
-  | alice   | 30  | NYC     |
-  | charlie | 35  | Chicago |
-```
-
-Column types are inferred automatically: all-numeric columns become `DOUBLE`, all-boolean become `BOOLEAN`, everything else becomes `VARCHAR`. Empty cells are treated as `NULL`.
-
-Combine with other functions for analysis:
-
-```excel
-A1: =DuckCapture(Sheet2!A1:D100)
-B1: =DuckQueryOut("SELECT department, AVG(salary) FROM ? GROUP BY department", A1)
-```
-
-### Date Parameters
-
-Excel stores dates as serial numbers, so passing a date cell directly as a `?` parameter won't work — DuckDB receives a number like `44927` instead of a date. Use `DuckDate` or `DuckDateTime` to convert:
-
-```excel
-C1: 1/1/2023                    (Excel date)
-D1: 12/31/2023                  (Excel date)
-
-E1: =DuckQuery("SELECT * FROM ? WHERE date BETWEEN ? AND ?", A1, DuckDate(C1), DuckDate(D1))
-
-F1: =DuckQuery("SELECT * FROM ? WHERE timestamp > ?", A1, DuckDateTime(C1))
-```
-
-### Pivot Tables
-
-DuckDB has built-in PIVOT support for reshaping data:
-
-```excel
-A1: =DuckFrag("SELECT * FROM (VALUES ('Q1','North',100), ('Q1','South',150), ('Q2','North',200), ('Q2','South',250)) AS sales(quarter, region, amount)")
-
-B1: =DuckQueryOut("PIVOT ? ON region USING SUM(amount)", A1)
-→ | quarter | North | South |
-  | Q1      | 100   | 150   |
-  | Q2      | 200   | 250   |
-```
-
-See [DuckDB PIVOT documentation](https://duckdb.org/docs/sql/statements/pivot) for more examples.
-
-### Plotting
-
-Create interactive charts with `DuckPlot`. Select a plot handle cell and open the Preview Pane to view.
-
-```excel
-A1: =DuckQuery("SELECT region, SUM(sales) as total FROM (VALUES ('North', 100), ('South', 150), ('East', 80), ('West', 120)) AS t(region, sales) GROUP BY region")
-
-B1: =DuckPlot(A1, "bar", "x", "region", "y", "total", "title", "Sales by Region")
-→ duck://plot/1
-```
-
-**Templates:**
-
-| Template | Use Case |
-|----------|----------|
-| `bar` | Aggregated values per category |
-| `line` | Time series, trends |
-| `point` | Scatter plots, correlations |
-| `area` | Cumulative/stacked time series |
-| `histogram` | Distribution of values (only needs `x`) |
-| `heatmap` | Two categories with color intensity (needs `x`, `y`, `value`) |
-| `boxplot` | Distribution comparison across categories |
-
-**Overrides:**
-- `x` - field for x-axis (required)
-- `y` - field for y-axis (required, except histogram)
-- `color` - field for color/series (optional)
-- `value` - field for color intensity (heatmap only)
-- `title` - chart title (optional)
-
-**Examples:**
-
-Bar chart:
-```excel
-A1: =DuckQuery("SELECT region, SUM(sales) as total FROM (VALUES ('North', 100), ('South', 150), ('East', 80), ('West', 120)) AS t(region, sales) GROUP BY region")
-B1: =DuckPlot(A1, "bar", "x", "region", "y", "total", "title", "Sales by Region")
-```
-
-Line chart with multiple series:
-```excel
-A1: =DuckQuery("SELECT x as day, 'A' as product, x*10 as sales FROM range(20) UNION ALL SELECT x, 'B', x*7+20 FROM range(20)")
-B1: =DuckPlot(A1, "line", "x", "day", "y", "sales", "color", "product")
-```
-
-Scatter plot:
-```excel
-A1: =DuckQuery("SELECT random()*100 as x, random()*100 as y FROM range(200)")
-B1: =DuckPlot(A1, "point", "x", "x", "y", "y")
-```
-
-Area chart with stacked series:
-```excel
-A1: =DuckQuery("SELECT x as month, 'Product A' as product, x*5+10 as revenue FROM range(12) UNION ALL SELECT x, 'Product B', x*3+20 FROM range(12)")
-B1: =DuckPlot(A1, "area", "x", "month", "y", "revenue", "color", "product")
-```
-
-Histogram (distribution):
-```excel
-A1: =DuckQuery("SELECT random()*100 as value FROM range(1000)")
-B1: =DuckPlot(A1, "histogram", "x", "value", "title", "Value Distribution")
-```
-
-Boxplot (compare distributions):
-```excel
-A1: =DuckQuery("SELECT category, value FROM (SELECT 'A' as category, random()*50 as value FROM range(100) UNION ALL SELECT 'B', random()*50+25 FROM range(100))")
-B1: =DuckPlot(A1, "boxplot", "x", "category", "y", "value")
-```
-
-Heatmap:
-```excel
-A1: =DuckQuery("SELECT day, hour, temp FROM (SELECT d.d as day, h.h as hour, (15 + d.d + h.h*0.5 + random()*5)::INT as temp FROM range(7) AS d(d), range(24) AS h(h))")
-B1: =DuckPlot(A1, "heatmap", "x", "hour", "y", "day", "value", "temp")
-```
-
-## Configuration
-
-DuckDB has two flavours of session-scope setup, and they belong in different places:
-
-1. **Non-secret state** — `INSTALL`, `LOAD`, `SET s3_url_style = 'path'`, custom UDFs, etc. These are safe to ship inside the workbook. Use [`DuckConfig`](#duckconfig-for-non-secret-state).
-2. **Credentials** — S3 access keys, HuggingFace tokens, and anything else you would not paste into Slack. **Do not put these in the workbook.** Use [persistent secrets](#persistent-secrets-for-credentials) instead — set up once in a regular DuckDB CLI, auto-loaded by every DuckDB process on your account (including XLDuck inside Excel). The workbook stays credential-free and safe to email, commit, or autosave to OneDrive.
-
-### Persistent secrets (for credentials)
-
-DuckDB persistent secrets live in a per-user store at `%USERPROFILE%\.duckdb\stored_secrets\` and are loaded automatically when any DuckDB process starts. The secret manager applies them per request via longest-prefix `SCOPE` match — so multiple credentialed S3 buckets can coexist with no conflict.
-
-#### One-time setup (run in a normal `duckdb` CLI, not in Excel)
-
-```sql
-INSTALL httpfs;
-LOAD httpfs;
-
-CREATE OR REPLACE PERSISTENT SECRET my_bucket (
-    TYPE       S3,
-    KEY_ID     '...',
-    SECRET     '...',
-    ENDPOINT   '127.0.0.1:9000',     -- or e.g. s3.amazonaws.com
-    USE_SSL    false,
-    URL_STYLE  'path',
-    REGION     'us-east-1',
-    SCOPE      's3://my-bucket'
-);
-```
-
-This writes a binary file to `%USERPROFILE%\.duckdb\stored_secrets\my_bucket.duckdb_secret`. The security boundary is the user-only NTFS ACL on your home directory — do not place that path on a roaming profile, OneDrive-synced folder, or shared volume.
-
-#### In the workbook
-
-No `DuckConfig`, no `AfterConfig`, no credentials in cells — queries just work:
-
-```excel
-A1: =DuckQueryOut("SELECT count(*) FROM read_parquet('s3://my-bucket/data/*.parquet')")
-```
-
-You don't need `INSTALL httpfs` or `LOAD httpfs` in the sheet either: DuckDB auto-loads the `httpfs` extension the first time a query references an `s3://` URI (default `autoload_known_extensions = true`). **For common credentialed S3 reads, the workbook needs no `DuckConfig` at all.** A colleague opening a copy of the sheet on a machine without your secret will get `IO Error: No credentials found` — which is the correct security boundary.
-
-Sanity-check what DuckDB has loaded:
-
-```excel
-=DuckQueryOut("SELECT name, type, scope FROM duckdb_secrets()")
-```
-
-#### Rotation and removal
-
-```sql
--- rotate, e.g. after issuing a fresh service-account credential
-CREATE OR REPLACE PERSISTENT SECRET my_bucket ( ... );
-
--- remove
-DROP PERSISTENT SECRET my_bucket;
-```
-
-#### Caveat for embedded DuckDB
-
-If queries from XLDuck come back with `IO Error: No credentials found` despite the persistent secret existing, the embedded DuckDB inside XLDuck may be using a non-default home directory for its secret store. In that case you can either point it at the right path via `SET secret_directory = '...'` early in `DuckConfig`, or use `PROVIDER credential_chain` and set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` as User-level Windows environment variables.
-
-### `DuckConfig` for non-secret state
-
-Most workbooks don't actually need `DuckConfig` — common extensions like `httpfs`, `json`, and `spatial` auto-load on first reference. Reach for `DuckConfig` when you need to set things that don't auto-trigger: non-default extensions, memory limits, custom UDFs, or non-default settings that should apply to every query in the workbook.
-
-`DuckConfig` lets you configure DuckDB from a plain `.xlsx` file — no VBA macros or `.xlsm` format needed.
-
-Write your configuration SQL in cells and pass the range to `DuckConfig`:
-
-```excel
-' On a DuckConfig sheet:
-A1: INSTALL httpfs
-A2: LOAD httpfs
-A3: SET s3_url_style = 'path'
-B1: =DuckConfig(A1:A3)
-→ duck://config|OK
-```
-
-Queries that need config should use the `AfterConfig` variants, which wait until `DuckConfig` completes:
-
-```excel
-C1: =DuckQueryAfterConfig("SELECT * FROM read_parquet('s3://bucket/data.parquet')")
-```
-
-Alternatively, pass the `DuckConfig` cell as an argument to create an explicit dependency:
-
-```excel
-C1: =DuckQuery("SELECT * FROM read_parquet('s3://bucket/data.parquet')", B1)
-```
-
-The config handle is silently ignored as a parameter — it only ensures Excel calculates `DuckConfig` first.
-
-If no configuration is needed but you want to use `AfterConfig` functions, call `=DuckConfig()` with no arguments.
-
-#### Developing config
-
-`DuckConfig` is idempotent: recalculating with the same inputs is a no-op. If the inputs change (e.g., you edit a cell in the config range), it returns an error because queries that already ran may depend on the original configuration.
-
-While developing a sheet, use the **Reset Config** button in the XLDuck ribbon tab to clear the stored config state, then recalculate to re-run `DuckConfig` with the updated inputs.
-
-### Process isolation
-
-The DuckDB engine and configuration are shared across all workbooks in an Excel process. If you need different configurations for different workbooks (e.g., different S3 endpoints), open each in a separate Excel process:
-
-- **Windows**: `Win+R` → `excel /x` opens a new Excel process
-- **Programmatic**: `Start-Process excel -ArgumentList "/x"`
-
-## Pause Queries
-
-The XLDuck ribbon tab includes a **Pause Queries** toggle button. When paused, all query execution is deferred — cells show `#duck://blocked/paused|Queries paused` instead of running. Toggle off to resume: all deferred queries execute automatically and results flow to cells.
-
-Use this when building complex formulas to avoid triggering expensive queries during editing. For example, if you have a chain of queries (A1 feeds B1 feeds C1) and need to restructure them, pausing prevents each intermediate edit from triggering a cascade of expensive executions.
-
-```excel
-1. Click "Pause Queries" in the XLDuck ribbon tab
-2. Edit formulas freely — cells show "Queries paused" instead of executing
-3. Click "Pause Queries" again to resume — all queries execute and results appear
-```
-
-Also available programmatically via VBA:
-```vba
-Application.Run "DuckPauseQueries"   ' pause
-Application.Run "DuckResumeQueries"  ' resume
-```
-
-**Pause vs Cancel — two different behaviors:**
-- **Pause**: "I'm editing, don't run anything yet" — queries are deferred and resume automatically when toggled off
-- **Cancel**: "Kill this query, I don't want it" — queries error out permanently, new queries after cancellation run normally
-
-Pausing while a query is running will cancel it and defer it for re-execution on resume. Queries that depend on other paused queries resolve naturally through Excel's recalculation chain — root queries execute first, then dependents recalculate with the correct handles.
-
-## Query Engine Busy
-
-Synchronous functions (`DuckOut`, `DuckQueryOut`, `DuckQueryOutScalar`) may show a "Query engine busy" error if a background query is running. This prevents Excel from freezing during long-running queries. Press F9 to recalculate once the background query completes.
-
-`DuckExecute` blocks until the connection is available rather than returning an error, since it runs DDL/DML that must succeed (e.g. `SET s3_endpoint`, `CREATE TABLE`). It should only be called from VBA (e.g. `Auto_Open`), not from worksheet formulas. For worksheet-based configuration, use `DuckConfig` instead.
-
-## Cancel Query
-
-The XLDuck ribbon tab includes a **Cancel Query** button that interrupts the running query and cancels all pending queued queries. The connection remains valid after cancellation — subsequent queries work normally.
-
-Also available programmatically via VBA:
-```vba
-Application.Run "DuckInterrupt"
-```
-
-## Preview Pane
-
-The XLDuck ribbon tab includes a toggle to open a preview pane on the right side of the window. When you select a cell containing a handle:
-
-- **Table handles**: Shows SQL with positional arguments, column schema, and the first 200 rows of data
-- **Fragment handles**: Shows the SQL text and positional arguments
-- **Plot handles**: Shows an interactive Vega-Lite chart
-- **Error handles**: Shows the error category and message
-
-Requires WebView2 Runtime (falls back to plain text if not installed).
-
-## Logging
-
-Log files are written to `%LOCALAPPDATA%\XlDuck\` (typically `C:\Users\<you>\AppData\Local\XlDuck\`). Each Excel session creates a new log file named `xlduck-{timestamp}.log`. Files older than 7 days are automatically deleted on startup.
-
-Logs include query timing, RTD lifecycle events, handle reference counting, and error details. To tail the current session's log:
+Acquire the exact dependencies and build from the repository root:
 
 ```powershell
-Get-ChildItem "$env:LOCALAPPDATA\XlDuck\xlduck-*.log" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content -Wait
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Get-ReaderExtensions.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Get-PreviewAssets.ps1
+dotnet build XlDuck -m:1 /nodeReuse:false /p:UseSharedCompilation=false
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -NoBuild -WithPreview
 ```
 
-## Architecture Infographic
+The add-in is a **folder distribution**, including `worker`, `readers` and `preview`. Open `XlDuck/bin/Debug/net8.0-windows/XlDuck-AddIn64.xll`; do not copy the XLL alone. Only 64-bit builds are produced. Chart libraries are bundled and work offline; map tiles still come from OpenStreetMap or Esri and reveal the requested map viewport to that provider.
 
-![XLDuck technical architecture overview](docs/assets/xlduck-architecture-infographic.png)
+For an owned visible development instance:
 
-This visual overview summarizes the core spreadsheet workflow, handle model, RTD lifecycle, preview pane, and configuration trade-offs.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Reload-AddIn.ps1
+```
 
-## Credits
+This opens a new Excel instance with a private copy of the build. It leaves existing Excel instances alone. Close development instances yourself. If a build output is in use, use a fresh directory with `dotnet build XlDuck --artifacts-path artifacts/my-build`; the XLL is then under `artifacts/my-build/bin/XlDuck/debug/`. The test scripts accept `-AddInPath` for such builds.
 
-Several design ideas take inspiration from the superb [PyXLL add-in](https://www.pyxll.com), which you should check out immediately if you've ever considered integrating Python code with your sheets.
+See [tests](tests/README.md), [architecture](ARCHITECTURE.md), [capability policy](XlDuck.Engine/README.md) and [the modernization plan](PLAN-modernization.md). Logs under `%LOCALAPPDATA%/XlDuck` contain bounded lifecycle diagnostics, without routine SQL, arguments or provider exception messages.
+
+## Licence
+
+XlDuck is licensed under MPL-2.0. Bundled dependencies retain their own licences; preview notices are copied alongside the assets. Release packaging must include the complete third-party notices.

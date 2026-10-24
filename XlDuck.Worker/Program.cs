@@ -11,6 +11,7 @@ using var output = Console.OpenStandardOutput();
 var startup = await WorkerProtocol.ReadAsync<WorkerStartup>(input) ?? throw new IOException("Missing startup settings.");
 if (startup.Version != WorkerProtocol.Version) throw new IOException("Unsupported startup protocol version.");
 startup.Settings.Validate();
+using var storageOwnership = SessionDirectory.HoldWorkerOwnership(args[3]);
 await using var backend = new DuckDbBackend(session, args[3], startup.Settings);
 var requests = new ConcurrentDictionary<Guid, CancellationTokenSource>();
 var running = new ConcurrentDictionary<Guid, Task>();

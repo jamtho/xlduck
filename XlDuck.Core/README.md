@@ -1,6 +1,6 @@
 # Typed core and workbook sessions
 
-This is the next implementation of XlDuck's computational core. The existing `XlDuck/` add-in still uses the legacy implementation. The new core is exercised through a separate Excel test add-in; it is not yet the public worksheet path.
+This is the computational core used by the production `XlDuck/` host, the workbook worker and a narrow execution test add-in.
 
 ## Project boundaries
 
@@ -12,7 +12,7 @@ This is the next implementation of XlDuck's computational core. The existing `Xl
 | `XlDuck.Client` | Worker startup, request correlation, cancellation, failure detection and owned spill-directory cleanup; no DuckDB dependency |
 | `tests/XlDuck.TestAddIn` | Real Excel verification of the core and targeted publication; not a production host |
 
-These projects currently target installed .NET 8 with Excel-DNA 1.9.0 and DuckDB.NET 1.5.6.1. The public runtime, coexistence and distribution gate in the [architecture checkpoint](../prototypes/Execution/DECISION.md) remains open.
+These projects target the .NET 8 API baseline with Excel-DNA 1.9.0 and DuckDB.NET 1.5.6.1. The production host and worker use `LatestMajor` roll-forward; .NET 10 Desktop Runtime is the intended public prerequisite. Tested load orders and deployment limitations are in [release preparation](../docs/RELEASE.md).
 
 ## Request and ownership contract
 
@@ -24,7 +24,7 @@ Materialized tables own their stored result. During execution they retain their 
 
 Only unowned materialized results and failed table-request records enter the bounded historical cache (32 by default). Unowned fragments and plots retire immediately, avoiding hidden retention of entire dependency graphs. Live results are never evicted by history pressure. Dropping a stored result is tracked work; cleanup failure faults the session and requires restart.
 
-Failed requests remain stable while retained. `Acquire(request, retryFailed: true)` creates a new attempt with a new handle; existing owners of the failure keep their original result. The public retry command is still to be wired. A cancelled request is not a successful cache entry. Session disposal cancels work, waits for reads and cleanup, disposes the backend, and releases bookkeeping.
+Failed requests remain stable while retained. `Acquire(request, retryFailed: true)` creates a new attempt with a new handle; existing owners of the failure keep their original result. The production Retry failed results command uses this path. A cancelled request is not a successful cache entry. Session disposal cancels work, waits for reads and cleanup, disposes the backend, and releases bookkeeping.
 
 ## SQL arguments
 
@@ -54,7 +54,7 @@ Transport preserves type alongside invariant text. It does not guess types from 
 
 Captures require a homogeneous nonblank type per column. Mixed columns fail with an actionable error; no implicit text/number coercion. All-blank columns become nullable VARCHAR. Decimal capture is currently unsupported; exact decimal scalar binding and SQL results are supported. Headers are unique without stealing explicitly supplied names, and identifier quotes are escaped.
 
-Excel `Value2` supplies dates as numbers: formatting alone is not a typed date argument. Final host date-system handling and chart conversions remain integration work.
+Excel `Value2` supplies dates as numbers: formatting alone is not a typed date argument. The production host handles the workbook date system, and chart conversion preserves text and requires explicit approximation for exact decimals or unsafe integers.
 
 ## Bounds and worker failure
 
@@ -64,16 +64,10 @@ Sheet output rejects oversized results without truncation. Preview output return
 
 Cancellation waits for worker acknowledgement before releasing source tables. If the worker cannot acknowledge within five seconds, the client terminates only its owned child. The deadline includes blocked pipe writes. Disposal allows two seconds for a graceful exit, then terminates that child. Worker exit fails both outstanding and subsequent calls. A fresh workbook session is the recovery path.
 
-The client owns a newly created temporary spill directory and removes it after shutdown or worker failure. It never takes ownership of a user directory. An abrupt Excel/host crash can still leave this directory behind; orphan recovery is remaining packaging/lifecycle work.
+The client owns a newly created temporary spill directory and removes it after shutdown or worker failure. It never takes ownership of a user directory. Host and worker file leases protect live directories. At startup, a host can reclaim marked directories left by crashed processes after both leases have closed; unmarked and linked directories are left alone.
 
-## Evidence and remaining host work
+## Production integration
 
-On 24 October 2026: 17 core specifications, 14 direct-engine cases, 17 worker cases, 17 capability/reader cases in each engine mode and 11 real Excel integration checks pass. Tests cover exact values, placeholder parsing, shared work, fragments/plots, bounded history/admission, native cancellation, physical table cleanup, worker failure, blocked transport, excessive fragment expansion and read-and-compute enforcement. New regression cases were observed failing before the transport, expansion and CTE ownership fixes. HTTP/S3 tests use local fixtures, not a live cloud account.
+The production Excel host provides COM workbook identity, saved-revision enablement, immutable connection settings, per-cell leases, targeted completion publication, controls and typed preview. It handles Save As, sheet rename, cancelled workbook closure, date systems and explicit function registration. Only the selected workbook is restarted.
 
-The Excel path exercises a source plus eight dependent queries, scalar and spilled outputs, captured ranges and fragment plot data. Input edits settled in about 30–41 ms across the recorded checks on this development machine. Full calculation and unchanged formula reentry reused live results with historical caching disabled. Clearing formulas released all result nodes, and restart preserved another workbook's results.
-
-Publication queues a macro on Excel's main thread, verifies the current session and binding, then dirties and calculates the requesting cell. The UDF returns its completed cached value. Excel's global RTD throttle is unchanged. Automatic calculation is the primary mode; the harness does not force publication in manual mode.
-
-The test add-in deliberately has a narrow surface: three SQL arguments, one core invocation per cell, workbook-name identity, explicit initialization and preview JSON rather than a chart pane. It does not implement public enablement, Save As/rename, cancelled workbook closure, all formula/edit patterns, date-system handling, production diagnostics or the final function registry. Those must be implemented and tested when replacing the production host; copying the harness unchanged is not sufficient.
-
-Run [the new-core suite](../tests/README.md) separately from the still-legacy regression suite. Passing new-core tests does not fix legacy entry points or the known browser defects.
+The narrow test add-in remains a diagnostic harness, not the production host. Test coverage and current evidence are recorded in [tests/README.md](../tests/README.md); production contracts are in [docs/FORMULAS.md](../docs/FORMULAS.md). Live AWS/SSO, visual DPI checks and public deployment/runtime gates remain in [the plan](../PLAN-modernization.md).

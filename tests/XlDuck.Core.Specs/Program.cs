@@ -4,6 +4,14 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.Text.Json;
 using XlDuck.Core;
+using System.Diagnostics;
+
+if (args is ["--orphan-spill"])
+{
+    var orphan = new SessionDirectory();
+    Console.WriteLine(orphan.Path);
+    return 0; // Deliberately omit Dispose, simulating process exit before cleanup.
+}
 
 int passed = 0, failed = 0;
 async Task Check(string name, Func<Task> test)
@@ -16,6 +24,27 @@ void Throws<T>(Action action) where T : Exception { try { action(); } catch (T) 
 PreparedQuery Prepare(string sql, params QueryArgument[] args) => SqlTemplate.Prepare(ComputationRequest.Query(sql, args), _ => null);
 CaptureData Capture(CellValue value) => new(["value"], [[value]]);
 
+await Check("spill recovery preserves active hosts/workers and unmarked directories", async () =>
+{
+    using var active = new SessionDirectory();
+    var start = new ProcessStartInfo(Environment.ProcessPath!) { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+    if (System.IO.Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") start.ArgumentList.Add(typeof(Program).Assembly.Location);
+    start.ArgumentList.Add("--orphan-spill");
+    using var child = Process.Start(start)!;
+    var orphan = (await child.StandardOutput.ReadLineAsync())!;
+    await child.WaitForExitAsync();
+    Equal(0, child.ExitCode);
+    Equal(System.IO.Path.GetDirectoryName(active.Path), System.IO.Path.GetDirectoryName(orphan));
+    using (var worker = SessionDirectory.HoldWorkerOwnership(orphan))
+    {
+        SessionDirectory.ReclaimOrphans(); Equal(true, Directory.Exists(orphan)); Equal(true, Directory.Exists(active.Path));
+    }
+    SessionDirectory.ReclaimOrphans(); Equal(false, Directory.Exists(orphan)); Equal(true, Directory.Exists(active.Path));
+    var foreign = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(active.Path)!, "xlduck-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(foreign);
+    try { SessionDirectory.ReclaimOrphans(); Equal(true, Directory.Exists(foreign)); }
+    finally { Directory.Delete(foreign); }
+});
 await Check("typed values preserve text, apostrophes, blank distinctions and exact integers", () =>
 {
     Equal("00123", CellValue.From("00123").Text);
@@ -218,6 +247,20 @@ await Check("failed requests stay stable until an explicit retry", async () =>
     await retry.Completion;
     Equal(false, retry.Handle == first.Handle); Equal(2, backend.Executions);
 });
+await Check("explicit retry invalidates failed fragment materializations for a later calculation", async () =>
+{
+    var backend = new FakeBackend();
+    await using var session = new WorkbookSession(_ => backend);
+    using var fragment = session.Acquire(ComputationRequest.Fragment("SELECT 1")); await fragment.Completion;
+    backend.FailNext = true;
+    using var failed = session.AcquireData(fragment.Handle);
+    try { await failed.Completion; throw new Exception("Expected failure"); } catch (InvalidOperationException) { }
+    session.InvalidateFailuresForRetry();
+    using var later = session.AcquireData(fragment.Handle); await later.Completion;
+    Equal(false, failed.Handle == later.Handle);
+    Equal(true, failed.Completion.IsFaulted);
+    using var stable = session.AcquireData(fragment.Handle); Equal(later.Handle, stable.Handle);
+});
 await Check("output admission and input sizes are bounded", async () =>
 {
     var backend = new FakeBackend { BlockReads = true };
@@ -270,6 +313,36 @@ await Check("fragment expansion is bounded before it can allocate an excessive S
     finally { foreach (var lease in leases) lease.Dispose(); }
     await session.WaitForIdleAsync();
     Equal(0, session.Statistics.Nodes);
+});
+await Check("pause retains pending requests; resume reuses work and cancel preserves completed results", async () =>
+{
+    var backend = new FakeBackend();
+    await using var session = new WorkbookSession(_ => backend);
+    using var completed = session.Acquire(ComputationRequest.Query("SELECT 1")); await completed.Completion;
+    session.SetPaused(true);
+    using var pending = session.Acquire(ComputationRequest.Query("SELECT 2"));
+    using var shared = session.Acquire(ComputationRequest.Query("SELECT 2"));
+    Equal(pending.Handle, shared.Handle); Equal(false, pending.Completion.IsCompleted);
+    Equal(1, backend.Executions);
+    session.CancelPending();
+    try { await pending.Completion; throw new Exception("Expected cancellation"); } catch (OperationCanceledException) { }
+    Equal(true, completed.Completion.IsCompletedSuccessfully);
+    using var retry = session.Acquire(ComputationRequest.Query("SELECT 2"), retryFailed: true);
+    Equal(false, retry.Handle == pending.Handle);
+    session.SetPaused(false); await retry.Completion;
+    Equal(2, backend.Executions);
+    using var reused = session.Acquire(ComputationRequest.Query("SELECT 2")); Equal(retry.Handle, reused.Handle);
+});
+await Check("cancel interrupts output reads without destroying their source result", async () =>
+{
+    var backend = new FakeBackend { BlockReads = true };
+    await using var session = new WorkbookSession(_ => backend);
+    using var table = session.Acquire(ComputationRequest.Query("SELECT 1")); await table.Completion;
+    var read = session.ReadAsync(table.Handle, new(ReadPurpose.Preview)); await backend.ReadStarted.Task;
+    session.CancelPending();
+    try { await read; throw new Exception("Expected cancellation"); } catch (OperationCanceledException) { }
+    backend.BlockReads = false;
+    Equal(1L, (await session.ReadAsync(table.Handle, new(ReadPurpose.Output))).TotalRows);
 });
 Console.WriteLine($"{passed} passed, {failed} failed.");
 return failed == 0 ? 0 : 1;

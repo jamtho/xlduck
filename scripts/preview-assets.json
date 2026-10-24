@@ -1,0 +1,8 @@
+[
+  {"name":"vega","version":"5.33.1","integrity":"sha512-1fArfVDUqVbb5z8n+/nVQb+VNBzx8svY6CrsyTK4Ujm4yrd9I1auoKxBAPXLCavY1LcrbHUskQbGUP8gXOzyQw==","files":{"build/vega.min.js":"vega.min.js"}},
+  {"name":"vega-lite","version":"5.23.0","integrity":"sha512-l4J6+AWE3DIjvovEoHl2LdtCUkfm4zs8Xxx7INwZEAv+XVb6kR6vIN1gt3t2gN2gs/y4DYTs/RPoTeYAuEg6mA==","files":{"build/vega-lite.min.js":"vega-lite.min.js","LICENSE":"licenses/vega-lite.txt"}},
+  {"name":"vega-embed","version":"6.29.0","integrity":"sha512-PmlshTLtLFLgWtF/b23T1OwX53AugJ9RZ3qPE2c01VFAbgt3/GSNI/etzA/GzdrkceXFma+FDHNXUppKuM0U6Q==","files":{"build/vega-embed.min.js":"vega-embed.min.js","LICENSE":"licenses/vega-embed.txt"}},
+  {"name":"vega-interpreter","version":"1.2.1","integrity":"sha512-EMHLGxJ+SWfh1K/fHDRlHEZtLA/2ZNAXItYb5e8CxuAIm/Ha/3DHX/8VlvbTGIciUpuwmcKx4tVhJWlKreQ/Yw==","files":{"build/vega-interpreter.min.js":"vega-interpreter.min.js"}},
+  {"name":"leaflet","version":"1.9.4","integrity":"sha512-nxS1ynzJOmOlHp+iL3FyWqK89GtNL8U8rvlMOsQdTTssxZwCXh8N2NB3GDQOL+YR3XnWyZAxwQixURb+FA74PA==","files":{"dist/leaflet.js":"leaflet.js","dist/leaflet.css":"leaflet.css","LICENSE":"licenses/leaflet.txt"}},
+  {"name":"sql-formatter","version":"15.9.0","integrity":"sha512-3A/N+v+mA5/PDU+FlO4uTFE0L/Mmg63c/Ny161Qv2b1Mxp9IX8War+LLmq17LA/Kgu4KXAR7iutK2JaHWJMMtw==","files":{"dist/sql-formatter.min.js":"sql-formatter.min.js","LICENSE":"licenses/sql-formatter.txt"}}
+]

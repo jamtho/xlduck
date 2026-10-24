@@ -1,6 +1,6 @@
 # Read and compute policy and connections
 
-The new engine accepts research queries and supported data readers while rejecting SQL that changes data, installs capabilities, or changes the session configuration. This contract applies to `XlDuck.Engine`, its workbook worker and the separate Excel test add-in. Production `XlDuck/` still uses the legacy implementation. Public workbook enablement, connection settings UI and production preview integration remain to be built.
+The new engine accepts research queries and supported data readers while rejecting SQL that changes data, installs capabilities, or changes the session configuration. This contract applies to the production Excel host, its workbook worker and all output/preview paths. The production host provides workbook enablement and non-secret connection settings.
 
 ## Access model
 
@@ -8,7 +8,7 @@ An enabled workbook has broad read access under the user's account and configure
 
 This policy prevents supported SQL mutation paths. It does not make an unfamiliar workbook safe to run without a trust decision: readable data can appear in results or be sent in an outgoing URL. A remote service can also attach side effects to a GET request. The worker runs under the user's account for fault isolation; it is not an OS security sandbox. Read-only source credentials remain useful defence in depth.
 
-The production host must make the coarse workbook enablement decision before submitting queries, preserve that decision across ordinary restarts, and handle unfamiliar copies deliberately. The test add-in's explicit initialization is only a test mechanism.
+The production host blocks computations until workbook enablement, preserves that decision across ordinary restarts and remembers saved revisions locally. Unfamiliar copies do not inherit approval.
 
 ## Query contract
 
@@ -68,7 +68,7 @@ The host creates temporary scoped DuckDB secrets through the supported AWS provi
 
 Authenticate or renew credentials outside the sheet, then restart the workbook session. Refresh and expiry behaviour for live SSO and provider-specific profiles still needs integration validation. Setup failures identify the connection without returning provider exception details.
 
-The new engine does not load persistent DuckDB secrets and does not offer arbitrary `DuckConfig` SQL. Existing users will configure environment credentials or named profiles through the forthcoming host settings instead. No compatibility bridge to the legacy secret store is planned.
+The new engine does not load persistent DuckDB secrets and does not offer arbitrary `DuckConfig` SQL. Existing users will configure environment credentials or named profiles through the host settings instead. No compatibility bridge to the legacy secret store is planned.
 
 ## Pinned engine and extensions
 
@@ -86,6 +86,6 @@ The policy suite runs against both the direct engine and the workbook worker. It
 
 Optional reader tests use an owned loopback HTTP/S3 fixture with dummy credentials. They exercise HTTP reads, S3 Parquet reads and wildcard listing, named profiles, request methods, errors and signed-URL redaction. The fixture checks authentication headers but does not cryptographically verify AWS signatures. These tests do not establish compatibility with a live AWS account, SSO login, enterprise proxy or all S3-compatible services.
 
-Before switching production: implement workbook identity/lifecycle and trust persistence, the settings UX, production preview integration, live source/SSO checks and packaged dependency validation. See [the modernization plan](../PLAN-modernization.md) and [test commands](../tests/README.md).
+Production lifecycle, trust persistence, settings and preview integration are implemented. Before public release, complete live source/SSO checks and packaged dependency validation. See [the modernization plan](../PLAN-modernization.md) and [test commands](../tests/README.md).
 
 The implementation uses DuckDB's documented [SQL serialization](https://duckdb.org/docs/current/data/json/sql_to_and_from_json), [AWS credential providers](https://duckdb.org/docs/1.5/core_extensions/aws) and [S3 reader](https://duckdb.org/docs/1.5/core_extensions/httpfs/s3api). Engine settings are supplied through [DuckDB.NET connection configuration](https://duckdb.net/docs/connection-string.html); these mechanisms support, but do not replace, XlDuck's capability checks.

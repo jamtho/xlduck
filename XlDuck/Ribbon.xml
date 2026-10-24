@@ -20,19 +20,23 @@
                         onAction="OnQueryPauseToggle"
                         getPressed="GetQueryPaused"
                         screentip="Pause/Resume Queries"
-                        supertip="Pause all query execution. Queries resume when toggled off." />
+                        supertip="Pause new computations in this workbook. Resuming reuses completed results." />
           <button id="CancelQueryButton" label="Cancel Query"
                   imageMso="CancelRequest" size="large"
                   onAction="OnCancelQuery"
                   screentip="Cancel Running Query"
-                  supertip="Cancels the running query and all pending queries." />
+                  supertip="Cancel running and queued work in this workbook. Completed results are retained." />
+          <button id="RetryButton" label="Retry failed results" onAction="OnRetry" imageMso="Refresh" />
         </group>
-        <group id="ConfigGroup" label="Config">
-          <button id="ResetConfigButton" label="Reset Config"
+        <group id="ConfigGroup" label="Workbook">
+          <button id="ConnectionsButton" label="Enable / Connections" onAction="OnConnections" imageMso="Connections" size="large"
+                  supertip="Enable broad file and network reads for this workbook and configure S3 profiles." />
+          <button id="RestartButton" label="Restart XlDuck"
                   imageMso="Refresh" size="large"
-                  onAction="OnResetConfig"
-                  screentip="Reset Configuration"
-                  supertip="Clears the stored DuckConfig state so it can be re-executed with different inputs. Use while developing a sheet." />
+                  onAction="OnRestart"
+                  screentip="Recompute this workbook"
+                  supertip="Discard this workbook's results and fetch its sources again. Other workbooks are unaffected." />
+          <button id="DisableButton" label="Disable workbook" onAction="OnDisable" />
         </group>
         <group id="InfoGroup" label="Info">
           <button id="VersionButton"

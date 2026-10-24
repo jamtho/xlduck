@@ -62,6 +62,7 @@ function New-XlDuckExcelSession {
             Application = $application
             Workbook = $null
             ProcessId = $excelProcessId
+            Process = $ownedProcess
             StartTimeTicks = $ownedProcess.StartTime.ToUniversalTime().Ticks
             WorkbookName = $null
         }
@@ -117,11 +118,13 @@ function Close-XlDuckExcelSession {
         [GC]::WaitForPendingFinalizers()
     }
     if ($quitRequested) {
-        $remaining = Get-Process -Id $Session.ProcessId -ErrorAction SilentlyContinue
-        if ($remaining -and $remaining.StartTime.ToUniversalTime().Ticks -eq $Session.StartTimeTicks -and
-            -not $remaining.WaitForExit(5000)) {
-            throw "Owned Excel PID $($Session.ProcessId) did not exit after Quit. It was not forcibly terminated."
-        }
+        # Keep the original Process object. Looking up its PID again races with fast exit:
+        # StartTime can disappear between Get-Process and checking the returned object.
+        try {
+            if (-not $Session.Process.WaitForExit(5000)) {
+                throw "Owned Excel PID $($Session.ProcessId) did not exit after Quit. It was not forcibly terminated."
+            }
+        } finally { $Session.Process.Dispose() }
     }
 }
 
@@ -148,7 +151,7 @@ function Wait-XlDuckCell {
 
 function Build-XlDuckAddIn {
     param([string]$ProjectPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'XlDuck/XlDuck.csproj'))
-    & dotnet build $ProjectPath --nologo
+    & dotnet build $ProjectPath --nologo -m:1 /nodeReuse:false /p:UseSharedCompilation=false
     if ($LASTEXITCODE -ne 0) { throw "Build failed: $ProjectPath" }
 }
 

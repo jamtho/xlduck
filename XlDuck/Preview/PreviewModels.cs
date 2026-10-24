@@ -39,6 +39,12 @@ public class EmptyPreviewModel : PreviewModel
     public override string Kind => "empty";
 }
 
+public sealed class StatusPreviewModel : PreviewModel
+{
+    public override string Kind => "status";
+    [JsonPropertyName("retainPrevious")] public bool RetainPrevious { get; set; }
+}
+
 /// <summary>
 /// Preview model for error state.
 /// </summary>
@@ -67,7 +73,9 @@ public class ColumnInfo
 /// </summary>
 public class TablePreviewData
 {
+    [JsonPropertyName("isSample")] public bool IsSample { get; set; }
     [JsonPropertyName("rowCount")]
+    [JsonNumberHandling(JsonNumberHandling.WriteAsString)]
     public long RowCount { get; set; }
 
     [JsonPropertyName("colCount")]
@@ -143,6 +151,8 @@ public class FragPreviewModel : PreviewModel
 /// </summary>
 public class PlotPreviewData
 {
+    [JsonPropertyName("isSample")] public bool IsSample { get; set; }
+    [JsonPropertyName("kinds")] public List<string[]> Kinds { get; set; } = new();
     [JsonPropertyName("template")]
     public string Template { get; set; } = "";
 
@@ -159,6 +169,7 @@ public class PlotPreviewData
     public Dictionary<string, string> Overrides { get; set; } = new();
 
     [JsonPropertyName("rowCount")]
+    [JsonNumberHandling(JsonNumberHandling.WriteAsString)]
     public long RowCount { get; set; }
 
     [JsonPropertyName("error")]
@@ -183,6 +194,7 @@ public class PlotPreviewModel : PreviewModel
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = false)]
 [JsonSerializable(typeof(EmptyPreviewModel))]
+[JsonSerializable(typeof(StatusPreviewModel))]
 [JsonSerializable(typeof(ErrorPreviewModel))]
 [JsonSerializable(typeof(TablePreviewModel))]
 [JsonSerializable(typeof(FragPreviewModel))]

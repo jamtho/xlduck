@@ -1,67 +1,52 @@
 # XlDuck tests
 
-## New core and worker
+The production host, typed core, engine, worker and preview have separate checks. All Excel scripts create and verify ownership of their own Excel process and workbook. They never attach through the Running Object Table, choose ActiveWorkbook as a test target, close unrelated workbooks or kill all Excel processes.
 
-The new implementation has UI-independent core specifications, real DuckDB cases in both direct and worker modes, and a separate Excel test add-in. From the repository root:
+## Production integration
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1 -WithExcel
-```
-
-Use `-NoBuild` for an existing build, or `-NoRestore` when dependencies have already been restored. The default build needs NuGet access. `-WithExcel` creates and closes an owned Excel instance; it never selects an existing user workbook. Worker crash and blocked-pipe cases deliberately terminate only their own child processes.
-
-For HTTP/S3 integration, acquire the pinned official development readers once, then opt into loopback network tests:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Get-ReaderExtensions.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1 -WithExcel -WithReaders
-```
-
-The acquisition script needs internet access and verifies exact extension hashes. Queries never install extensions. Reader tests use an owned local server, temporary files and dummy AWS credentials in the test process and its child. They do not access a real bucket or change user credential files. Named-profile and authentication-header tests are not live AWS/SSO validation. The policy suite without `-WithReaders` still tests local readers and prohibited capabilities.
-
-The suites can also run individually after building `XlDuck.Worker`, the three specification projects and (for Excel) `tests/XlDuck.TestAddIn`:
-
-```powershell
-dotnet run --project tests/XlDuck.Core.Specs --no-build --no-restore
-dotnet run --project tests/XlDuck.Engine.Specs --no-build --no-restore
-dotnet run --project tests/XlDuck.Engine.Specs --no-build --no-restore -- --worker
-dotnet run --project tests/XlDuck.Policy.Specs --no-build --no-restore -- --readers
-dotnet run --project tests/XlDuck.Policy.Specs --no-build --no-restore -- --worker --readers
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-NewCore.ps1 -NoBuild
-```
-
-The [core contract and limitations](../XlDuck.Core/README.md) describe what this validates. The Excel test add-in is not the public host. Its preview test checks plot data and retention, not rendered charts. Production `XlDuck/` still uses the legacy implementation.
-
-## Existing add-in and regression baseline
-
-The Excel suite creates a new Excel process and workbook, checks that it owns that process, and closes only its own workbook. It does not attach to the active workbook. Run it from the repository root on Windows with 64-bit Excel installed:
+After acquiring the pinned readers and preview libraries, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -NoBuild -WithPreview
 ```
 
-Use `-NoBuild` after a successful build. To verify that the suite leaves another workbook untouched, run the isolation test. It creates both the sentinel workbook and the test instance itself:
+The production suite covers enablement, typed DAGs and captures, reuse, nested functions, exact output, registry restrictions, two-workbook isolation, dates, pause/cancel/retry, manual calculation, cancelled closure, Save As, trusted reopen, unfamiliar copies and moved-formula ownership. The preview smoke test opens a visible owned window, waits for local WebView startup, and verifies a selected plot update without reselection or clearing the previous state. It does not assert pixel-perfect rendering or different DPI layouts.
+
+Use `-AddInPath <absolute-or-relative-xll>` to test a clean isolated build or package. A development test loads a private copy, leaving the original build available. `Test-PreviewHost.ps1 -InspectionSeconds 60` optionally keeps its owned window visible before cleanup. No Trust Center settings are changed and security dialogs are not dismissed automatically.
+
+`Test-HarnessIsolation.ps1` creates its own sentinel instance, runs the suite in another instance, and verifies that unrelated and subsequently added workbooks survive cleanup. It also cleans up its own sentinel workbooks.
+
+## Core, host, engine and worker
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/Test-HarnessIsolation.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1 -WithReaders -WithExcel
 ```
 
-The core regression executable links the existing computational source with minimal UI host stubs. It needs no Excel process. Its normal command exits unsuccessfully while the documented defects remain:
+Use `-NoRestore` after dependencies have been restored, or `-NoBuild` for existing binaries. The core tests cover typed identities, SQL placeholders, leases, dependency retention, cancellation, bounds and protocol frames. Host tests cover revision-based approvals, exact dates, formula selection and WebView access policy. Engine tests run directly and through a worker; worker failure tests terminate only their own child process. A narrow separate Excel test add-in preserves the execution prototype's latency and ownership checks.
 
-```powershell
-dotnet run --project tests/XlDuck.Core.Tests
-```
+Reader tests use a loopback server and dummy credentials, never a real bucket or user credential files. They cover HTTP/S3 reads, listing, named profiles, headers, errors and extension integrity. They do not verify AWS signatures cryptographically or establish live AWS/SSO/proxy compatibility. Omit `-WithReaders` to run local-only policy checks.
 
-For recording the current baseline, append `-- --allow-known-defects`. This permits only cases explicitly marked as known defects; unexpected failures still fail the run. The output reports known defects separately. Keep these legacy tests until the production entry points are migrated; the new `XlDuck.Core.Specs` project independently verifies the corrected implementation. Do not remove legacy known-defect markers merely because the new core passes.
+## Browser rendering
 
-Preview tests run the real embedded HTML in a separate headless Edge profile with all page network requests blocked. Install the pinned Playwright dependency in `tests/preview`, or supply an existing Playwright installation through `NODE_PATH`:
+Acquire libraries once with `scripts/Get-PreviewAssets.ps1`. Install the pinned Playwright dependency in `tests/preview`, or supply an existing installation through `NODE_PATH`, then run:
 
 ```powershell
 node tests/preview/preview.test.cjs
-node tests/preview/preview.test.cjs --allow-known-defects
 ```
 
-The browser's normal command also fails while known defects remain. These checks exercise table rendering and duration conversion without downloading chart libraries. They do not replace chart and WebView2 integration checks.
+The suite uses an isolated headless Edge profile and serves the actual local assets at the production virtual origin. External network requests are blocked. It checks injection, exact conversions, interval fractions, stale states and rendering of all eight templates under CSP. It confirms non-map charts make no external requests. Maps are tested with unavailable tiles and invalid coordinates. CI sets `XLDUCK_TEST_BROWSER=chromium` after installing Playwright's pinned Chromium build.
 
-Cell readiness is observed with bounded polling. Test assertions read `Value2`; formatting tests should assert formatting explicitly. Formula writes use `Formula2` so Excel can spill arrays. Excel busy responses are retried for a bounded time rather than handled with fixed sleeps.
+## Packages and runtimes
+
+`scripts/Build-Package.ps1` builds into a fresh directory using locked dependencies. `scripts/Verify-Package.ps1 -Directory <package>` verifies its x64 files and SHA-256 manifest. `scripts/Get-Diagnostics.ps1 -PackageDirectory <package>` emits version and integrity information without workbook data, paths, settings or credentials. Test the actual package with `Run-Tests.ps1 -AddInPath <package>/XlDuck-AddIn64.xll -WithPreview`.
+
+`XlDuck.RuntimeProbe` builds separate .NET Framework 4.8, .NET 8 and .NET 10 companions using `ProbeFramework` and `ProbeId` MSBuild properties, with a separate artifacts directory per build. `Test-RuntimeCoexistence.ps1` accepts their XLL paths and the companion function (`XlDuckProbeEight` or `XlDuckProbeTen`). It defaults to both load orders; `-Orders companion-first` restricts a case known to block in the reverse order. See [release preparation](../docs/RELEASE.md) for the observed results and runtime constraints. These synthetic probes do not certify unrelated add-ins.
+
+## Evidence
+
+On 24 October 2026: 21 core, 6 host, 14 direct-engine, 17 worker, 17 policy/reader cases in each engine mode, 11 narrow Excel core checks, 22 production checks, 2 native preview checks and 21 browser checks passed. The production eight-step chain settled in roughly 30–40 ms on the development machine; this is an observation, not a latency guarantee.
+
+The old 95-assertion Excel suite and legacy source-linked defect probes are preserved in Git history at `f031d7a`. Their relevant behaviours and identified defects have been ported to the new suites; intentionally removed mutation/configuration functions now have rejection tests. The old executable is no longer a production test target.
+
+Visual review, representative runtime coexistence, clean-machine installation and live credential-provider checks remain release gates in `PLAN-modernization.md`.
