@@ -4,11 +4,16 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # XlDuck Integration Tests
-# Requires: Excel running with XlDuck add-in loaded and a workbook open
+# Creates and closes its own Excel process and workbook.
 
 param(
-    [switch]$Verbose
+    [switch]$Verbose,
+    [switch]$NoBuild,
+    [string]$AddInPath
 )
+
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '../scripts/ExcelSession.ps1')
 
 $script:TestsPassed = 0
 $script:TestsFailed = 0
@@ -28,36 +33,34 @@ function Write-TestResult {
 }
 
 function Initialize-Excel {
-    try {
-        $script:Excel = [Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application")
-        $script:Sheet = $script:Excel.ActiveWorkbook.ActiveSheet
-        return $true
-    } catch {
-        Write-Host "ERROR: Could not connect to Excel. Make sure Excel is running with the add-in loaded." -ForegroundColor Red
-        Write-Host "       Launch: Start-Process 'XlDuck\bin\Debug\net8.0-windows\XlDuck-AddIn64.xll'" -ForegroundColor Yellow
-        return $false
+    if (-not $AddInPath) {
+        if (-not $NoBuild) { Build-XlDuckAddIn }
+        $AddInPath = Join-Path $PSScriptRoot '../XlDuck/bin/Debug/net8.0-windows/XlDuck-AddIn64.xll'
     }
+    $script:Session = New-XlDuckExcelSession -AddInPath $AddInPath
+    $script:Excel = $script:Session.Application
+    $script:Sheet = $script:Session.Workbook.Worksheets.Item(1)
 }
 
 function Clear-TestRange {
-    $script:Sheet.Range("A1:Z50").Clear() | Out-Null
-    Start-Sleep -Milliseconds 200
+    Assert-XlDuckExcelSession $script:Session
+    Invoke-XlDuckExcel { $script:Sheet.Range("A1:Z50").Clear() } | Out-Null
 }
 
 function Set-Formula {
-    param([string]$Cell, [string]$Formula)
-    $script:Sheet.Range($Cell).Formula2 = $Formula
-    Start-Sleep -Milliseconds 300
+    param([string]$Cell, [string]$Formula, [switch]$NoWait)
+    Invoke-XlDuckExcel { $script:Sheet.Range($Cell).Formula2 = $Formula }
+    if (-not $NoWait) { [void](Wait-XlDuckCell $script:Sheet $Cell) }
 }
 
 function Get-CellValue {
     param([string]$Cell)
-    return $script:Sheet.Range($Cell).Text
+    return Invoke-XlDuckExcel { $script:Sheet.Range($Cell).Value2 }
 }
 
 function Get-CellFormula {
     param([string]$Cell)
-    return $script:Sheet.Range($Cell).Formula
+    return Invoke-XlDuckExcel { $script:Sheet.Range($Cell).Formula2 }
 }
 
 # ============================================
@@ -98,7 +101,6 @@ function Test-DuckOut {
 
     # Setup: Create a handle
     Set-Formula "A1" '=DuckQuery("SELECT * FROM range(3)")'
-    Start-Sleep -Milliseconds 300
 
     # Test 1: Spills array with header
     Set-Formula "B1" "=DuckOut(A1)"
@@ -114,7 +116,6 @@ function Test-DuckOut {
 
     # Test 2: Multi-column output
     Set-Formula "D1" '=DuckQuery("SELECT 1 as a, 2 as b, 3 as c")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "E1" "=DuckOut(D1)"
 
     $colA = Get-CellValue "E1"
@@ -142,7 +143,6 @@ function Test-DuckQueryOut {
 
     # Test 2: With parameter binding
     Set-Formula "E1" '=DuckQuery("SELECT * FROM range(5)")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "F1" '=DuckQueryOut("SELECT * FROM ? WHERE range > 2", E1)'
 
     $filtered1 = Get-CellValue "F2"
@@ -157,11 +157,9 @@ function Test-ParameterBinding {
 
     # Setup: Create source data
     Set-Formula "A1" '=DuckQuery("SELECT * FROM range(5)")'
-    Start-Sleep -Milliseconds 300
 
     # Test 1: Single parameter
     Set-Formula "B1" '=DuckQuery("SELECT COUNT(*) as cnt FROM ?", A1)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "C1" "=DuckOut(B1)"
 
     $header = Get-CellValue "C1"
@@ -172,7 +170,6 @@ function Test-ParameterBinding {
 
     # Test 2: Filtered query
     Set-Formula "D1" '=DuckQuery("SELECT * FROM ? WHERE range > 2", A1)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "E1" "=DuckOut(D1)"
 
     $val1 = Get-CellValue "E2"
@@ -188,13 +185,10 @@ function Test-ChainedQueries {
 
     # Setup: Create chain A1 -> B1 -> C1
     Set-Formula "A1" '=DuckQuery("SELECT * FROM range(10)")'
-    Start-Sleep -Milliseconds 300
 
     Set-Formula "B1" '=DuckQuery("SELECT * FROM ? WHERE range >= 5", A1)'
-    Start-Sleep -Milliseconds 300
 
     Set-Formula "C1" '=DuckQuery("SELECT SUM(range) as total FROM ?", B1)'
-    Start-Sleep -Milliseconds 300
 
     Set-Formula "D1" "=DuckOut(C1)"
 
@@ -212,7 +206,6 @@ function Test-TypeConversions {
 
     # Test 1: HUGEINT/SUM conversion
     Set-Formula "A1" '=DuckQuery("SELECT SUM(range) as total FROM range(100)")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "B1" "=DuckOut(A1)"
 
     $sum = Get-CellValue "B2"
@@ -221,7 +214,6 @@ function Test-TypeConversions {
 
     # Test 2: String values
     Set-Formula "C1" "=DuckQuery(""SELECT 'hello' as greeting"")"
-    Start-Sleep -Milliseconds 300
     Set-Formula "D1" "=DuckOut(C1)"
 
     $str = Get-CellValue "D2"
@@ -229,7 +221,6 @@ function Test-TypeConversions {
 
     # Test 3: NULL handling
     Set-Formula "E1" '=DuckQuery("SELECT NULL as empty")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "F1" "=DuckOut(E1)"
 
     $null_val = Get-CellValue "F2"
@@ -237,9 +228,7 @@ function Test-TypeConversions {
 
     # Test 4: TINYINT (sbyte) handling - must work through temp table creation
     Set-Formula "G1" '=DuckQuery("SELECT 1::TINYINT as val")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "H1" '=DuckQuery("SELECT val + 1 as result FROM ?", G1)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "I1" "=DuckOut(H1)"
 
     $tinyint_val = Get-CellValue "I2"
@@ -247,9 +236,7 @@ function Test-TypeConversions {
 
     # Test 5: COUNT(DISTINCT) through temp table
     Set-Formula "J1" '=DuckQuery("SELECT * FROM (VALUES (1), (2), (2), (3), (3), (3)) AS t(id)")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "K1" '=DuckQuery("SELECT COUNT(DISTINCT id) as cnt FROM ?", J1)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "L1" "=DuckOut(K1)"
 
     $cnt = Get-CellValue "L2"
@@ -262,49 +249,42 @@ function Test-CompositeTypes {
 
     # Test 1: LIST<VARCHAR>
     Set-Formula "A1" "=DuckQuery(""SELECT ['hello', 'world'] as tags"")"
-    Start-Sleep -Milliseconds 300
     Set-Formula "B1" "=DuckOut(A1)"
     $listStr = Get-CellValue "B2"
     Write-TestResult "LIST<VARCHAR> renders" ($listStr -eq "[hello, world]") "Got: $listStr"
 
     # Test 2: LIST<INTEGER>
     Set-Formula "C1" "=DuckQuery(""SELECT [1, 2, 3] as nums"")"
-    Start-Sleep -Milliseconds 300
     Set-Formula "D1" "=DuckOut(C1)"
     $listInt = Get-CellValue "D2"
     Write-TestResult "LIST<INTEGER> renders" ($listInt -eq "[1, 2, 3]") "Got: $listInt"
 
     # Test 3: LIST<DOUBLE>
     Set-Formula "E1" "=DuckQuery(""SELECT [1.5, 2.5] as vals"")"
-    Start-Sleep -Milliseconds 300
     Set-Formula "F1" "=DuckOut(E1)"
     $listDbl = Get-CellValue "F2"
     Write-TestResult "LIST<DOUBLE> renders" ($listDbl -eq "[1.5, 2.5]") "Got: $listDbl"
 
     # Test 4: Empty list
     Set-Formula "G1" "=DuckQuery(""SELECT []::INTEGER[] as empty_list"")"
-    Start-Sleep -Milliseconds 300
     Set-Formula "H1" "=DuckOut(G1)"
     $listEmpty = Get-CellValue "H2"
     Write-TestResult "Empty list renders" ($listEmpty -eq "[]") "Got: $listEmpty"
 
     # Test 5: STRUCT
     Set-Formula "I1" "=DuckQuery(""SELECT {'name': 'alice', 'age': 30} as person"")"
-    Start-Sleep -Milliseconds 300
     Set-Formula "J1" "=DuckOut(I1)"
     $struct = Get-CellValue "J2"
     Write-TestResult "STRUCT renders" ($struct -match "name.*alice" -and $struct -match "age.*30") "Got: $struct"
 
     # Test 6: MAP
     Set-Formula "K1" "=DuckQuery(""SELECT MAP {'a': 1, 'b': 2} as lookup"")"
-    Start-Sleep -Milliseconds 300
     Set-Formula "L1" "=DuckOut(K1)"
     $map = Get-CellValue "L2"
     Write-TestResult "MAP renders" ($map -match "a.*1" -and $map -match "b.*2") "Got: $map"
 
     # Test 7: LIST with NULL element
     Set-Formula "M1" "=DuckQuery(""SELECT [1, NULL, 3] as sparse"")"
-    Start-Sleep -Milliseconds 300
     Set-Formula "N1" "=DuckOut(M1)"
     $listNull = Get-CellValue "N2"
     Write-TestResult "LIST with NULL renders" ($listNull -eq "[1, NULL, 3]") "Got: $listNull"
@@ -355,7 +335,6 @@ function Test-DuckConfig {
 
     # Test 3: Config took effect (table was created)
     Set-Formula "C1" '=DuckQuery("SELECT * FROM duck_config_test")'
-    Start-Sleep -Milliseconds 300
     $result3 = Get-CellValue "C1"
     Write-TestResult "Config statement took effect" ($result3 -match "^duck://table/\d+\|\d+x\d+$") "Got: $result3"
 
@@ -374,16 +353,13 @@ function Test-DuckConfig {
 
     # Test 6: AfterConfig unblocked (IsReady was set by Test 2)
     Set-Formula "A1" '=DuckQueryAfterConfig("SELECT 42 as answer")'
-    Start-Sleep -Milliseconds 500
     $result6 = Get-CellValue "A1"
     Write-TestResult "AfterConfig unblocked by DuckConfig" ($result6 -match "^duck://table/\d+\|\d+x\d+$") "Got: $result6"
 
     # Test 7: Config handle usable as dependency arg
     $script:Sheet.Range("B1").Value2 = "CREATE TABLE duck_config_test (id INT, name VARCHAR)"
     Set-Formula "C1" '=DuckConfig(B1:B1)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "D1" '=DuckQuery("SELECT 1 as num", C1)'
-    Start-Sleep -Milliseconds 300
     $result7 = Get-CellValue "D1"
     Write-TestResult "Config handle works as dependency arg" ($result7 -match "^duck://table/\d+\|\d+x\d+$") "Got: $result7"
 
@@ -402,7 +378,6 @@ function Test-DuckConfigReady {
 
     # Test 2: DuckFragAfterConfig works alongside real parameters
     Set-Formula "B1" '=DuckQuery("SELECT * FROM range(3)")'
-    Start-Sleep -Milliseconds 500
     Set-Formula "C1" '=DuckFragAfterConfig("SELECT * FROM ?", B1)'
     $result2 = Get-CellValue "C1"
     Write-TestResult "DuckFragAfterConfig with params returns handle" ($result2 -match "^duck://frag/\d+$") "Got: $result2"
@@ -424,7 +399,6 @@ function Test-DuckExecute {
 
     # Test 3: Query the table
     Set-Formula "C1" '=DuckQuery("SELECT * FROM test_tbl ORDER BY id")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "D1" "=DuckOut(C1)"
 
     $id1 = Get-CellValue "D2"
@@ -457,9 +431,7 @@ function Test-DuckFragInQuery {
 
     # Test 1: Fragment used as table source
     Set-Formula "A1" '=DuckFrag("SELECT * FROM range(5)")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "B1" '=DuckQuery("SELECT * FROM ? WHERE range > 2", A1)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "C1" "=DuckOut(B1)"
 
     $val1 = Get-CellValue "C2"
@@ -470,9 +442,7 @@ function Test-DuckFragInQuery {
 
     # Test 2: Fragment with aggregation
     Set-Formula "D1" '=DuckFrag("SELECT * FROM range(10)")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "E1" '=DuckQuery("SELECT SUM(range) as total FROM ?", D1)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "F1" "=DuckOut(E1)"
 
     $sum = Get-CellValue "F2"
@@ -486,13 +456,10 @@ function Test-DuckFragChained {
 
     # Chain: A1 (frag) -> B1 (frag) -> C1 (query)
     Set-Formula "A1" '=DuckFrag("SELECT * FROM range(10)")'
-    Start-Sleep -Milliseconds 300
 
     Set-Formula "B1" '=DuckFrag("SELECT * FROM ? WHERE range >= 5", A1)'
-    Start-Sleep -Milliseconds 300
 
     Set-Formula "C1" '=DuckQuery("SELECT SUM(range) as total FROM ?", B1)'
-    Start-Sleep -Milliseconds 300
 
     Set-Formula "D1" "=DuckOut(C1)"
 
@@ -507,15 +474,12 @@ function Test-DuckFragWithTableHandle {
 
     # Create a table handle first
     Set-Formula "A1" '=DuckQuery("SELECT * FROM range(5)")'
-    Start-Sleep -Milliseconds 300
 
     # Fragment references the table handle
     Set-Formula "B1" '=DuckFrag("SELECT * FROM ? WHERE range > 2", A1)'
-    Start-Sleep -Milliseconds 300
 
     # Query the fragment
     Set-Formula "C1" '=DuckQuery("SELECT COUNT(*) as cnt FROM ?", B1)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "D1" "=DuckOut(C1)"
 
     $count = Get-CellValue "D2"
@@ -528,7 +492,6 @@ function Test-DuckOutWithFragment {
 
     # DuckOut can directly output a fragment
     Set-Formula "A1" '=DuckFrag("SELECT * FROM range(3)")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "B1" "=DuckOut(A1)"
 
     $header = Get-CellValue "B1"
@@ -548,7 +511,6 @@ function Test-Pivot {
 
     # Create source data
     Set-Formula "A1" "=DuckFrag(""SELECT * FROM (VALUES ('Q1','North',100), ('Q1','South',150), ('Q2','North',200), ('Q2','South',250)) AS sales(quarter, region, amount)"")"
-    Start-Sleep -Milliseconds 300
 
     # Pivot the data
     Set-Formula "B1" '=DuckQueryOut("PIVOT ? ON region USING SUM(amount) ORDER BY quarter", A1)'
@@ -584,7 +546,6 @@ function Test-DuckCapture {
     $script:Sheet.Range("A4").Value2 = "charlie"
     $script:Sheet.Range("B4").Value2 = 35
     $script:Sheet.Range("C4").Value2 = "Chicago"
-    Start-Sleep -Milliseconds 200
 
     # Test 1: Basic capture returns handle
     Set-Formula "E1" '=DuckCapture(A1:C4)'
@@ -593,7 +554,6 @@ function Test-DuckCapture {
 
     # Test 2: DuckOut of captured data preserves headers and values
     Set-Formula "F1" '=DuckOut(E1)'
-    Start-Sleep -Milliseconds 300
     $hdr1 = Get-CellValue "F1"
     $hdr2 = Get-CellValue "G1"
     $hdr3 = Get-CellValue "H1"
@@ -606,7 +566,6 @@ function Test-DuckCapture {
 
     # Test 3: SQL query on captured data
     Set-Formula "J1" '=DuckQueryOut("SELECT * FROM ? WHERE age > 28", E1)'
-    Start-Sleep -Milliseconds 300
     $qName1 = Get-CellValue "J2"
     $qName2 = Get-CellValue "J3"
 
@@ -614,7 +573,6 @@ function Test-DuckCapture {
 
     # Test 4: Numeric type inference (SUM works)
     Set-Formula "M1" '=DuckQueryOut("SELECT SUM(age) as total FROM ?", E1)'
-    Start-Sleep -Milliseconds 300
     $sum = Get-CellValue "M2"
     Write-TestResult "Numeric type inference (SUM)" ($sum -eq "90") "Got: $sum (expected 90 = 30+25+35)"
 
@@ -624,12 +582,9 @@ function Test-DuckCapture {
     $script:Sheet.Range("A2").Value2 = 10
     # A3 intentionally left empty
     $script:Sheet.Range("A4").Value2 = 30
-    Start-Sleep -Milliseconds 200
 
     Set-Formula "B1" '=DuckCapture(A1:A4)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "C1" '=DuckQueryOut("SELECT COUNT(val) as cnt FROM ?", B1)'
-    Start-Sleep -Milliseconds 300
     $cnt = Get-CellValue "C2"
     Write-TestResult "Empty cells become NULL (COUNT skips)" ($cnt -eq "2") "Got: $cnt (expected 2, skipping NULL)"
 }
@@ -650,7 +605,6 @@ function Test-DuckQueryOutScalar {
 
     # Test 3: Scalar with parameter binding
     Set-Formula "C1" '=DuckQuery("SELECT * FROM range(10)")'
-    Start-Sleep -Milliseconds 300
     Set-Formula "D1" '=DuckQueryOutScalar("SELECT COUNT(*) FROM ? WHERE range > 5", C1)'
     $cnt = Get-CellValue "D1"
     Write-TestResult "Scalar with param binding" ($cnt -eq "4") "Got: $cnt"
@@ -664,19 +618,19 @@ function Test-DuckQueryOutScalar {
     Set-Formula "F1" "=DuckQueryOutScalar(""SELECT DATE '2023-01-15'"")"
     $script:Sheet.Range("F1").NumberFormat = "yyyy-mm-dd"
     $dateVal = Get-CellValue "F1"
-    Write-TestResult "DATE scalar" ($dateVal -eq "2023-01-15") "Got: $dateVal"
+    Write-TestResult "DATE scalar" ($dateVal -eq ([datetime]'2023-01-15').ToOADate()) "Got: $dateVal"
 
     # Test 6: TIMESTAMP returns OLE Automation date double
     Set-Formula "G1" "=DuckQueryOutScalar(""SELECT TIMESTAMP '2023-06-15 14:30:00'"")"
     $script:Sheet.Range("G1").NumberFormat = "yyyy-mm-dd hh:mm:ss"
     $tsVal = Get-CellValue "G1"
-    Write-TestResult "TIMESTAMP scalar" ($tsVal -eq "2023-06-15 14:30:00") "Got: $tsVal"
+    Write-TestResult "TIMESTAMP scalar" ([Math]::Abs($tsVal - ([datetime]'2023-06-15T14:30:00').ToOADate()) -lt 1e-9) "Got: $tsVal"
 
     # Test 7: TIME returns fractional day double
     Set-Formula "H1" "=DuckQueryOutScalar(""SELECT TIME '12:00:00'"")"
     $script:Sheet.Range("H1").NumberFormat = "hh:mm:ss"
     $timeVal = Get-CellValue "H1"
-    Write-TestResult "TIME scalar" ($timeVal -eq "12:00:00") "Got: $timeVal"
+    Write-TestResult "TIME scalar" ($timeVal -eq 0.5) "Got: $timeVal"
 }
 
 function Test-DuckDateFunctions {
@@ -687,9 +641,8 @@ function Test-DuckDateFunctions {
     $script:Sheet.Range("A1").Value2 = "2023-01-15"
     $script:Sheet.Range("A1").NumberFormat = "yyyy-mm-dd"
     # Force Excel to interpret as date by setting via NumberFormat
-    $script:Sheet.Range("B1").Formula = "=DATE(2023,6,15) + TIME(14,30,45)"
+    $script:Sheet.Range("B1").Formula2 = "=DATE(2023,6,15) + TIME(14,30,45)"
     $script:Sheet.Range("B1").NumberFormat = "yyyy-mm-dd hh:mm:ss"
-    Start-Sleep -Milliseconds 200
 
     # Test 1: DuckDate returns ISO date string
     Set-Formula "C1" '=DuckDate(A1)'
@@ -703,12 +656,9 @@ function Test-DuckDateFunctions {
 
     # Test 3: DuckDate used as query parameter
     Set-Formula "E1" '=DuckQuery("SELECT * FROM range(5)")'
-    Start-Sleep -Milliseconds 300
-    $script:Sheet.Range("F1").Formula = "=DATE(2023,1,1)"
-    $script:Sheet.Range("G1").Formula = "=DATE(2023,12,31)"
-    Start-Sleep -Milliseconds 200
+    $script:Sheet.Range("F1").Formula2 = "=DATE(2023,1,1)"
+    $script:Sheet.Range("G1").Formula2 = "=DATE(2023,12,31)"
     Set-Formula "H1" '=DuckQueryOut("SELECT ? as start_date, ? as end_date", DuckDate(F1), DuckDate(G1))'
-    Start-Sleep -Milliseconds 300
     $startDate = Get-CellValue "H2"
     $endDate = Get-CellValue "I2"
     Write-TestResult "DuckDate in query params" ($startDate -eq "2023-01-01" -and $endDate -eq "2023-12-31") "Got: start=$startDate, end=$endDate"
@@ -750,7 +700,6 @@ function Test-ReadCSV {
     Clear-TestRange
     $script:Sheet.Range("A1").Value2 = $csvPath
     Set-Formula "B1" '=DuckFrag("SELECT * FROM read_csv_auto(?)", A1)'
-    Start-Sleep -Milliseconds 300
     Set-Formula "C1" '=DuckQueryOut("SELECT name FROM ? WHERE id = 1", B1)'
 
     $name = Get-CellValue "C2"
@@ -763,13 +712,11 @@ function Test-PauseQueries {
 
     # Test 1: Toggle pause on
     $script:Excel.Run("DuckPauseQueries") | Out-Null
-    Start-Sleep -Milliseconds 300
 
     # Test 2: Enter several DuckQuery formulas while paused
     Set-Formula "A1" '=DuckQuery("SELECT 1 as a")'
     Set-Formula "A2" '=DuckQuery("SELECT 2 as b")'
     Set-Formula "A3" '=DuckQuery("SELECT 3 as c")'
-    Start-Sleep -Milliseconds 500
 
     # Verify all cells show blocked status (not executing)
     $v1 = Get-CellValue "A1"
@@ -781,7 +728,9 @@ function Test-PauseQueries {
 
     # Test 3: Toggle pause off - queries should resume
     $script:Excel.Run("DuckResumeQueries") | Out-Null
-    Start-Sleep -Seconds 3
+    foreach ($cell in @('A1', 'A2', 'A3')) {
+        [void](Wait-XlDuckCell $script:Sheet $cell -Until { param($v) $v -match '^duck://table/' })
+    }
 
     $r1 = Get-CellValue "A1"
     $r2 = Get-CellValue "A2"
@@ -792,7 +741,6 @@ function Test-PauseQueries {
 
     # Test 4: DuckOut works on resumed results (connection valid)
     Set-Formula "B1" "=DuckOut(A1)"
-    Start-Sleep -Milliseconds 300
     $header = Get-CellValue "B1"
     $val = Get-CellValue "B2"
 
@@ -804,15 +752,14 @@ function Test-CancelQuery {
     Clear-TestRange
 
     # Test 1: Start a slow cross-join query (trillion-row)
-    Set-Formula "A1" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) a, range(1000000) b")'
-    Start-Sleep -Seconds 2
+    Set-Formula "A1" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) a, range(1000000) b")' -NoWait
 
     # The cell should still be loading (RTD not yet resolved to a handle)
     $before = Get-CellValue "A1"
 
     # Test 2: Interrupt via DuckInterrupt macro
     $script:Excel.Run("DuckInterrupt") | Out-Null
-    Start-Sleep -Seconds 2
+    [void](Wait-XlDuckCell $script:Sheet 'A1' -Until { param($v) $v -match '#duck://error/' })
 
     # After interrupt, the cell should show an error
     $after = Get-CellValue "A1"
@@ -820,14 +767,16 @@ function Test-CancelQuery {
 
     # Test 3: Multiple queued queries all get cancelled by one interrupt
     Clear-TestRange
-    Set-Formula "A1" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) a, range(1000000) b")'
-    Set-Formula "A2" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) c, range(1000000) d")'
-    Set-Formula "A3" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) e, range(1000000) f")'
-    Start-Sleep -Seconds 2
+    Set-Formula "A1" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) a, range(1000000) b")' -NoWait
+    Set-Formula "A2" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) c, range(1000000) d")' -NoWait
+    Set-Formula "A3" '=DuckQuery("SELECT COUNT(*) FROM range(1000000) e, range(1000000) f")' -NoWait
 
     $script:Excel.Run("DuckInterrupt") | Out-Null
-    Start-Sleep -Seconds 3
+    [void](Wait-XlDuckCell $script:Sheet 'A1' -Until { param($v) $v -match '#duck://error/' })
 
+    foreach ($cell in @('A2', 'A3')) {
+        [void](Wait-XlDuckCell $script:Sheet $cell -Until { param($v) $v -match '#duck://error/' })
+    }
     $q1 = Get-CellValue "A1"
     $q2 = Get-CellValue "A2"
     $q3 = Get-CellValue "A3"
@@ -838,7 +787,6 @@ function Test-CancelQuery {
     # Test 4: Connection still works after interrupt
     Clear-TestRange
     Set-Formula "A1" '=DuckQuery("SELECT 1 as ok")'
-    Start-Sleep -Milliseconds 500
     Set-Formula "B1" "=DuckOut(A1)"
     $header = Get-CellValue "B1"
     $val = Get-CellValue "B2"
@@ -852,11 +800,9 @@ function Test-DuckPlot {
 
     # Setup: Create a data handle
     Set-Formula "A1" '=DuckQuery("SELECT 1 as x, 2 as y, ''a'' as cat")'
-    Start-Sleep -Milliseconds 500
 
     # Test 1: Valid plot returns handle
     Set-Formula "B1" '=DuckPlot(A1, "point", "x", "x", "y", "y")'
-    Start-Sleep -Milliseconds 300
     $result = Get-CellValue "B1"
     Write-TestResult "Valid plot returns handle" ($result -match "^duck://plot/\d+") "Got: $result"
 
@@ -882,11 +828,9 @@ function Test-DuckPlotInterval {
 
     # Setup: Create data with an INTERVAL column
     Set-Formula "A1" '=DuckQuery("SELECT x, INTERVAL (x * 37) SECOND as dur FROM range(20) t(x)")'
-    Start-Sleep -Milliseconds 500
 
     # Test 1: Plot INTERVAL column returns handle (not an error)
     Set-Formula "B1" '=DuckPlot(A1, "line", "x", "x", "y", "dur")'
-    Start-Sleep -Milliseconds 300
     $result = Get-CellValue "B1"
     Write-TestResult "INTERVAL plot returns handle" ($result -match "^duck://plot/\d+") "Got: $result"
 }
@@ -897,11 +841,9 @@ function Test-DuckPlotMap {
 
     # Setup: Create data with lat/lon columns
     Set-Formula "A1" '=DuckQuery("SELECT 51.5 as latitude, -0.1 as longitude, ''London'' as city")'
-    Start-Sleep -Milliseconds 500
 
     # Test 1: Valid map plot returns handle
     Set-Formula "B1" '=DuckPlot(A1, "map", "lat", "latitude", "lon", "longitude")'
-    Start-Sleep -Milliseconds 300
     $result = Get-CellValue "B1"
     Write-TestResult "Valid map plot returns handle" ($result -match "^duck://plot/\d+") "Got: $result"
 
@@ -917,7 +859,6 @@ function Test-DuckPlotMap {
 
     # Test 4: Map does not require x/y
     Set-Formula "E1" '=DuckPlot(A1, "map", "lat", "latitude", "lon", "longitude", "color", "city")'
-    Start-Sleep -Milliseconds 300
     $result4 = Get-CellValue "E1"
     Write-TestResult "Map with color returns handle" ($result4 -match "^duck://plot/\d+") "Got: $result4"
 }
@@ -931,11 +872,10 @@ $totalSw = [System.Diagnostics.Stopwatch]::StartNew()
 Write-Host "XlDuck Integration Tests" -ForegroundColor White
 Write-Host "========================" -ForegroundColor White
 
-if (-not (Initialize-Excel)) {
-    exit 1
-}
-
-Write-Host "Connected to Excel: $($script:Excel.ActiveWorkbook.Name)" -ForegroundColor Gray
+$script:Session = $null
+try {
+    Initialize-Excel
+    Write-Host "Owned Excel PID $($script:Session.ProcessId): $($script:Session.WorkbookName)" -ForegroundColor Gray
 
 # Run all test suites
 Test-Versions
@@ -965,6 +905,15 @@ Test-DuckPlotInterval
 Test-DuckPlotMap
 Test-PauseQueries
 Test-CancelQuery
+
+} finally {
+    if ($script:Sheet) {
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($script:Sheet)
+        $script:Sheet = $null
+    }
+    $script:Excel = $null
+    if ($script:Session) { Close-XlDuckExcelSession $script:Session }
+}
 
 # Summary
 $totalSw.Stop()

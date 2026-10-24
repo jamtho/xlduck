@@ -40,31 +40,25 @@ XlDuck/
 
 The 64-bit add-in includes native DuckDB; 32-bit does not.
 
-### TDD Cycle
+### Development and integration testing
 
-After making code changes, use the reload script to rebuild and restart Excel with the add-in:
+After code changes, build and run the isolated integration suite:
 
 ```powershell
-# Closes Excel, rebuilds, relaunches with add-in loaded
-powershell -ExecutionPolicy Bypass -File scripts/reload-addin.ps1
-
-# Run the test suite
 powershell -ExecutionPolicy Bypass -File tests/Run-Tests.ps1
 ```
 
-The reload script:
-1. Cleanly closes Excel via COM (no save prompts)
-2. Runs `dotnet build`
-3. Launches Excel with a blank workbook
-4. Registers the XLL add-in
+The suite builds the add-in, creates a new Excel process and temporary workbook, verifies process ownership, and closes only that workbook and instance. Use `-NoBuild` to test an existing build. Never attach tests to `ActiveWorkbook` or use the Running Object Table to choose an Excel instance.
 
-Use `-NoBuild` to skip the build step if you only need to restart Excel.
+For a visible development session:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/Reload-AddIn.ps1
+```
+
+Despite its historical name, this script opens a new development instance and leaves existing Excel instances alone. It loads a private copy of the build so subsequent builds can proceed. Close development instances manually. Copies are under the ignored `artifacts/development` directory; remove them only after their Excel instances are closed.
 
 ## Testing
-
-### Automated Tests
-
-Tests use PowerShell COM automation to interact with Excel. The test suite requires Excel to be running with the add-in loaded and a workbook open - use `scripts/reload-addin.ps1` to set this up.
 
 ### Regression Tests
 
@@ -74,18 +68,11 @@ When fixing a bug, add a test that reproduces the bug unless you have a very goo
 
 1. **Use `.Formula2` not `.Formula`** when writing formulas via COM. `.Formula` adds the `@` implicit intersection operator which prevents dynamic array spilling.
 
-2. **xl.exe (xl-cli) may not find Excel via ROT** - use direct PowerShell COM instead:
-   ```powershell
-   $excel = [Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application")
-   $sheet = $excel.ActiveWorkbook.ActiveSheet
-   ```
+2. Use `scripts/ExcelSession.ps1` for automation ownership and bounded cell waits. Keep `.Value2` assertions independent of cell width and display formatting.
 
-3. **Security dialogs block automation** - dismiss the unsigned add-in warning manually before running tests.
+3. Security dialogs can block add-in registration. Do not change Trust Center settings or dismiss unrelated prompts automatically.
 
-4. **Excel must have a workbook open** - create one via COM if needed:
-   ```powershell
-   $excel.Workbooks.Add() | Out-Null
-   ```
+4. Never close unrelated workbooks, suppress their save prompts, or kill all Excel processes. A failed test must release its own resources in `finally`.
 
 ## DuckDB Notes
 
