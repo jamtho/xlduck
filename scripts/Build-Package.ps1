@@ -65,6 +65,16 @@ $manifest = Get-ChildItem -LiteralPath $package -Recurse -File | ForEach-Object 
     [pscustomobject]@{path=$_.FullName.Substring($package.Length+1).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}
 }
 $manifest | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $package 'manifest.json')
-Compress-Archive -LiteralPath $package -DestinationPath ($package + '.zip')
+# Windows PowerShell's Compress-Archive writes backslash entry names. Emit standard
+# ZIP paths explicitly so extraction works consistently across archive tools.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [IO.Compression.ZipFile]::Open(($package + '.zip'), [IO.Compression.ZipArchiveMode]::Create)
+try {
+    $prefix = (Split-Path $package -Leaf) + '/'
+    foreach ($file in Get-ChildItem -LiteralPath $package -Recurse -File) {
+        $entry = $prefix + $file.FullName.Substring($package.Length+1).Replace('\','/')
+        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $entry, [IO.Compression.CompressionLevel]::Optimal)
+    }
+} finally { $archive.Dispose() }
 Write-Host "Unsigned development package: $package"
 Write-Host "Archive: $package.zip"

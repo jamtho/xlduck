@@ -22,3 +22,31 @@ foreach ($required in @('XlDuck-AddIn64.xll','worker/XlDuck.Worker.exe','worker/
     if (-not $seen.ContainsKey($required)) { throw "Missing required package file: $required" }
 }
 Write-Host "PASS package manifest: $($manifest.Count) files; x64 host, worker, readers and preview present."
+if (Test-Path -LiteralPath ($root + '.zip')) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($root + '.zip')
+    try {
+        $prefix = (Split-Path $root -Leaf) + '/'
+        $expected = @{}
+        foreach ($item in $manifest) { $expected[$prefix + $item.path] = $item }
+        $manifestFile = Get-Item -LiteralPath (Join-Path $root 'manifest.json')
+        $expected[$prefix + 'manifest.json'] = @{bytes=$manifestFile.Length;sha256=(Get-FileHash -LiteralPath $manifestFile.FullName -Algorithm SHA256).Hash}
+        $found = @{}
+        foreach ($entry in $archive.Entries) {
+            if ($entry.Name.Length -eq 0) { continue }
+            if ($entry.FullName.Contains('\') -or -not $expected.ContainsKey($entry.FullName) -or $found.ContainsKey($entry.FullName)) {
+                throw 'ZIP has an unexpected, duplicate or nonstandard entry.'
+            }
+            $item = $expected[$entry.FullName]
+            if ($entry.Length -ne $item.bytes) { throw 'ZIP entry size does not match its manifest.' }
+            $stream = $entry.Open(); $sha = [Security.Cryptography.SHA256]::Create()
+            try {
+                $hash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','')
+                if ($hash -ne $item.sha256) { throw 'ZIP entry hash does not match its manifest.' }
+            } finally { $stream.Dispose(); $sha.Dispose() }
+            $found[$entry.FullName] = $true
+        }
+        if ($found.Count -ne $expected.Count) { throw 'ZIP omits manifested files.' }
+        Write-Host "PASS distribution ZIP: $($found.Count) files including the manifest."
+    } finally { $archive.Dispose() }
+}
