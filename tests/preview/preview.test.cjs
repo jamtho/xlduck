@@ -92,7 +92,7 @@ const { chromium } = require('playwright');
     }
     check('offline chart rendering makes no external requests', () => assert.deepEqual(external, []));
     await page.setViewportSize({width:240,height:650});
-    await page.evaluate(() => renderState({kind:'plot',title:'Chart',handle:'P1~abcdefghijk',plot:{
+    await page.evaluate(() => renderState({kind:'plot',title:'Chart',handle:'xlduck://p/1::abcdefghijk',plot:{
       template:'line',overrides:{x:'month',y:'records',title:'Monthly mail records in the California research selection (UTC)'},
       columns:['month','records'],types:['VARCHAR','DOUBLE'],rows:[['Jan',1354],['Feb',932]],
       kinds:[['Text','Number'],['Text','Number']],rowCount:2

@@ -29,7 +29,7 @@ function Wait-Handle([string]$address) {
     Wait-XlDuckCell $sheet $address -TimeoutSeconds 15 -Until {
         param($value)
         if ($value -is [string] -and $value.StartsWith('#ERROR:')) { throw $value }
-        $value -is [string] -and $value -cmatch '^[TFP][1-9][0-9]*~[A-Za-z0-9_-]{11}$'
+        $value -is [string] -and $value -cmatch '^xlduck://[tfp]/[1-9][0-9]*::[A-Za-z0-9_-]{11}$'
     }
 }
 function Command([string]$name) { Invoke-XlDuckExcel { $excel.Run($name, $session.Workbook.Name) } | Out-Null }
@@ -59,7 +59,7 @@ try {
     if ($RuntimeRoot -and ([version](Stats).runtime).Major -ne 10) { throw 'Portable .NET 10 runtime was not selected.' }
     Formula 'D1' '=DuckScalar(A1)'
     Wait-Value 'D1' 1
-    if ((Wait-Handle 'A1').Length -gt 16) { throw 'Table handles are not compact numbered aliases.' }
+    if ((Wait-Handle 'A1').Length -gt 27) { throw 'Table handles are not compact numbered aliases.' }
     Pass 'new workbooks compute automatically and return compact handles'
     $sheet.Range('B1').Value2 = 2
     Formula 'A1' '=DuckQuery("SELECT ? n", B1)'
@@ -132,7 +132,7 @@ try {
     Pass 'legacy write/configuration functions and public helpers are not registered'
     $other = $excel.Workbooks.Add(); $otherSheet = $other.Worksheets.Item(1)
     $otherSheet.Range('A1').Formula2 = '=DuckQuery("SELECT 444 n")'
-    $otherHandle = Wait-XlDuckCell $otherSheet 'A1' -Until { param($v) $v -is [string] -and $v -cmatch '^[TFP][1-9][0-9]*~[A-Za-z0-9_-]{11}$' }
+    $otherHandle = Wait-XlDuckCell $otherSheet 'A1' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[1-9][0-9]*::[A-Za-z0-9_-]{11}$' }
     $sheet.Range('R2').Value2 = $otherHandle
     Formula 'F6' '=DuckScalar(R2)'
     [void](Wait-XlDuckCell $sheet 'F6' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') -and $v.Contains('different workbook') })
@@ -246,9 +246,9 @@ public sealed class XlDuckCancelClose : IDisposable {
     try {
         $auditSheet.Range('Z1').Formula2 = '=DuckStatus()'
         $auditSheet.Range('A50').Formula2 = '=DuckQuery("SELECT 7654321")'
-        [void](Wait-XlDuckCell $auditSheet 'A50' -Until { param($v) $v -is [string] -and $v -cmatch '^[TFP][1-9][0-9]*~[A-Za-z0-9_-]{11}$' })
+        [void](Wait-XlDuckCell $auditSheet 'A50' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[1-9][0-9]*::[A-Za-z0-9_-]{11}$' })
         $auditSheet.Rows.Item(45).Insert() | Out-Null
-        [void](Wait-XlDuckCell $auditSheet 'A51' -Until { param($v) $v -is [string] -and $v -cmatch '^[TFP][1-9][0-9]*~[A-Za-z0-9_-]{11}$' })
+        [void](Wait-XlDuckCell $auditSheet 'A51' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[1-9][0-9]*::[A-Za-z0-9_-]{11}$' })
         $auditSheet.Range('A51').ClearContents() | Out-Null
         [void](Wait-XlDuckCell $auditSheet 'Z1' -Until {
             param($v)
