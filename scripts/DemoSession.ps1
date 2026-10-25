@@ -36,6 +36,19 @@ function New-XlDuckDemoSession {
         Assert-XlDuckExcelSession $session
         $blank = $session.Workbook
         $opened = Invoke-XlDuckExcel { $session.Application.Workbooks.Open($workbook) }
+        # Excel can return null from Open for a saved UDF workbook.
+        # Resolve only this requested path inside our owned application if COM
+        # returns before it supplies a usable Workbook object.
+        $openWatch = [Diagnostics.Stopwatch]::StartNew()
+        while ($null -eq $opened) {
+            if ($openWatch.Elapsed.TotalSeconds -ge 20) { throw 'Excel did not return the requested demo workbook.' }
+            $opened = Invoke-XlDuckExcel {
+                foreach ($candidateBook in $session.Application.Workbooks) {
+                    if ($candidateBook.FullName -eq $workbook) { return $candidateBook }
+                }
+            }
+            if ($null -eq $opened) { Start-Sleep -Milliseconds 25 }
+        }
         $session.Workbook = $opened
         $session.WorkbookName = $opened.Name
         try { Invoke-XlDuckExcel { $blank.Close($false) } }
