@@ -55,13 +55,12 @@ try {
     } else { $session = New-XlDuckExcelSession -AddInPath $privateBuild }
     $excel = $session.Application; $sheet = $session.Workbook.Worksheets.Item(1)
     Formula 'A1' '=DuckQuery("SELECT 1 n")'
-    [void](Wait-XlDuckCell $sheet 'A1' -Until { param($value) $value -is [string] -and $value.StartsWith('#BLOCKED:') })
-    Command 'DuckEnableWorkbook'
     Formula 'Z1' '=DuckStatus()'
     if ($RuntimeRoot -and ([version](Stats).runtime).Major -ne 10) { throw 'Portable .NET 10 runtime was not selected.' }
     Formula 'D1' '=DuckScalar(A1)'
     Wait-Value 'D1' 1
-    Pass 'an unfamiliar workbook stays disabled until an explicit host command enables it'
+    if ((Wait-Handle 'A1').Length -ne 37) { throw 'Table handles are not compact.' }
+    Pass 'new workbooks compute automatically and return compact handles'
     $sheet.Range('B1').Value2 = 2
     Formula 'A1' '=DuckQuery("SELECT ? n", B1)'
     for ($i = 2; $i -le 9; $i++) { Formula "A$i" ('=DuckQuery("SELECT n+1 n FROM ?", A{0})' -f ($i - 1)) }
@@ -117,7 +116,7 @@ try {
     Pass 'capture rejects Excel errors in headers as well as data'
     $oldHandle = Wait-Handle 'A1'; $sheet.Name = "Renamed 'sheet"
     $sheet.Range('B1').Value2 = 11; Wait-Value 'D1' 19
-    if ((Stats).enabled -ne $true) { throw 'Sheet rename disabled the session.' }
+    if ((Stats).ready -ne $true) { throw 'Sheet rename lost the session.' }
     Pass 'sheet rename preserves the workbook session and publication'
     foreach ($sql in @('CREATE TABLE forbidden(i INT)', 'COPY (SELECT 1) TO ''forbidden.csv''', 'SELECT * FROM enable_logging()')) {
         Formula 'F4' ('=DuckQuery("{0}")' -f $sql)
@@ -132,7 +131,6 @@ try {
     $sheet.Range('F5').ClearContents()
     Pass 'legacy write/configuration functions and public helpers are not registered'
     $other = $excel.Workbooks.Add(); $otherSheet = $other.Worksheets.Item(1)
-    $excel.Run('DuckEnableWorkbook', $other.Name) | Out-Null
     $otherSheet.Range('A1').Formula2 = '=DuckQuery("SELECT 444 n")'
     $otherHandle = Wait-XlDuckCell $otherSheet 'A1' -Until { param($v) $v -is [string] -and $v.StartsWith('xlduck://') }
     $sheet.Range('R2').Value2 = $otherHandle
@@ -141,7 +139,11 @@ try {
     $sheet.Range('F6').ClearContents()
     $beforeRestart = Wait-Handle 'A1'; Command 'DuckRestartWorkbook'; Wait-Value 'D1' 19
     if ((Wait-Handle 'A1') -eq $beforeRestart -or $otherSheet.Range('A1').Value2 -ne $otherHandle) { throw 'Restart crossed workbook boundaries.' }
-    Pass 'handles and restart are isolated between two workbooks'
+    $sheet.Range('R2').Value2 = $beforeRestart
+    Formula 'F6' '=DuckScalar(R2)'
+    [void](Wait-XlDuckCell $sheet 'F6' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') -and $v.Contains('earlier session') })
+    $sheet.Range('F6').ClearContents()
+    Pass 'compact handles reject foreign and stale results; restart is isolated between workbooks'
     $session.Workbook.Activate()
     $session.Workbook.Date1904 = $true
     [void](Wait-Status { param($s) $s.statistics.Pending -eq 0 })
@@ -208,32 +210,40 @@ public sealed class XlDuckCancelClose : IDisposable {
     $closeGuard.Dispose(); $closeGuard = $null
     $sheet.Range('B1').Value2 = 12; Wait-Value 'D1' 20
     Pass 'a cancelled workbook close preserves the session and subsequent updates'
+    $beforeConnections = (Stats).session
+    $connectionJson = '{"S3":[{"Scope":"s3://fixture/","Credentials":0,"Endpoint":"127.0.0.1:1","UseSsl":false,"PathStyle":true}]}'
+    $excel.Run('DuckSetConnections', $connectionJson, $session.Workbook.Name) | Out-Null
+    [void](Wait-Status { param($s) $s.connections -eq 1 -and $s.session -ne $beforeConnections })
+    Wait-Value 'D1' 20
+    if ($otherSheet.Range('A1').Value2 -ne $otherHandle) { throw 'Connection changes restarted another workbook.' }
+    Pass 'connection settings apply without enablement and restart only their workbook'
     $saved = Join-Path $caseDirectory 'research.xlsx'; $savedPaths += $saved
     $session.Workbook.SaveAs($saved, 51)
-    [void](Wait-Status { param($s) $s.remembered })
+    [void](Wait-Status { param($s) $s.connectionsSaved })
     $savedSession = (Stats).session
     $renamed = Join-Path $caseDirectory 'renamed research.xlsx'; $savedPaths += $renamed
     $session.Workbook.SaveAs($renamed, 51)
-    [void](Wait-Status { param($s) $s.remembered })
+    [void](Wait-Status { param($s) $s.connectionsSaved })
     if ((Stats).session -ne $savedSession) { throw 'Save As restarted the live computation session.' }
-    Pass 'Save As keeps live results and remembers the saved workbook revision'
+    Pass 'Save As keeps live results and retains connection settings'
     [IO.File]::WriteAllText($source, "n`n100`n")
     $session.Workbook.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($session.Workbook)
     [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sheet); $sheet = $null
     $session.Workbook = $excel.Workbooks.Open($renamed); $sheet = $session.Workbook.Worksheets.Item(1)
-    [void](Wait-Status { param($s) $s.enabled -and $s.session -ne $savedSession })
+    [void](Wait-Status { param($s) $s.ready -and $s.connections -eq 1 -and $s.session -ne $savedSession })
     Wait-Value 'F15' 100; Wait-Value 'D1' 20
-    Pass 'opening an unchanged trusted workbook starts a fresh session and rereads its sources'
+    Pass 'opening an ordinary saved workbook starts a fresh session and rereads its sources'
     $copy = Join-Path $caseDirectory 'unfamiliar copy.xlsx'
+    $originalSession = (Stats).session
     [IO.File]::Copy($renamed, $copy)
     $copyBook = $excel.Workbooks.Open($copy); $copySheet = $copyBook.Worksheets.Item(1)
     try {
-        [void](Wait-XlDuckCell $copySheet 'A1' -Until { param($v) $v -is [string] -and $v.StartsWith('#BLOCKED:') })
+        [void](Wait-XlDuckCell $copySheet 'F15' -Until { param($v) $v -eq 100 })
+        [void](Wait-XlDuckCell $copySheet 'Z1' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).session -ne $originalSession -and ($v | ConvertFrom-Json).connections -eq 0 })
     } finally { $copyBook.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($copySheet); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($copyBook) }
-    Pass 'a copied workbook does not inherit the original approval'
+    Pass 'an ordinary workbook copy computes automatically in its own session'
     $audit = $excel.Workbooks.Add(); $auditSheet = $audit.Worksheets.Item(1)
     try {
-        $excel.Run('DuckEnableWorkbook', $audit.Name) | Out-Null
         $auditSheet.Range('Z1').Formula2 = '=DuckStatus()'
         $auditSheet.Range('A50').Formula2 = '=DuckQuery("SELECT 7654321")'
         [void](Wait-XlDuckCell $auditSheet 'A50' -Until { param($v) $v -is [string] -and $v.StartsWith('xlduck://') })
@@ -254,7 +264,6 @@ public sealed class XlDuckCancelClose : IDisposable {
     throw
 } finally {
     if ($closeGuard) { $closeGuard.Dispose() }
-    if ($session -and $session.Application) { try { $excel.Run('DuckDisableWorkbook', $session.Workbook.Name) | Out-Null } catch { } }
     if ($other) { Invoke-XlDuckExcel { $other.Close($false) }; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($other) }
     if ($otherSheet) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($otherSheet) }
     if ($sheet) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sheet) }
@@ -266,7 +275,7 @@ public sealed class XlDuckCancelClose : IDisposable {
         $sha = [Security.Cryptography.SHA256]::Create()
         try { $key = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($savedPath).ToUpperInvariant()))).Replace('-', '') }
         finally { $sha.Dispose() }
-        $approval = Join-Path $env:LOCALAPPDATA ("XlDuck/approvals/$key.json")
-        if (Test-Path -LiteralPath $approval) { Remove-Item -LiteralPath $approval }
+        $connectionRecord = Join-Path $env:LOCALAPPDATA ("XlDuck/connections/$key.json")
+        if (Test-Path -LiteralPath $connectionRecord) { Remove-Item -LiteralPath $connectionRecord }
     }
 }

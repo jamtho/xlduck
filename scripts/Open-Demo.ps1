@@ -14,13 +14,10 @@ try {
     $session = New-XlDuckDemoSession -WorkbookPath $WorkbookPath -AddInPath $AddInPath -CopyWorkbook
     $sheet = $session.Workbook.Worksheets.Item('Research')
     $sheet.Range('C47').Formula2 = '=DuckStatus()'
-    $status = Wait-XlDuckCell $sheet 'C47' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).enabled }
-    $currentSession = ([guid]($status | ConvertFrom-Json).session).ToString('N')
-    [void](Wait-XlDuckCell $sheet 'C11' -Until {
-        param($v)
-        if ($v -is [string] -and $v.StartsWith('#ERROR:')) { throw $v }
-        $v -is [string] -and $v.StartsWith("xlduck://$currentSession/plot/")
-    })
+    $status = Wait-XlDuckCell $sheet 'C47' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).ready }
+    # Resolve through DuckInspect so a saved token cannot be mistaken for a live result.
+    $sheet.Range('C47').Formula2 = '=DuckInspect(C11,"rows")'
+    [void](Wait-XlDuckCell $sheet 'C47' -Until { param($v) $v -is [double] -and $v -gt 0 })
     $sheet.Range('C47').ClearContents()
     Invoke-XlDuckExcel { $session.Workbook.Save() }
     Invoke-XlDuckExcel { $sheet.Activate(); $sheet.Range('C11').Select() | Out-Null }

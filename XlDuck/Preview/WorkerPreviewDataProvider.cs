@@ -8,13 +8,13 @@ internal static class PreviewDataProvider
 {
     internal static async Task<PreviewModel> GetPreviewAsync(WorkbookSession session, string value, CancellationToken token)
     {
-        var handle = ResultHandle.Parse(value);
+        var handle = session.ResolveCellHandle(value);
         var definition = session.GetDefinition(handle);
         if (handle.Kind == ResultKind.Fragment)
             return new FragPreviewModel { Title = "SQL fragment", Handle = value, Frag = new()
             {
                 Sql = definition.Sql,
-                Args = definition.Arguments.Select((argument, i) => new FragmentArg { Name = "?" + (i + 1), Value = argument.Handle?.ToString() ?? argument.Value!.Text }).ToList()
+                Args = definition.Arguments.Select((argument, i) => new FragmentArg { Name = "?" + (i + 1), Value = argument.Handle?.CellText ?? argument.Value!.Text }).ToList()
             } };
         using var lease = session.AcquireData(handle);
         await lease.WaitAsync(token).ConfigureAwait(false);

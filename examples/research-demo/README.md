@@ -8,7 +8,7 @@ From the repository root, open a disposable working copy in a new Excel process:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Open-Demo.ps1
 ```
 
-The launcher uses the newest verified local package, or accepts `-AddInPath` and `-WorkbookPath`. It enables the generated workbook, opens the preview pane on the line-chart handle and leaves the new instance under the user's control. Existing Excel instances are left alone. Working copies live under `artifacts/demo-sessions`; close the instance normally when finished. The local portable .NET 10 development bootstrap is used when present, without installing a runtime or changing machine settings. Other machines need the prerequisites in `docs/RELEASE.md`.
+The launcher uses the newest verified local package, or accepts `-AddInPath` and `-WorkbookPath`. It waits for automatic initialization, opens the preview pane on the line-chart handle and leaves the new instance under the user's control. Existing Excel instances are left alone. Working copies live under `artifacts/demo-sessions`; close the instance normally when finished. The local portable .NET 10 development bootstrap is used when present, without installing a runtime or changing machine settings. Other machines need the prerequisites in `docs/RELEASE.md`.
 
 Try `Research!C7:C9`, then change a response or accepted flag on Observations. Select C11 for the line chart or C12 for the bar chart. Labels on handle cells are display formats; their underlying values remain opaque XlDuck handles. C18 is a lazy recipe and C19 materialises the result shared by its branches. Recalculation reuses retained results; Restart workbook rebuilds the session.
 

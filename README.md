@@ -10,7 +10,7 @@ The modernized implementation is a development build, **0.2.0-dev**. It replaces
 
 The [research demo](examples/research-demo/README.md) provides a self-contained workbook with editable filters, a visible query graph and two preview charts. Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Open-Demo.ps1` to try a working copy in a separate Excel instance.
 
-Enable the workbook using **XlDuck > Enable / Connections**. Then enter:
+XlDuck starts automatically in ordinary workbooks. Enter:
 
 ```excel
 A1: =DuckQuery("SELECT range AS n FROM range(100)")
@@ -22,7 +22,7 @@ D1: =DuckOut(A2)
 
 Select A4 and open **Preview Pane** (Ctrl+Shift+P) to see the chart. Select A1 or A2 for a table preview. Handles are opaque, workbook-session-specific references; use `DuckOut`, `DuckScalar` or `DuckInspect` to read them.
 
-An unchanged query and unchanged typed inputs reuse their retained result. F9, Shift+F9 and unchanged F2/Enter do not fetch external data again. **Restart workbook** discards that workbook's results and recomputes them. Reopening a trusted saved workbook starts a fresh session. Fragments are recipes; materialize a table when multiple analyses should share one source snapshot.
+An unchanged query and unchanged typed inputs reuse their retained result. F9, Shift+F9 and unchanged F2/Enter do not fetch external data again. **Restart workbook** discards that workbook's results and recomputes them. Reopening an ordinary saved workbook starts a fresh session. Fragments are recipes; materialize a table when multiple analyses should share one source snapshot.
 
 ## Worksheet functions
 
@@ -38,7 +38,7 @@ An unchanged query and unchanged typed inputs reuse their retained result. F9, S
 | `DuckPlot(handle, template, name, value, …)` | Plot handle; six option pairs |
 | `DuckInspect(handle, [field])` | `schema`, `rows`, or `definition` |
 | `DuckDate(serial)`, `DuckDateTime(serial)` | ISO text for explicit SQL date/timestamp casts |
-| `DuckStatus()` | Workbook enablement, session and computation counts as JSON |
+| `DuckStatus()` | Workbook readiness, session and computation counts as JSON |
 | `DuckVersion()`, `DuckLibraryVersion()` | Add-in and engine versions |
 
 Read the [formula and agent reference](docs/FORMULAS.md) for types, limits, fragments, chart options, source connections and recovery. `DuckExecute`, `DuckConfig`, `DuckConfigReady` and the `AfterConfig` functions have been removed.
@@ -47,9 +47,11 @@ Read the [formula and agent reference](docs/FORMULAS.md) for types, limits, frag
 
 Use positional `?` arguments for values and handles. Numeric-looking text stays text; blank cells become SQL NULL; empty text remains empty text. Exact decimals and integers beyond Excel's exact numeric range return text. Choose `CAST AS DOUBLE` explicitly when approximation is appropriate, including for decimal chart values. Mixed text/numeric captured columns fail with an actionable error instead of coercing the data silently.
 
-Worksheet SQL supports read-and-compute SELECT queries and curated CSV, JSON, Parquet, text and blob readers. It cannot write/export data, install extensions, attach databases or change settings. An enabled workbook has broad read access under your account and configured credentials. This is **not a sandbox for hostile workbooks**: readable data can be returned or sent to remote URLs. The separate worker provides fault isolation.
+Worksheet SQL supports read-and-compute SELECT queries and curated CSV, JSON, Parquet, text and blob readers. It cannot write/export data, install extensions, attach databases or change settings. An ordinary workbook has broad read access under your account and configured credentials. This is **not a sandbox for hostile workbooks**: readable data can be returned or sent to remote URLs. The separate worker provides fault isolation.
 
-Enablement is remembered locally for the saved file path and its exact saved revision. Ordinary saves and Save As from an enabled open workbook update that record. Unfamiliar copies and externally changed files require enablement again. Unsaved workbooks are enabled only for that open session. Connection settings contain profile/routing choices, not secret keys; credentials stay in environment variables or AWS profiles.
+Protected View workbooks do not run XlDuck queries. Excel's **Enable Editing** transition starts a fresh session; ordinary workbooks, including new books and copies, run automatically. XlDuck does not change Trust Center settings or add a separate approval dialog. A workbook that bypasses Protected View can therefore execute its read-and-compute formulas.
+
+Use **XlDuck > Connections** for S3-compatible storage. Configure an endpoint, bucket/path and saved access key, environment credentials or anonymous access. Signing region, HTTPS and path-style addressing are advanced settings; profile providers remain optional. Settings are stored locally by workbook path, independently of its file contents. Save As carries those settings to the new path; a copy at another path starts with defaults. Saved keys live in Windows Credential Manager and are not written to workbook settings or cells.
 
 Automatic calculation is the primary mode. In manual mode, explicitly calculate to start work and calculate again after completion to propagate it; an asynchronous chain may need several passes. XlDuck changes neither Excel's calculation mode nor its global RTD interval.
 

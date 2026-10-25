@@ -1,6 +1,6 @@
 # XlDuck formula and agent reference
 
-XlDuck 0.2 runs read-and-compute SQL through a separate worker for each enabled workbook. An Excel coding agent should build a small, inspectable formula DAG, materialize shared sources and use ordinary Excel dependencies for changes. Most computations should finish within a few seconds; substantial preparation belongs outside the sheet.
+XlDuck 0.2 runs read-and-compute SQL through a separate worker for each ordinary workbook. An Excel coding agent should build a small, inspectable formula DAG, materialize shared sources and use ordinary Excel dependencies for changes. Most computations should finish within a few seconds; substantial preparation belongs outside the sheet.
 
 ## Build and inspect an analysis
 
@@ -47,11 +47,11 @@ A4: =DuckScalar(A3)
 | F9, Shift+F9, full calculation, unchanged F2/Enter | Excel's usual calculation scope; no implicit source refresh |
 | Changed SQL, scalar/capture contents or upstream handle | New computation |
 | Changed external file, clock or random seed | No automatic invalidation |
-| Reopen a trusted saved workbook | New session and source reads in automatic calculation mode |
+| Reopen an ordinary saved workbook | New session and source reads in automatic calculation mode |
 | Restart workbook | Cancel and discard that workbook's session, then rebuild |
 | Retry failed results | Resubmit failures deliberately; successful retained work stays |
 
-`#N/A` can mean asynchronous work or an unavailable input. Wait for completion before treating it as an SQL failure. `#ERROR: …` is an actionable computation failure; `#BLOCKED: …` requires workbook enablement. Poll boundedly and inspect `DuckStatus()` when diagnosing progress. Do not retry by adding random tokens to SQL. A lost worker requires Restart workbook; simply retrying a query cannot revive it.
+`#N/A` can mean initialization, asynchronous work or an unavailable input. Wait for completion before treating it as an SQL failure. `#ERROR: …` is an actionable computation failure. Protected View prevents query execution; ordinary workbooks initialize automatically. Poll boundedly and inspect `DuckStatus()` when diagnosing progress. It reports `ready`, connection count, `connectionsSaved`, `session`, `paused`, `runtime`, computation statistics and a status message. Do not retry by adding random tokens to SQL. A lost worker requires Restart workbook; simply retrying a query cannot revive it.
 
 Automatic calculation is primary. Manual mode may require repeated explicit calculation passes as asynchronous dependencies complete. Do not silently change Excel's application-wide calculation mode, RTD throttle or the meaning of F9/Shift+F9.
 
@@ -97,27 +97,28 @@ Map coordinates must be numeric, finite, non-null and within latitude -90 to 90 
 
 The libraries are bundled. Maps still request tiles from OpenStreetMap/Esri, exposing the requested viewport to the provider. Missing WebView2 produces a repair message, while worksheet computations remain available.
 
-## Enablement and S3
+## Workbook access and S3-compatible storage
 
-Enable / Connections gives the workbook broad read access. The local approval is bound to the saved path and saved file fingerprint. Copies and externally modified workbooks require a new decision. There are no per-query or per-bucket permission prompts. SQL remains read-and-compute only; DDL/DML, COPY/export, ATTACH, SET/PRAGMA, extension installation and dynamic SQL are unavailable. This is not a sandbox for hostile workbooks.
+Ordinary workbooks start automatically. Protected View workbooks cannot start queries; use Excel's Enable Editing only for workbooks you trust. A workbook that bypasses Protected View can use broad local-file and network reads under your account and configured credentials. XlDuck does not add a second approval dialog or change Trust Center. SQL remains read-and-compute only; DDL/DML, COPY/export, ATTACH, SET/PRAGMA, extension installation and dynamic SQL are unavailable. This is not an OS sandbox for hostile workbooks.
 
-Use the connections dialog for S3 routing. Choose environment credentials, a named AWS profile, SSO or anonymous access. Region, optional endpoint and path-style addressing are non-secret settings. Authenticate outside Excel and restart after renewing credentials. `Scope` chooses credentials; it is not an access restriction. Do not put access keys or secret-creation SQL in cells. Live AWS/SSO and enterprise-network compatibility remain release validation items.
+Use **Connections** to add a bucket/path such as `s3://research/`, an endpoint such as `storage.example.com:9000`, and credentials. The endpoint has no scheme or path. Saved access keys go to Windows Credential Manager; environment and anonymous access are also supported. Environment authentication uses `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and optional `AWS_SESSION_TOKEN`, including for non-AWS servers. Advanced settings contain signing region (default `us-east-1`), HTTPS (on by default), path-style URLs and an optional session token. Named profiles and SSO remain optional provider choices.
+
+Connection settings are saved on this computer by workbook path, not workbook fingerprint. External edits preserve settings; Save As carries them to the new path; copies at a different path use defaults. Unsaved workbook settings persist when first saved. Applying settings restarts this workbook. Secrets stay outside cells and settings files. Removing a connection leaves its saved key available to other workbooks; unused `XlDuck/S3/…` entries can be removed in Windows Credential Manager. `Scope` selects credentials; it is not an access restriction. Provider/proxy compatibility beyond the tested local S3 fixtures remains a release validation item.
 
 ## Commands available to automation
 
 Commands are Excel macros, not worksheet functions. A host with Excel COM/VBA access can invoke them with `Application.Run`; always supply the workbook name, or an explicit empty string for the active workbook:
 
 ```vb
-Application.Run "DuckEnableWorkbook", "Research.xlsx"
 Application.Run "DuckRestartWorkbook", "Research.xlsx"
 Application.Run "DuckRetryFailed", "Research.xlsx"
 Application.Run "DuckTogglePreview"
 ```
 
-The same workbook-name argument applies to `DuckDisableWorkbook`, `DuckPauseQueries`, `DuckResumeQueries` and `DuckInterrupt`. `DuckSetConnections(settingsJson,workbookName)` requires an already enabled workbook and restarts it. JSON uses property names `S3`, `Scope`, `Credentials`, `Region`, `Endpoint`, `Profile`, `UseSsl`, `PathStyle`; `Credentials` is currently numeric: 0 anonymous, 1 environment, 2 named profile, 3 SSO. Example:
+The same workbook-name argument applies to `DuckPauseQueries`, `DuckResumeQueries` and `DuckInterrupt`. `DuckSetConnections(settingsJson,workbookName)` applies non-secret settings and restarts the named ordinary workbook. JSON uses property names `S3`, `Scope`, `Credentials`, `Region`, `Endpoint`, `Profile`, `UseSsl`, `PathStyle`, `CredentialId`; `Credentials` is currently numeric: 0 anonymous, 1 environment, 2 named profile, 3 SSO, 4 a saved access key. `CredentialId` references a key already saved through the dialog, never the secret itself. Example using environment credentials:
 
 ```json
-{"S3":[{"Scope":"s3://research/","Credentials":2,"Profile":"research","Region":"eu-west-2"}]}
+{"S3":[{"Scope":"s3://research/","Credentials":1,"Endpoint":"storage.example.com:9000","PathStyle":true,"UseSsl":true}]}
 ```
 
 Check the actual Excel agent's tool schema before claiming it can run a command. Formula read/write access alone does not imply COM/VBA or macro execution. If command execution is unavailable, use the corresponding ribbon action as the handoff; never imitate a command with a side-effecting formula. No connected Excel agent session was available during implementation to validate that additional integration. Worksheet inspection and the COM commands are covered by the isolated Excel tests.

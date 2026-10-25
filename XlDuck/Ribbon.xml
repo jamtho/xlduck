@@ -29,14 +29,13 @@
           <button id="RetryButton" label="Retry failed results" onAction="OnRetry" imageMso="Refresh" />
         </group>
         <group id="ConfigGroup" label="Workbook">
-          <button id="ConnectionsButton" label="Enable / Connections" onAction="OnConnections" imageMso="Connections" size="large"
-                  supertip="Enable broad file and network reads for this workbook and configure S3 profiles." />
+          <button id="ConnectionsButton" label="Connections" onAction="OnConnections" imageMso="Connections" size="large"
+                  supertip="Configure endpoints and credentials for S3-compatible storage." />
           <button id="RestartButton" label="Restart XlDuck"
                   imageMso="Refresh" size="large"
                   onAction="OnRestart"
                   screentip="Recompute this workbook"
                   supertip="Discard this workbook's results and fetch its sources again. Other workbooks are unaffected." />
-          <button id="DisableButton" label="Disable workbook" onAction="OnDisable" />
         </group>
         <group id="InfoGroup" label="Info">
           <button id="VersionButton"

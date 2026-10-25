@@ -202,6 +202,19 @@ if (network)
             }
             finally { for (var i = 0; i < names.Length; i++) Environment.SetEnvironmentVariable(names[i], before[i]); }
         });
+        await Check("explicit access keys read compatible S3 endpoints without AWS profiles", async () =>
+        {
+            var id = Guid.NewGuid().ToString("N");
+            var keys = System.Collections.Immutable.ImmutableDictionary<string, S3AccessKey>.Empty.Add(id,
+                new(ReaderServer.AccessKey, "fixture-secret-never-a-real-key", ReaderServer.SessionToken));
+            var config = new ConnectionSettings(true, extensionPath,
+                [new("s3://bucket/", S3CredentialSource.AccessKey, Endpoint: server.Endpoint, UseSsl: false, PathStyle: true, CredentialId: id)], keys);
+            var before = server.AuthenticatedS3Reads;
+            await using var session = Session(config);
+            Equal(2L, (await Query(session, "SELECT * FROM read_parquet(?)", QueryArgument.Scalar("s3://bucket/sample.parquet"))).TotalRows);
+            Equal(true, server.AuthenticatedS3Reads > before);
+            Equal(0d, (await Query(session, "SELECT count(*) FROM duckdb_settings() WHERE name IN ('s3_access_key_id','s3_secret_access_key','s3_session_token') AND coalesce(value,'')<>''")).Rows[0][0].ToDisplayValue());
+        });
         await Check("HTTP failures redact signed URL parameters", async () =>
         {
             await using var session = Session(new(true, extensionPath));

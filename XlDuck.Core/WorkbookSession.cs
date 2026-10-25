@@ -213,6 +213,19 @@ public sealed class WorkbookSession : IAsyncDisposable
         return page;
     }
 
+    /// <summary>Cell tokens carry a unique result ID. Only this session may resolve them.</summary>
+    public ResultHandle ResolveCellHandle(string text)
+    {
+        lock (_sync)
+        {
+            EnsureOpen();
+            var handle = ResultHandle.FromCellText(text, Id);
+            if (!_handles.TryGetValue(handle, out var entry) || entry.Retired)
+                throw new ArgumentException("This handle is not available in this workbook session. It may belong to a different workbook or an earlier session. Recompute its source here.");
+            return entry.Handle;
+        }
+    }
+
     private Entry Find(ResultHandle handle)
     {
         if (handle.Session != Id) throw new ArgumentException("This handle belongs to a different workbook session. Recompute its source in this workbook.");

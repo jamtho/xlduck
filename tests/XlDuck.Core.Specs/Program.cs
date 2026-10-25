@@ -24,6 +24,27 @@ void Throws<T>(Action action) where T : Exception { try { action(); } catch (T) 
 PreparedQuery Prepare(string sql, params QueryArgument[] args) => SqlTemplate.Prepare(ComputationRequest.Query(sql, args), _ => null);
 CaptureData Capture(CellValue value) => new(["value"], [[value]]);
 
+await Check("compact handles resolve only live results in their own workbook session", async () =>
+{
+    await using var session = new WorkbookSession(_ => new FakeBackend(), new(HistoricalResults: 0));
+    await using var other = new WorkbookSession(_ => new FakeBackend());
+    var lease = session.Acquire(ComputationRequest.Query("SELECT 1")); await lease.Completion;
+    var text = lease.Handle.CellText;
+    Equal(37, text.Length); Equal(false, text.Contains(session.Id.ToString("N")));
+    Equal(lease.Handle, session.ResolveCellHandle(text));
+    Throws<ArgumentException>(() => other.ResolveCellHandle(text));
+    Throws<ArgumentException>(() => session.ResolveCellHandle(text.Replace("/table/", "/plot/")));
+    Throws<ArgumentException>(() => session.ResolveCellHandle(text + "="));
+    Throws<ArgumentException>(() => session.ResolveCellHandle(lease.Handle.ToString()));
+    using (var fragment = session.Acquire(ComputationRequest.Fragment("SELECT * FROM ?", QueryArgument.Reference(lease.Handle))))
+    {
+        await fragment.Completion; Equal(fragment.Handle, session.ResolveCellHandle(fragment.Handle.CellText));
+        using var plot = session.Acquire(ComputationRequest.Plot(lease.Handle, "bar")); await plot.Completion;
+        Equal(plot.Handle, session.ResolveCellHandle(plot.Handle.CellText));
+    }
+    lease.Dispose(); await session.WaitForIdleAsync();
+    Throws<ArgumentException>(() => session.ResolveCellHandle(text));
+});
 await Check("spill recovery preserves active hosts/workers and unmarked directories", async () =>
 {
     using var active = new SessionDirectory();

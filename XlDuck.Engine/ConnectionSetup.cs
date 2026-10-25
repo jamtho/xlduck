@@ -29,7 +29,7 @@ internal static class ConnectionSetup
             if (settings.ReaderExtensionDirectory is { } extensionDirectory)
             {
                 Load("httpfs");
-                if (!settings.S3.IsDefaultOrEmpty && settings.S3.Any(s3 => s3.Credentials != S3CredentialSource.Anonymous)) Load("aws");
+                if (settings.S3.Any(s3 => s3.Credentials is S3CredentialSource.Environment or S3CredentialSource.AwsProfile or S3CredentialSource.AwsSso)) Load("aws");
                 void Load(string name)
                 {
                     var path = Path.Combine(extensionDirectory, name + ".duckdb_extension");
@@ -47,6 +47,12 @@ internal static class ConnectionSetup
                         "USE_SSL " + (s3.UseSsl ? "true" : "false"), "URL_STYLE " + Literal(s3.PathStyle ? "path" : "vhost") };
                     if (s3.Endpoint is not null) clauses.Add("ENDPOINT " + Literal(s3.Endpoint));
                     if (s3.Credentials == S3CredentialSource.Anonymous) clauses.Add("PROVIDER config");
+                    else if (s3.Credentials == S3CredentialSource.AccessKey)
+                    {
+                        var key = settings.AccessKeys![s3.CredentialId!];
+                        clauses.Add("PROVIDER config"); clauses.Add("KEY_ID " + Literal(key.KeyId)); clauses.Add("SECRET " + Literal(key.Secret));
+                        if (!string.IsNullOrEmpty(key.SessionToken)) clauses.Add("SESSION_TOKEN " + Literal(key.SessionToken));
+                    }
                     else
                     {
                         clauses.Add("PROVIDER credential_chain");
@@ -54,7 +60,7 @@ internal static class ConnectionSetup
                         if (s3.Profile is not null) clauses.Add("PROFILE " + Literal(s3.Profile));
                     }
                     try { Execute(connection, $"CREATE SECRET _xlduck_s3_{i} ({string.Join(',', clauses)})"); }
-                    catch { throw new InvalidOperationException($"S3 connection {i + 1} could not load its credentials. Check its environment variables or authenticate the selected AWS profile, then restart XlDuck for this workbook."); }
+                    catch { throw new InvalidOperationException($"S3 connection {i + 1} could not load its credentials. Check its credentials in Connections, then restart XlDuck for this workbook."); }
                 }
                 // httpfs can populate legacy settings from the environment when first loaded.
                 // Credentials belong in the scoped secrets above, not ordinary settings metadata.

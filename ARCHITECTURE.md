@@ -1,13 +1,13 @@
 # XlDuck architecture
 
-XlDuck uses Excel's dependency graph to connect immutable query results. Excel stays responsive while each enabled workbook computes through its own DuckDB worker. The production worksheet path is `XlDuck/Host/Functions.cs`; no legacy execution path remains.
+XlDuck uses Excel's dependency graph to connect immutable query results. Excel stays responsive while each ordinary workbook computes through its own DuckDB worker. The production worksheet path is `XlDuck/Host/Functions.cs`; no legacy execution path remains.
 
 ## Boundaries
 
 | Project | Responsibility |
 | --- | --- |
 | `XlDuck` | Excel-DNA functions/commands, COM workbook lifecycle, ribbon, selected-cell preview |
-| `XlDuck.Host` | Testable approval storage, Excel date conversion and formula/navigation policies |
+| `XlDuck.Host` | Connection settings and Windows credential storage, Excel date conversion and formula/navigation policies |
 | `XlDuck.Core` | Typed requests, SQL-aware parameter preparation, leases, bounded scheduling and transport contracts |
 | `XlDuck.Client` | Owned worker process, framed stdio, cancellation, failure detection and spill cleanup |
 | `XlDuck.Worker` | One workbook's private engine process |
@@ -19,7 +19,7 @@ The Excel process does not load native DuckDB. Each worker owns one in-memory co
 
 A request identity includes kind, exact SQL, typed scalar values, upstream handles, capture contents/dimensions and plot options. A formula holds result leases independently of temporary RTD subscriptions. Multiple/nested XlDuck calls in one formula retain separate bindings. Identical retained requests share execution; a changed request receives a new immutable handle.
 
-Handles have the form `xlduck://<session>/<kind>/<result>`. They are opaque and reject foreign or expired sessions. Materialized results keep a snapshot; fragments keep recipes and their inputs. A plot owns one materialization of its source, including fragment sources. Unowned historical table results are bounded; live results survive cache pressure. See [the core contract](XlDuck.Core/README.md).
+Cell handles have the form `xlduck://<kind>/<22-character result ID>`. The token preserves a full 128-bit result ID without printing the session UUID. The caller workbook resolves it through its live handle registry; foreign, retired and previous-session tokens fail. Internal requests and worker frames still carry the complete session-qualified identity. Materialized results keep a snapshot; fragments keep recipes and their inputs. A plot owns one materialization of its source, including fragment sources. Unowned historical table results are bounded; live results survive cache pressure. See [the core contract](XlDuck.Core/README.md).
 
 Pending functions return Excel `#N/A` immediately. Work runs outside the Excel main thread. Completion queues a macro, checks workbook/session/binding identity and the current formula, then dirties and calculates the requesting cell in automatic mode. The UDF returns its cached value or array, and Excel propagates dependencies. RTD provides a fallback completion notification; it does not carry result arrays. No blocking grace period or global RTD interval change is required.
 
@@ -29,7 +29,9 @@ Manual mode leaves calculation to the user. The next explicit calculation sees c
 
 The main-thread host identifies live workbooks by COM identity and sheets by Excel's stable sheet ID. File names and captions are not session identities. Save As and sheet renaming preserve the open session. Edits and sheet deletion release obsolete bindings; publication ignores old formulas. `BeforeClose` merely schedules reconciliation because Excel may still cancel closure. A session is retired only after its workbook is absent.
 
-Local approval records contain the canonical path, SHA-256 fingerprint of the saved workbook and non-secret connection settings. Writes use a temporary file and atomic replacement; reads fail closed on corruption or mismatch. Open workbooks are checked asynchronously. A matching saved revision enables a fresh session; a copy or external modification does not inherit approval. Enabled saves update the approval. Settings changes restart the affected session.
+Only ordinary members of Excel's `Workbooks` collection are registered; Protected View workbooks are in a separate collection. The host also checks `Workbook.Application.IsSandboxed` before session creation, UDF access, preview selection and publication. Leaving Protected View through Excel's Enable Editing creates a new ordinary session. No custom enable/disable or saved-revision approval gate remains. Workers still start lazily at the first computation.
+
+Local connection records contain the canonical workbook path and non-secret settings. Atomic writes survive ordinary saves and external edits; Save As records the settings for the new path without restarting. An unfamiliar path uses defaults. Saved access keys are referenced by random IDs in Windows Credential Manager, resolved only when starting a worker, and passed over its private stdio channel into temporary scoped DuckDB secrets. Removing a connection does not delete a key that another workbook might reference; users can remove unused XlDuck/S3 entries in Windows Credential Manager. Settings changes restart only the affected session.
 
 Excel-DNA's `IExcelAddIn.AutoClose` is insufficient for application exit; the ribbon's COM shutdown/disconnection callbacks also retire the host. Worker disposal first requests graceful exit, then terminates only its owned child if necessary. Panes and callbacks are disposed as windows/workbooks close. A host and its worker hold file leases on their private spill directory. The next host reclaims marked crash leftovers only when neither lease remains; active, unmarked and linked directories are left alone.
 
@@ -37,7 +39,7 @@ Excel-DNA's `IExcelAddIn.AutoClose` is insufficient for application exit; the ri
 
 SQL is parsed before execution and checked throughout its tree, including nested expressions and macros. Exactly one SELECT and reviewed built-in functions/readers are admitted. Engine-generated temporary-table operations use a separate privileged path. Worksheet SQL cannot export, mutate, install extensions or configure credentials. Native and extension versions/hashes are pinned, autoload/install and persistent secrets disabled, and session settings locked.
 
-Enabled workbooks have broad access to readable files and networks under the user's account. This is a capability boundary and fault-isolation design, not an operating-system sandbox. [The engine policy](XlDuck.Engine/README.md) records the exact supported surface and limitations.
+Ordinary workbooks have broad access to readable files and networks under the user's account. This is a capability boundary and fault-isolation design, not an operating-system sandbox. [The engine policy](XlDuck.Engine/README.md) records the exact supported surface and limitations.
 
 ## Preview
 

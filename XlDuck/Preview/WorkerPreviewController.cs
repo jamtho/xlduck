@@ -19,12 +19,12 @@ internal sealed class PreviewController(PreviewPane pane) : IDisposable
         var sameCell = _cell == location;
         var pending = book.Cells.TryGetValue(address, out var formula) && formula.Bindings.Values.Any(binding => !binding.Value.IsCompleted);
         var text = Convert.ToString(value);
-        var key = $"{location}:{book.Session?.Id}:{book.PreviewGeneration}:{pending}:{book.Session?.IsPaused}:{book.Enabled}:{text}";
+        var key = $"{location}:{book.Session?.Id}:{book.PreviewGeneration}:{pending}:{book.Session?.IsPaused}:{text}";
         if (_key == key) return;
         _key = key; _cell = location;
         if (!sameCell) _hasSuccess = false;
         _pending?.Cancel(); _pending?.Dispose(); _pending = new();
-        if (!book.Enabled) { Status("Enable XlDuck for this workbook to compute results."); return; }
+        if (book.Session is null) { Status("Initializing XlDuck for this workbook…"); return; }
         if (pending) { Status((book.Session!.IsPaused ? "Paused" : "Computing") + (_hasSuccess ? " — showing the previous result." : "…")); return; }
         // A dependent formula can propagate #N/A before it calls an XlDuck function.
         // Value2 exposes Excel errors as COM HRESULT integers, not Excel-DNA enum values.

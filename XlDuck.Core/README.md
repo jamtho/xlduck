@@ -18,7 +18,7 @@ These projects target the .NET 8 API baseline with Excel-DNA 1.9.0 and DuckDB.NE
 
 `WorkbookSession.Acquire` returns a `ResultLease`. A live formula owns that lease independently of transient RTD subscriptions. A request's identity includes its kind, SQL, typed scalar arguments, immutable upstream handles, capture dimensions/content and plot options. Identical retained requests share work and results. Releasing one owner does not cancel another owner's computation; releasing the final owner of pending work requests cancellation.
 
-Handles include a session ID, result kind and result ID. Old-session and foreign-workbook handles are rejected. A changed request receives a new handle. Restart creates a new session; it does not reuse results from the previous session.
+Internal handles include a session ID, result kind and result ID. Cell tokens expose only kind and a compact 128-bit result ID; `ResolveCellHandle` resolves exclusively against the caller session. Old-session and foreign-workbook handles are rejected. A changed request receives a new handle. Restart creates a new session; it does not reuse results from the previous session.
 
 Materialized tables own their stored result. During execution they retain their inputs; afterwards the snapshot can survive without those inputs. Fragments retain their referenced recipes and tables. A plot retains one materialized data result, including when its source is a fragment. Output and preview readers acquire temporary data leases while reading. The host must retain the materialization for as long as its live output or preview needs reuse.
 
@@ -32,7 +32,7 @@ Use positional `?` arguments. Scalar values are bound parameters, including text
 
 The scanner respects single-quoted strings, escaped `E'...'` strings, quoted identifiers, dollar-quoted strings, line comments and nested block comments. A final semicolon is accepted; multiple statements are rejected. Named `$parameters` are reserved for the binder. Identifiers containing `$` must be quoted. Placeholder count must match argument count. Nesting is capped at 64 and cumulative expansion work is bounded; materialize a shared intermediate result if fragment expansion becomes excessive.
 
-DuckDB's own SQL parser validates the single SELECT query and its capabilities before binding or internal materialization. Fragments are also checked when acquired. The [read-and-compute policy](../XlDuck.Engine/README.md) covers functions, macros, readers, extensions and host-owned connection settings. External reads are disabled by default; the test host can explicitly enable local files and supported HTTP/S3 readers. Production workbook enablement remains to be implemented. Worker isolation is not an OS security sandbox.
+DuckDB's own SQL parser validates the single SELECT query and its capabilities before binding or internal materialization. Fragments are also checked when acquired. The [read-and-compute policy](../XlDuck.Engine/README.md) covers functions, macros, readers, extensions and host-owned connection settings. External reads are disabled by default; the test host can explicitly enable local files and supported HTTP/S3 readers. The production host enables broad reads only for ordinary Excel workbooks, excluding Protected View. Worker isolation is not an OS security sandbox.
 
 ## Values
 
@@ -68,6 +68,6 @@ The client owns a newly created temporary spill directory and removes it after s
 
 ## Production integration
 
-The production Excel host provides COM workbook identity, saved-revision enablement, immutable connection settings, per-cell leases, targeted completion publication, controls and typed preview. It handles Save As, sheet rename, cancelled workbook closure, date systems and explicit function registration. Only the selected workbook is restarted.
+The production Excel host provides COM workbook identity, native Protected View enforcement, immutable connection settings, per-cell leases, targeted completion publication, controls and typed preview. It handles Save As, sheet rename, cancelled workbook closure, date systems and explicit function registration. Only the selected workbook is restarted.
 
 The narrow test add-in remains a diagnostic harness, not the production host. Test coverage and current evidence are recorded in [tests/README.md](../tests/README.md); production contracts are in [docs/FORMULAS.md](../docs/FORMULAS.md). Live AWS/SSO, visual DPI checks and public deployment/runtime gates remain in [the plan](../PLAN-modernization.md).

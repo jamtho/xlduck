@@ -37,7 +37,7 @@ public static class DuckFunctions
         {
             var (book, address, formula) = WorkbookHost.Caller();
             key += ":date1904=" + book.Date1904;
-            if (!book.Enabled || book.Session is null) return "#BLOCKED: Enable XlDuck for this workbook from the XlDuck ribbon.";
+            if (book.Session is null) return ExcelError.ExcelErrorNA;
             if (!book.Cells.TryGetValue(address, out var cell) || cell.Formula != formula)
             {
                 cell?.Dispose(); book.Cells[address] = cell = new(formula);
@@ -71,7 +71,9 @@ public static class DuckFunctions
                 : Handle(lease));
         });
     }
-    private static async Task<object> Handle(ResultLease lease) => (await lease.Completion.ConfigureAwait(false)).Handle.ToString();
+    private static async Task<object> Handle(ResultLease lease) => (await lease.Completion.ConfigureAwait(false)).Handle.CellText;
+    private static ResultHandle ResolveHandle(string text) => (WorkbookHost.Caller().Book.Session
+        ?? throw new InvalidOperationException("XlDuck is initializing this workbook.")).ResolveCellHandle(text);
     private static QueryArgument Argument(object? value)
     {
         if (value is object[,] array)
@@ -81,7 +83,7 @@ public static class DuckFunctions
         }
         if (value is ExcelError) throw new ArgumentException("An input contains an Excel error.");
         return value is string handle && handle.StartsWith("xlduck://", StringComparison.Ordinal)
-            ? QueryArgument.Reference(ResultHandle.Parse(handle))
+            ? QueryArgument.Reference(ResolveHandle(handle))
             : new QueryArgument(value is ExcelEmpty or ExcelMissing ? CellValue.Empty : CellValue.From(value));
     }
     private static object Query(string sql, RequestKind kind, ReadPurpose? output, params object[] supplied)
@@ -91,7 +93,7 @@ public static class DuckFunctions
             var args = supplied.ToList();
             while (args.Count > 0 && args[^1] is ExcelMissing or null) args.RemoveAt(args.Count - 1);
             foreach (var value in args)
-                if (value is ExcelError || value is string error && (error.StartsWith("#ERROR:", StringComparison.Ordinal) || error.StartsWith("#BLOCKED:", StringComparison.Ordinal))) return value;
+                if (value is ExcelError || value is string error && error.StartsWith("#ERROR:", StringComparison.Ordinal)) return value;
             return Request(new(kind, sql, [.. args.Select(Argument)]), output);
         }
         catch (Exception error) { return Error(error); }
@@ -133,7 +135,7 @@ public static class DuckFunctions
         try
         {
             if (maxRows < 1 || maxRows > 1000000) throw new ArgumentException("maxRows must be between 1 and 1000000.");
-            var handle = ResultHandle.Parse(Convert.ToString(input)!); var key = $"{purpose}:{maxRows}:{handle}";
+            var handle = ResolveHandle(Convert.ToString(input)!); var key = $"{purpose}:{maxRows}:{handle}";
             return Evaluate(key, book =>
             {
                 var lease = book.Session!.AcquireData(handle);
@@ -174,7 +176,7 @@ public static class DuckFunctions
                 if (args[i + 1] is null or ExcelMissing or ExcelError) throw new ArgumentException("A plot option needs a value.");
                 if (!options.TryAdd(name, Convert.ToString(args[i + 1], CultureInfo.InvariantCulture)!)) throw new ArgumentException("Duplicate plot option: " + name);
             }
-            return Request(ComputationRequest.Plot(ResultHandle.Parse(Convert.ToString(handle)!), template, options));
+            return Request(ComputationRequest.Plot(ResolveHandle(Convert.ToString(handle)!), template, options));
         }
         catch (Exception error) { return Error(error); }
     }
@@ -184,7 +186,7 @@ public static class DuckFunctions
         if (input is ExcelError || input is string failure && failure.StartsWith('#')) return input;
         try
         {
-            var handle = ResultHandle.Parse(Convert.ToString(input)!); field = field.ToLowerInvariant();
+            var handle = ResolveHandle(Convert.ToString(input)!); field = field.ToLowerInvariant();
             var key = "inspect:" + field + ":" + handle;
             return Evaluate(key, book =>
             {
@@ -215,10 +217,10 @@ public static class DuckFunctions
     private static object Date(double serial, bool time) { try { return ExcelValues.DateText(serial, WorkbookHost.Caller().Book.Date1904, time); } catch (Exception error) { return Error(error); } }
     [ExcelFunction] public static string DuckVersion() => "0.2.0-dev";
     [ExcelFunction] public static string DuckLibraryVersion() => "v1.5.6";
-    [ExcelFunction(IsMacroType = true, IsVolatile = true, Description = "Workbook enablement and computation diagnostics as JSON; no SQL or credentials.")]
+    [ExcelFunction(IsMacroType = true, IsVolatile = true, Description = "Workbook readiness and computation diagnostics as JSON; no SQL or credentials.")]
     public static string DuckStatus()
     {
-        try { var book = WorkbookHost.Caller().Book; return JsonSerializer.Serialize(new { enabled = book.Enabled, remembered = book.Remembered, paused = book.Session?.IsPaused ?? false, session = book.Session?.Id, runtime = Environment.Version.ToString(), statistics = book.Session?.Statistics, message = book.Status }); }
+        try { var book = WorkbookHost.Caller().Book; return JsonSerializer.Serialize(new { ready = book.Session is not null, connections = book.Settings.S3.Length, connectionsSaved = book.SettingsSaved, paused = book.Session?.IsPaused ?? false, session = book.Session?.Id, runtime = Environment.Version.ToString(), statistics = book.Session?.Statistics, message = book.Status }); }
         catch (Exception error) { return Error(error); }
     }
     private sealed class CompletionSignal(Task task) : IExcelObservable

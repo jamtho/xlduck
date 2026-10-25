@@ -15,7 +15,6 @@ foreach ($order in $Orders) {
         foreach ($path in $paths) {
             if (-not $excel.RegisterXLL((Copy-XlDuckDevelopmentBuild $path))) { throw "Add-in load failed: $path" }
         }
-        $excel.Run('DuckEnableWorkbook', $session.Workbook.Name) | Out-Null
         $sheet.Range('A1').Formula2 = '=DuckQueryOutScalar("SELECT 42")'
         $sheet.Range('B1').Formula2 = '=' + $ProbeFunction + '()'
         $sheet.Range('C1').Formula2 = '=XlDuckProbeFramework()'

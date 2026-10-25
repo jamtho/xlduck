@@ -4,8 +4,8 @@ using XlDuck.Core;
 using XlDuck.Host;
 
 using var files = new SessionDirectory();
-var storePath = Path.Combine(files.Path, "approvals");
-var store = new WorkbookApprovalStore(storePath);
+var storePath = Path.Combine(files.Path, "connections");
+var store = new WorkbookSettingsStore(storePath);
 var workbook = Path.Combine(files.Path, "research.xlsx");
 File.WriteAllText(workbook, "saved workbook revision");
 int passed = 0, failed = 0;
@@ -15,32 +15,59 @@ async Task Check(string name, Func<Task> action)
     catch (Exception error) { failed++; Console.WriteLine("FAIL " + name + ": " + error.Message); }
 }
 void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"Expected {expected}, got {actual}"); }
-await Check("unknown workbooks are disabled; approval preserves non-secret settings", async () =>
+await Check("connection settings are optional and preserve routing without credentials", async () =>
 {
     Equal(true, await store.ReadAsync(workbook) is null);
     var settings = new WorkbookSettings([new("s3://research/", S3CredentialSource.AwsProfile, Profile: "research")]);
-    await store.RememberAsync(workbook, settings);
-    Equal("research", (await new WorkbookApprovalStore(storePath).ReadAsync(workbook))!.S3[0].Profile);
+    await store.SaveAsync(workbook, settings);
+    Equal("research", (await new WorkbookSettingsStore(storePath).ReadAsync(workbook))!.S3[0].Profile);
 });
-await Check("copied workbooks and externally modified revisions do not inherit approval", async () =>
+await Check("connection settings survive external edits and remain scoped to the workbook path", async () =>
 {
     var copy = Path.Combine(files.Path, "copy.xlsx"); File.Copy(workbook, copy);
     Equal(true, await store.ReadAsync(copy) is null);
     File.AppendAllText(workbook, "changed SQL");
-    Equal(true, await store.ReadAsync(workbook) is null);
-    await store.RememberAsync(workbook, new());
+    Equal("research", (await store.ReadAsync(workbook))!.S3[0].Profile);
+    await store.SaveAsync(workbook, new());
     Equal(true, await store.ReadAsync(workbook) is not null);
     store.Forget(workbook);
     Equal(true, await store.ReadAsync(workbook) is null);
 });
-await Check("corrupt approval records fail closed and interrupted writes leave no temporary record", async () =>
+await Check("corrupt connection records are ignored and interrupted writes leave no temporary record", async () =>
 {
-    await store.RememberAsync(workbook, new());
+    await store.SaveAsync(workbook, new());
     File.WriteAllText(Directory.GetFiles(storePath, "*.json").Single(), "not json");
     Equal(true, await store.ReadAsync(workbook) is null);
     using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
-    try { await store.RememberAsync(workbook, new(), cancelled.Token); throw new Exception("Expected cancellation"); } catch (OperationCanceledException) { }
+    try { await store.SaveAsync(workbook, new(), cancelled.Token); throw new Exception("Expected cancellation"); } catch (OperationCanceledException) { }
     Equal(0, Directory.GetFiles(storePath, "*.tmp").Length);
+});
+await Check("saved access keys stay out of settings and resolve only for worker startup", async () =>
+{
+    var id = Guid.NewGuid().ToString("N");
+    var settings = new WorkbookSettings([new("s3://research/", S3CredentialSource.AccessKey, Endpoint: "storage.example.test:9000", PathStyle: true, CredentialId: id)]);
+    await store.SaveAsync(workbook, settings);
+    var key = new S3AccessKey("fixture-id", "fixture-secret", "fixture-token");
+    var loaded = (await store.ReadAsync(workbook))!;
+    var config = loaded.ForSession(Path.GetFullPath("."), requested => requested == id ? key : throw new Exception("Wrong key requested"));
+    config.Validate(); Equal(key, config.AccessKeys![id]);
+    Equal(false, File.ReadAllText(Directory.GetFiles(storePath, "*.json").Single()).Contains("fixture-secret"));
+    Equal(false, key.ToString().Contains("fixture-secret"));
+});
+if (OperatingSystem.IsWindows()) await Check("Windows Credential Manager saves, replaces and removes only the test key", () =>
+{
+    var id = Guid.NewGuid().ToString("N");
+    try
+    {
+        var first = new S3AccessKey("fixture-id", "fixture-secret", "fixture-token");
+        CredentialStore.Save(id, first); Equal(first, CredentialStore.Read(id));
+        var second = first with { Secret = "replacement-secret" };
+        CredentialStore.Save(id, second); Equal(second, CredentialStore.Read(id));
+        CredentialStore.Delete(id);
+        try { CredentialStore.Read(id); throw new Exception("Missing key was accepted"); } catch (InvalidOperationException) { }
+    }
+    finally { CredentialStore.Delete(id); }
+    return Task.CompletedTask;
 });
 await Check("date conversions respect both Excel date systems and reject the fictional leap day", () =>
 {

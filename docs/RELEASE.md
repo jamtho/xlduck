@@ -28,9 +28,9 @@ Run `tests/Run-Tests.ps1 -AddInPath <package>/XlDuck-AddIn64.xll -WithPreview` a
 
 For development, extract into a new version-specific directory and load its `XlDuck-AddIn64.xll`. For persistent installation, use Excel's Add-ins dialog to select that exact file. Follow the organization's normal trusted-publisher/location policy. Do not disable Trust Center protections or bypass a blocked download.
 
-An upgrade must close Excel instances using the old XlDuck installation before switching the registered path. Keep the previous version until the new version passes a workbook smoke test. Runtime session handles are deliberately rebuilt, so saved files must retain formulas. Approval/settings records are separate under `%LOCALAPPDATA%/XlDuck/approvals`; package replacement must not silently copy credentials or alter workbook enablement policy.
+An upgrade must close Excel instances using the old XlDuck installation before switching the registered path. Keep the previous version until the new version passes a workbook smoke test. Runtime session handles are deliberately rebuilt, so saved files must retain formulas. Connection settings are separate under `%LOCALAPPDATA%/XlDuck/connections`; access keys are in Windows Credential Manager. The earlier development connection records are no longer read. Package replacement must not copy credentials or change Excel trust settings.
 
-Removal must unregister the add-in before removing its versioned folder after Excel exits. User-local approvals/logs/WebView data require a separate, explicit remove-data choice. Never remove workbooks, AWS profiles, shared runtimes or data-source files. An installer implementing and testing this contract remains a release gate.
+Removal must unregister the add-in before removing its versioned folder after Excel exits. User-local connection settings, saved credentials, logs and WebView data require a separate, explicit remove-data choice. Never remove workbooks, AWS profiles, shared runtimes or data-source files. An installer implementing and testing this contract remains a release gate.
 
 ## Support diagnostics
 
@@ -42,7 +42,7 @@ Run `scripts/Get-Diagnostics.ps1 -PackageDirectory <package>` from the repositor
 - Actual upgrade, rollback and removal, including files locked by an open Excel instance.
 - Representative third-party add-ins and the supported Excel/Windows matrix.
 - Visual review of connections and preview at common DPI/scale settings.
-- Live AWS profile/SSO, token renewal and enterprise-network behaviour.
+- Live S3-compatible endpoints, access-key/session-token renewal and enterprise-network behaviour. Certify optional AWS profile/SSO providers separately before advertising their support.
 - Complete redistribution notice review, including native extension dependencies; signing identity and installer design.
 - Validate release artifacts against the final tested commit. Crash-orphan spill recovery is implemented and tested against active host/worker leases and unmarked directories.
 

@@ -41,7 +41,6 @@ function New-XlDuckDemoSession {
         try { Invoke-XlDuckExcel { $blank.Close($false) } }
         finally { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($blank) }
         if ($session.Application.Calculation -ne -4105) { throw 'This demo uses automatic calculation. Set that mode in a separate development Excel instance before trying again.' }
-        Invoke-XlDuckExcel { $session.Application.Run('DuckEnableWorkbook', $opened.Name) } | Out-Null
         return $session
     } catch {
         if ($session) { Close-XlDuckExcelSession $session }

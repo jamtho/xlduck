@@ -2,9 +2,9 @@
 
 XlDuck will be a polished public Excel add-in for researchers who compose SQL computations through cells and table handles. AI working inside Excel is expected to write most of the SQL. The product should make experimentation fast, results dependable, and intermediate computations easy to inspect.
 
-The design decisions below reflect the discussion through 24 October 2026. The user authorized execution on 24 October 2026. Work starts with the safe test harness and execution prototype, followed by an architecture checkpoint. Existing workbooks and APIs need not remain backward compatible.
+The design decisions below reflect the discussion through 25 October 2026. The user authorized execution on 24 October 2026. Work starts with the safe test harness and execution prototype, followed by an architecture checkpoint. Existing workbooks and APIs need not remain backward compatible.
 
-Milestones 1–4 are integrated into production: the owned Excel harness, measured worker execution model, typed computational core, read-and-compute enforcement and coarse workbook enablement/settings. The original defect probes and legacy implementation remain in Git history; their relevant regressions now exercise the replacement.
+Milestones 1–4 are integrated into production: the owned Excel harness, measured worker execution model, typed computational core, read-and-compute enforcement and native Excel trust integration and connection settings. The original defect probes and legacy implementation remain in Git history; their relevant regressions now exercise the replacement.
 
 Milestone 5 is implemented and tested through the production host. Workbook save/reopen, rename, cancelled closure, restart, cancellation, retained results, date systems and the existing task-pane workflow have integration coverage. Bundled chart libraries render all eight templates under CSP. Native WebView tests verify startup and selected-plot updates without reselection. Visual layout/DPI review remains unverified because computer-use window access timed out.
 
@@ -14,19 +14,23 @@ Current evidence on 24 October 2026: 21 core, 6 host, 14 engine, 17 worker, 17 p
 
 Milestone 7 has a tested local foundation: .NET 10 runtime/load-order probes, clean x64 folder packaging, dependency lockfiles/notices, a file manifest, source-build metadata and a diagnostics report that excludes private data. CI runs the core, reader and browser checks and builds/verifies an unsigned package; the workflow is committed locally but has not run on GitHub. Crash-orphan spill recovery is covered by process/file-lease tests. Public release still needs the clean-machine, installer/signing, visual, third-party coexistence and live-service checks in [release preparation](docs/RELEASE.md). No publication or signing purchase has been performed.
 
+Implementation update, 25 October 2026: cell tokens now omit the session UUID, preserving 128-bit result identity and workbook-local lookup. Ordinary workbooks initialize automatically; the separate enable dialog and fingerprint approvals are removed. Native tests verify Protected View makes no source requests and Enable Editing starts fresh computation. Connections now centres on compatible S3 endpoints, saved access keys in Windows Credential Manager, and optional advanced routing/signing settings. Off-screen form review exposed and corrected DPI initialization; display-transition validation remains a release check.
+
+Verification for the access/handle update on 25 October 2026: 22 core, 8 host, 3 dialog, 14 direct-engine, 17 worker and 18 policy/reader cases in each mode pass. Native checks cover 24 production cases, 3 Protected View cases and 3 preview cases; the existing demo passes all 6 groups. S3 credentials and protocol reads use local fixtures. Real storage-provider/proxy validation and display transitions remain release checks.
+
 ## Agreed product scope
 
 Feedback from the first research-demo trial on 25 October 2026:
 
 - The RDP preview was too small. Its log reported DPI 240 and page zoom 0.8. Remove the manual page-zoom reduction and verify native startup at full page zoom; monitor/RDP transition behaviour still needs visual testing.
-- Demo-only constant display formats obscure the actual chart/table handles and can hide text errors. Revisit the presentation; the engine still uses typed session-qualified handles.
+- Demo-only constant display formats obscure the actual chart/table handles and can hide text errors. Revisit the presentation; the engine retains typed session-qualified identities internally; cell tokens now use compact result IDs.
 - Prefer examples with SQL stored as ordinary cell text, with the executing formula below. Named SQL cells and positional argument conventions remain useful and supported; add native integration coverage.
-- Reconsider the combined workbook enablement/S3 dialog. Worker startup is already lazy, while enablement implements the earlier unfamiliar-workbook access decision. Separate those concepts before changing the access policy; AWS settings should be optional source configuration.
+- Use Excel's Protected View / Enable Editing boundary and start ordinary workbooks automatically. Keep worker startup lazy. Separate S3-compatible connection configuration from execution permission; saved keys belong in Windows Credential Manager, and signing region belongs in advanced options.
 
 - Keep Excel, Excel-DNA, DuckDB, and the formula DAG as the foundation. Excel owns worksheet dependencies; XlDuck manages computation and result lifetimes.
 - Design for sophisticated users doing research. Most queries should finish quickly, generally within a few seconds. Occasional 30 to 60 second trunk queries can work, but extensive expensive preparation belongs outside the workbook or behind better materialization choices.
 - Support read-and-compute SQL only. Worksheet SQL cannot modify external data, issue general DDL or DML, export files, install arbitrary extensions, or change security settings. Internal temporary tables and engine spill files remain necessary implementation details.
-- Use broad read access for enabled workbooks, with a coarse enablement decision for unfamiliar workbooks. Do not build permissions for individual queries, folders, buckets, or tables. Previously trusted workbooks can run automatically on open.
+- Use broad read access for ordinary workbooks. Enforce Protected View, accept Excel's Enable Editing transition, and do not maintain a second workbook approval decision. Do not build permissions for individual queries, folders, buckets, or tables.
 - Preserve the current chart experience: select a plot cell and view its chart in the preview pane. Improve correctness, responsiveness, status, and cleanup within that experience.
 - Prioritize automatic calculation. Support manual calculation if the prototype establishes acceptable behaviour without compromising the main experience. Never silently change Excel's application-wide calculation mode.
 - Defer in-sheet charts, dashboard construction, report distribution, and snapshots intended for recipients without the add-in. Keep chart definitions independent of the preview host so another display surface can be added later.
@@ -106,7 +110,7 @@ Acceptance: identical live requests do not execute twice; distinct typed inputs 
 
 Implement the agreed statement and capability policy before exposing the new engine as the normal worksheet path. Include every entry point, including fragment validation and execution, previews, and direct outputs. Separate privileged internal operations from worksheet SQL.
 
-Provide a practical replacement for the existing S3 and local-file setup, then add only other explicitly supported readers. Keep connection secrets out of formulas where practical and redact credentials, signed URLs, raw query arguments, and sensitive SQL from routine logs. Use coarse workbook enablement and preserve the existing decision across ordinary restarts; define safe behaviour for unfamiliar workbook copies.
+Provide a practical replacement for the existing S3 and local-file setup, then add only other explicitly supported readers. Keep connection secrets out of formulas where practical and redact credentials, signed URLs, raw query arguments, and sensitive SQL from routine logs. Use Excel's native Protected View boundary; ordinary workbooks and copies start automatically, while protected workbooks cannot start queries. Keep connection settings separate from execution permission.
 
 Acceptance: supported local and S3 reads work, while tested DDL, DML, file exports, extension installation, settings changes, multiple-statement bypasses, and supported-extension side-effect paths fail before their effects occur. Both core and Excel tests cover the policy. Documentation accurately describes broad read access and its limitations.
 

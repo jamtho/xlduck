@@ -34,13 +34,12 @@ internal sealed class OpenWorkbook(Excel.Workbook workbook)
     internal bool Date1904 = workbook.Date1904;
     internal WorkbookSettings Settings = new();
     internal WorkbookSession? Session;
-    internal bool Enabled;
     internal int PreviewGeneration;
-    internal bool Remembered;
+    internal bool SettingsSaved;
     internal bool Closed;
     internal long Revision;
     internal string? Status;
-    internal Task ApprovalWork = Task.CompletedTask;
+    internal Task SettingsWork = Task.CompletedTask;
     internal readonly Dictionary<CellAddress, FormulaCell> Cells = new();
     internal readonly Dictionary<nint, Excel.Worksheet> Sheets = new();
     internal static string SavedPath(Excel.Workbook workbook) => string.IsNullOrEmpty(workbook.Path) ? "" : workbook.FullName;
@@ -52,9 +51,9 @@ internal static class WorkbookHost
     private static readonly Dictionary<nint, OpenWorkbook> Books = new();
     private static readonly Dictionary<nint, OpenWorkbook> Sheets = new();
     private static readonly List<Task> Disposals = [];
-    private static readonly List<Task> ApprovalWrites = [];
-    private static readonly WorkbookApprovalStore Approvals = new(System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XlDuck", "approvals"));
+    private static readonly List<Task> SettingsWrites = [];
+    private static readonly WorkbookSettingsStore SettingsStore = new(System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XlDuck", "connections"));
     private static Excel.Application? _application;
     private static System.Windows.Forms.Timer? _timer;
     private static volatile bool _stopped = true;
@@ -103,11 +102,11 @@ internal static class WorkbookHost
     {
         if (!success) return;
         var identity = Identity(workbook);
-        if (Books.TryGetValue(identity, out var saving)) saving.Remembered = false;
+        if (Books.TryGetValue(identity, out var saving)) saving.SettingsSaved = false;
         Queue(() =>
         {
             Reconcile();
-            if (Books.TryGetValue(identity, out var book) && book.Enabled) Remember(book);
+            if (Books.TryGetValue(identity, out var book) && book.Session is not null) Remember(book);
         });
     }
     internal static void Reconcile()
@@ -115,11 +114,12 @@ internal static class WorkbookHost
         var live = new HashSet<nint>();
         foreach (Excel.Workbook workbook in Application.Workbooks)
         {
+            if (workbook.Application.IsSandboxed) continue;
             var identity = Identity(workbook); live.Add(identity);
             if (!Books.TryGetValue(identity, out var book))
             {
                 book = new(workbook); Books.Add(identity, book);
-                _ = CheckApprovalAsync(book);
+                _ = LoadSettingsAsync(book);
             }
             var dateChanged = book.Date1904 != workbook.Date1904;
             book.Name = workbook.Name; book.Path = OpenWorkbook.SavedPath(workbook); book.Date1904 = workbook.Date1904;
@@ -145,26 +145,27 @@ internal static class WorkbookHost
             book.Sheets.Clear(); Books.Remove(removed);
         }
         Disposals.RemoveAll(task => task.IsCompleted);
-        ApprovalWrites.RemoveAll(task => task.IsCompleted);
+        SettingsWrites.RemoveAll(task => task.IsCompleted);
         Changed?.Invoke();
     }
-    private static async Task CheckApprovalAsync(OpenWorkbook book)
+    private static async Task LoadSettingsAsync(OpenWorkbook book)
     {
-        if (book.Path.Length == 0) return;
         var path = book.Path; var revision = book.Revision;
         WorkbookSettings? settings;
-        try { settings = await Approvals.ReadAsync(path).ConfigureAwait(false); }
-        catch (Exception error) { Log.Error("Read workbook approval", error); settings = null; }
+        try { settings = path.Length == 0 ? null : await SettingsStore.ReadAsync(path).ConfigureAwait(false); }
+        catch (Exception error) { Log.Error("Read workbook connections", error); settings = null; }
         Queue(() =>
         {
-            if (book.Closed || book.Revision != revision || book.Path != path) return;
-            if (settings is null) Recalculate(book);
-            else { Enable(book, settings, remember: false); book.Remembered = true; }
+            if (book.Closed || book.Revision != revision) return;
+            if (book.Path != path) { _ = LoadSettingsAsync(book); return; }
+            ApplySettings(book, settings ?? new(), save: false);
+            book.SettingsSaved = settings is not null;
         });
     }
     internal static OpenWorkbook Active()
     {
         var workbook = Application.ActiveWorkbook ?? throw new InvalidOperationException("Open a workbook first.");
+        RequireOrdinaryWorkbook(workbook);
         if (!Books.ContainsKey(Identity(workbook))) Reconcile();
         return Books[Identity(workbook)];
     }
@@ -175,33 +176,38 @@ internal static class WorkbookHost
         if (!Sheets.TryGetValue(reference.SheetId, out var book))
         {
             Queue(Reconcile);
-            throw new InvalidOperationException("Workbook is initializing. Enable XlDuck from its ribbon.");
+            throw new InvalidOperationException("Workbook is initializing or is in Protected View. XlDuck runs after Excel allows editing.");
         }
+        RequireOrdinaryWorkbook(book.Workbook);
         var formula = Convert.ToString(XlCall.Excel(XlCall.xlfGetCell, 41, reference)) ?? "";
         return (book, new(reference.SheetId, reference.RowFirst, reference.ColumnFirst), formula);
     }
-    internal static OpenWorkbook? FindSession(Guid id) => Books.Values.FirstOrDefault(book => book.Session?.Id == id && !book.Closed);
-    internal static OpenWorkbook? FindSheet(Excel.Worksheet sheet) => Books.GetValueOrDefault(Identity((object)sheet.Parent));
-    internal static void Enable(OpenWorkbook book, WorkbookSettings settings, bool remember = true)
+    internal static void RequireOrdinaryWorkbook(Excel.Workbook workbook)
     {
-        settings.Validate(); book.Revision++; book.Enabled = true; book.Settings = settings; book.Status = null;
-        Restart(book);
-        if (remember) Remember(book);
+        if (workbook.Application.IsSandboxed)
+            throw new InvalidOperationException("XlDuck does not run in Protected View. Use Excel's Enable Editing only if you trust the workbook.");
     }
-    internal static void Disable(OpenWorkbook book)
+    internal static OpenWorkbook? FindSheet(Excel.Worksheet sheet)
     {
-        book.Revision++; book.Enabled = false; book.Remembered = false; RetireSession(book);
-        var path = book.Path;
-        if (path.Length > 0) AppendApprovalWork(book, () => { Approvals.Forget(path); return Task.CompletedTask; });
-        Recalculate(book); Changed?.Invoke();
+        var workbook = (Excel.Workbook)sheet.Parent;
+        return workbook.Application.IsSandboxed ? null : Books.GetValueOrDefault(Identity(workbook));
+    }
+    internal static void ApplySettings(OpenWorkbook book, WorkbookSettings settings, bool save = true)
+    {
+        RequireOrdinaryWorkbook(book.Workbook);
+        settings.Validate(); book.Revision++; book.Settings = settings; book.Status = null;
+        Restart(book);
+        if (save) Remember(book);
     }
     internal static void Restart(OpenWorkbook book)
     {
-        if (!book.Enabled) throw new InvalidOperationException("Enable XlDuck for this workbook first.");
+        RequireOrdinaryWorkbook(book.Workbook);
+        book.Revision++;
         RetireSession(book);
         var worker = System.IO.Path.Combine(InstallDirectory, "worker", "XlDuck.Worker.exe");
-        var settings = book.Settings.ForSession(System.IO.Path.Combine(InstallDirectory, "readers"));
-        book.Session = new(id => new WorkerBackend(id, worker, settings));
+        var settings = book.Settings;
+        var readers = System.IO.Path.Combine(InstallDirectory, "readers");
+        book.Session = new(id => new WorkerBackend(id, worker, settings.ForSession(readers, CredentialStore.Read)));
         Recalculate(book); Changed?.Invoke();
     }
     private static void RetireSession(OpenWorkbook book)
@@ -218,30 +224,31 @@ internal static class WorkbookHost
     {
         if (book.Path.Length == 0) return;
         var path = book.Path; var settings = book.Settings; var revision = book.Revision;
-        book.Remembered = false;
-        AppendApprovalWork(book, async () =>
+        book.SettingsSaved = false;
+        AppendSettingsWork(book, async () =>
         {
-            await Approvals.RememberAsync(path, settings).ConfigureAwait(false);
-            Queue(() => { if (!book.Closed && book.Enabled && book.Path == path && book.Revision == revision) { book.Remembered = true; Changed?.Invoke(); } });
+            await SettingsStore.SaveAsync(path, settings).ConfigureAwait(false);
+            Queue(() => { if (!book.Closed && book.Session is not null && book.Path == path && book.Revision == revision) { book.SettingsSaved = true; Changed?.Invoke(); } });
         });
     }
-    private static void AppendApprovalWork(OpenWorkbook book, Func<Task> action)
+    private static void AppendSettingsWork(OpenWorkbook book, Func<Task> action)
     {
-        var previous = book.ApprovalWork;
-        book.ApprovalWork = Task.Run(async () =>
+        var previous = book.SettingsWork;
+        book.SettingsWork = Task.Run(async () =>
         {
             try { await previous.ConfigureAwait(false); } catch { }
             try { await action().ConfigureAwait(false); }
             catch (Exception error)
             {
-                Log.Error("Remember workbook enablement", error);
-                Queue(() => { if (!book.Closed) { book.Status = "Could not remember enablement. Save the workbook again."; Changed?.Invoke(); } });
+                Log.Error("Save workbook connections", error);
+                Queue(() => { if (!book.Closed) { book.Status = "Could not save connection settings. Save the workbook again."; Changed?.Invoke(); } });
             }
         });
-        ApprovalWrites.Add(book.ApprovalWork);
+        SettingsWrites.Add(book.SettingsWork);
     }
     internal static void Recalculate(OpenWorkbook book)
     {
+        RequireOrdinaryWorkbook(book.Workbook);
         foreach (var sheet in book.Sheets.Values)
         {
             Excel.Range formulas;
@@ -273,6 +280,7 @@ internal static class WorkbookHost
     {
         if (book.Closed || !book.Cells.TryGetValue(address, out var current) || current != cell ||
             !cell.Bindings.TryGetValue(binding.Key, out var active) || active != binding) return;
+        RequireOrdinaryWorkbook(book.Workbook);
         if (!book.Sheets.TryGetValue(address.Sheet, out var sheet)) return;
         var range = (Excel.Range)sheet.Cells[address.Row + 1, address.Column + 1];
         if (!string.Equals(Convert.ToString(((dynamic)range).Formula2), cell.Formula, StringComparison.Ordinal)) return;
@@ -322,10 +330,10 @@ internal static class WorkbookHost
             }
             catch (Exception error) { Log.Error("Workbook event cleanup", error); }
         }
-        var approvals = ApprovalWrites.ToArray();
+        var writes = SettingsWrites.ToArray();
         foreach (var book in Books.Values) { book.Closed = true; RetireSession(book); book.Sheets.Clear(); }
         Books.Clear(); Sheets.Clear(); _application = null;
-        try { Task.WhenAll(Disposals.Concat(approvals)).Wait(TimeSpan.FromSeconds(8)); } catch { }
-        Disposals.Clear(); ApprovalWrites.Clear(); Changed = null;
+        try { Task.WhenAll(Disposals.Concat(writes)).Wait(TimeSpan.FromSeconds(8)); } catch { }
+        Disposals.Clear(); SettingsWrites.Clear(); Changed = null;
     }
 }

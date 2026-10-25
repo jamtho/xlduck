@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
     if (-not $NoBuild) {
-        $projects = @('XlDuck.Worker', 'tests/XlDuck.Core.Specs', 'tests/XlDuck.Host.Specs', 'tests/XlDuck.Engine.Specs', 'tests/XlDuck.Policy.Specs')
+        $projects = @('XlDuck.Worker', 'tests/XlDuck.Core.Specs', 'tests/XlDuck.Host.Specs', 'tests/XlDuck.Dialog.Specs', 'tests/XlDuck.Engine.Specs', 'tests/XlDuck.Policy.Specs')
         if ($WithExcel) { $projects += 'tests/XlDuck.TestAddIn' }
         foreach ($project in $projects) {
             $options = @('build', $project, '--nologo', '-m:1', '/nodeReuse:false', '/p:UseSharedCompilation=false')
@@ -18,6 +18,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Core specifications failed.' }
     & dotnet run --project tests/XlDuck.Host.Specs --no-build --no-restore
     if ($LASTEXITCODE -ne 0) { throw 'Host specifications failed.' }
+    & dotnet run --project tests/XlDuck.Dialog.Specs --no-build --no-restore
+    if ($LASTEXITCODE -ne 0) { throw 'Connection dialog specifications failed.' }
     & dotnet run --project tests/XlDuck.Engine.Specs --no-build --no-restore
     if ($LASTEXITCODE -ne 0) { throw 'Engine specifications failed.' }
     & dotnet run --project tests/XlDuck.Engine.Specs --no-build --no-restore -- --worker

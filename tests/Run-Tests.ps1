@@ -9,6 +9,11 @@ if ($AddInPath) { $options += @('-AddInPath', $AddInPath) }
 if ($RuntimeRoot) { $options += @('-RuntimeRoot', $RuntimeRoot, '-FrameworkProbe', $FrameworkProbe) }
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Test-Production.ps1') @options
 if ($LASTEXITCODE -ne 0) { throw 'Production integration failed.' }
+$protectedOptions = @()
+if ($AddInPath) { $protectedOptions += @('-AddInPath', $AddInPath) }
+if ($RuntimeRoot) { $protectedOptions += @('-RuntimeRoot', $RuntimeRoot, '-FrameworkProbe', $FrameworkProbe) }
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Test-ProtectedView.ps1') @protectedOptions
+if ($LASTEXITCODE -ne 0) { throw 'Protected View integration failed.' }
 if ($WithPreview) {
     $previewOptions = @('-NoBuild')
     if ($AddInPath) { $previewOptions += @('-AddInPath', $AddInPath) }

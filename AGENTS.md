@@ -11,11 +11,13 @@
 
 - `XlDuck/Host`: production UDFs, commands, workbook COM lifecycle and ribbon.
 - `XlDuck/Preview`: task-pane UI, worker-backed preview, bundled HTML/JS/CSS.
-- `XlDuck.Host`: testable approval, date, formula and navigation policies.
+- `XlDuck.Host`: testable connection/credential storage, date, formula and navigation policies.
 - `XlDuck.Core`: immutable typed requests, SQL-aware binding, leases, queues and protocol.
-- `XlDuck.Engine`, `XlDuck.Client`, `XlDuck.Worker`: one owned DuckDB worker per enabled workbook.
+- `XlDuck.Engine`, `XlDuck.Client`, `XlDuck.Worker`: one owned DuckDB worker per ordinary workbook.
 
-Excel owns the formula DAG. Unchanged SQL and typed inputs reuse retained results. F9, Shift+F9 and unchanged F2/Enter are not source refreshes. Restart affects one workbook. Opening an approved saved workbook starts a fresh session. Never change global RTD latency or calculation mode to improve performance.
+Excel owns the formula DAG. Unchanged SQL and typed inputs reuse retained results. F9, Shift+F9 and unchanged F2/Enter are not source refreshes. Restart affects one workbook. Opening an ordinary saved workbook starts a fresh session. Never change global RTD latency or calculation mode to improve performance.
+
+Only normal Excel Workbooks may run queries; reject IsSandboxed workbooks at host entry points and preserve Protected View. Never add a custom approval gate or change Trust Center. Cell tokens resolve only through the caller session's live registry; worker identity remains session-qualified.
 
 Worksheet SQL is read-and-compute only. Privileged internal temporary-table and connection operations must remain separate from user SQL. No unrestricted config, writes, exports or extension installation. Workers are fault isolation, not OS sandboxes. Preserve exact types and make approximation explicit.
 

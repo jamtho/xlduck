@@ -10,7 +10,7 @@ using Excel = Microsoft.Office.Interop.Excel;
 
 namespace XlDuck.TestAddIn;
 
-// Integration harness only. Public workbook enablement, Save As and pane integration belong in the production host.
+// Integration harness only. Native Protected View enforcement, Save As and pane integration belong in the production host.
 public sealed class AddIn : IExcelAddIn
 {
     internal static AddIn? Instance;

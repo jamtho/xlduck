@@ -1,14 +1,14 @@
 # Read and compute policy and connections
 
-The new engine accepts research queries and supported data readers while rejecting SQL that changes data, installs capabilities, or changes the session configuration. This contract applies to the production Excel host, its workbook worker and all output/preview paths. The production host provides workbook enablement and non-secret connection settings.
+The new engine accepts research queries and supported data readers while rejecting SQL that changes data, installs capabilities, or changes the session configuration. This contract applies to the production Excel host, its workbook worker and all output/preview paths. The production host provides Excel Protected View enforcement and connection settings.
 
 ## Access model
 
-An enabled workbook has broad read access under the user's account and configured credentials. There are no per-query, folder or bucket permissions. The host creates the session with `ConnectionSettings`; worksheet SQL cannot change these settings. The default session has external access disabled and can compute using values, captures and supplied handles. Enabling external reads also enables access to local files; adding the installed HTTP reader enables remote files.
+An ordinary workbook has broad read access under the user's account and configured credentials. There are no per-query, folder or bucket permissions. The host creates the session with `ConnectionSettings`; worksheet SQL cannot change these settings. The default session has external access disabled and can compute using values, captures and supplied handles. Enabling external reads also enables access to local files; adding the installed HTTP reader enables remote files.
 
 This policy prevents supported SQL mutation paths. It does not make an unfamiliar workbook safe to run without a trust decision: readable data can appear in results or be sent in an outgoing URL. A remote service can also attach side effects to a GET request. The worker runs under the user's account for fault isolation; it is not an OS security sandbox. Read-only source credentials remain useful defence in depth.
 
-The production host blocks computations until workbook enablement, preserves that decision across ordinary restarts and remembers saved revisions locally. Unfamiliar copies do not inherit approval.
+The production host creates sessions automatically for ordinary workbooks and blocks execution in Protected View. Excel's Enable Editing decision admits a protected workbook. Ordinary copies and externally modified workbooks run without a second permission decision. Connections are user-local settings; explicit keys are loaded from Windows Credential Manager and passed into temporary scoped secrets.
 
 ## Query contract
 

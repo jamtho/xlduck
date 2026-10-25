@@ -17,7 +17,6 @@ try {
     } else { $session = New-XlDuckExcelSession -AddInPath $build -Visible }
     $excel = $session.Application; $sheet = $session.Workbook.Worksheets.Item(1)
     $session.Workbook.Windows.Item(1).Caption = 'XlDuck owned preview test'
-    $excel.Run('DuckEnableWorkbook', $session.Workbook.Name) | Out-Null
     $sheet.Range('A1').Value2 = 'XlDuck preview integration'
     $sheet.Range('A3').Formula2 = '=DuckQuery("SELECT i::DOUBLE x, sin(i/10.0) y FROM range(100) r(i)")'
     $sheet.Range('A4').Formula2 = '=DuckPlot(A3,"line","x","x","y","y","title","Research preview")'
