@@ -15,8 +15,9 @@ public sealed class ResultLease : IDisposable
     public ResultHandle Handle { get; }
     public string CellText { get; }
     public Task<ComputationResult> Completion { get; }
-    internal ResultLease(WorkbookSession owner, ResultHandle handle, string cellText, Task<ComputationResult> completion)
-        => (_owner, Handle, CellText, Completion) = (owner, handle, cellText, completion);
+    public bool Reused { get; }
+    internal ResultLease(WorkbookSession owner, ResultHandle handle, string cellText, Task<ComputationResult> completion, bool reused)
+        => (_owner, Handle, CellText, Completion, Reused) = (owner, handle, cellText, completion, reused);
     public Task<ComputationResult> WaitAsync(CancellationToken token = default) => Completion.WaitAsync(token);
     public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release(Handle);
 }
@@ -31,6 +32,13 @@ public sealed class WorkbookSession : IAsyncDisposable
         public readonly string CellText = cellText;
         public readonly PreparedQuery? Prepared = prepared;
         public Entry[] Dependencies = dependencies;
+        public readonly ImmutableArray<string> DependencyNames = [.. dependencies.Select(dependency => dependency.CellText)];
+        public readonly DateTimeOffset CreatedAt = DateTimeOffset.UtcNow;
+        public DateTimeOffset? StartedAt;
+        public DateTimeOffset? CompletedAt;
+        public string State = "queued";
+        public long StartedTick;
+        public long ElapsedMilliseconds;
         public readonly TaskCompletionSource<ComputationResult> Completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public readonly CancellationTokenSource Cancellation = new();
         public LinkedListNode<Entry>? Historical;
@@ -86,6 +94,22 @@ public sealed class WorkbookSession : IAsyncDisposable
 
     public ComputationRequest GetDefinition(ResultHandle handle) { lock (_sync) return Find(handle).Request; }
 
+    public ComputationStatus GetStatus(ResultHandle handle)
+    {
+        lock (_sync)
+        {
+            var entry = Find(handle);
+            var task = entry.Completion.Task;
+            var state = task.IsCanceled ? "cancelled" : task.IsFaulted ? "failed" : task.IsCompletedSuccessfully ? "succeeded"
+                : _resume is not null && entry.State == "queued" ? "paused" : entry.State;
+            return new(state, entry.CellText, entry.Request.Kind.ToString().ToLowerInvariant(), entry.CreatedAt,
+                entry.StartedAt, entry.CompletedAt, entry.StartedAt is null ? 0 : entry.CompletedAt is null
+                    ? Environment.TickCount64 - entry.StartedTick : entry.ElapsedMilliseconds,
+                entry.DependencyNames, task.IsCompletedSuccessfully && entry.Request.Kind != RequestKind.Fragment ? task.Result.RowCount : null,
+                task.IsFaulted ? ComputationFailure.From(task.Exception!) : task.IsCanceled ? ComputationFailure.From(new OperationCanceledException()) : null);
+        }
+    }
+
     /// <summary>Permit new attempts on the next calculation, including in manual mode.
     /// Existing failed handles remain immutable until their owners release them.</summary>
     public void InvalidateFailuresForRetry()
@@ -128,7 +152,7 @@ public sealed class WorkbookSession : IAsyncDisposable
         lock (_sync)
         {
             EnsureOpen();
-            if (_requests.TryGetValue(key, out var cached) && !(retryFailed && (cached.Completion.Task.IsFaulted || cached.Completion.Task.IsCanceled))) return Lease(cached);
+            if (_requests.TryGetValue(key, out var cached) && !(retryFailed && (cached.Completion.Task.IsFaulted || cached.Completion.Task.IsCanceled))) return Lease(cached, reused: true);
             if (_pending + _cleanup.Count >= _options.MaxPending)
                 throw new InvalidOperationException("This workbook's computation queue is full. Wait for pending work, then retry.");
 
@@ -171,7 +195,7 @@ public sealed class WorkbookSession : IAsyncDisposable
 
     public ResultLease AcquireExisting(ResultHandle handle)
     {
-        lock (_sync) { EnsureOpen(); return Lease(Find(handle)); }
+        lock (_sync) { EnsureOpen(); return Lease(Find(handle), reused: true); }
     }
 
     /// <summary>Fragments become retained materializations. Plots own their materialized data.</summary>
@@ -184,8 +208,8 @@ public sealed class WorkbookSession : IAsyncDisposable
             return handle.Kind switch
             {
                 ResultKind.Fragment => Acquire(ComputationRequest.Query("SELECT * FROM ?", QueryArgument.Reference(handle))),
-                ResultKind.Plot => Lease(entry.Dependencies[0]),
-                _ => Lease(entry)
+                ResultKind.Plot => Lease(entry.Dependencies[0], reused: true),
+                _ => Lease(entry, reused: true)
             };
         }
     }
@@ -246,7 +270,7 @@ public sealed class WorkbookSession : IAsyncDisposable
         if (_closed) throw new ObjectDisposedException(nameof(WorkbookSession), "This workbook session has closed.");
         if (_cleanupError is not null) throw new InvalidOperationException("Result cleanup failed. Restart this workbook's XlDuck session.", _cleanupError);
     }
-    private ResultLease Lease(Entry entry) { Retain(entry); return new(this, entry.Handle, entry.CellText, entry.Completion.Task); }
+    private ResultLease Lease(Entry entry, bool reused = false) { Retain(entry); return new(this, entry.Handle, entry.CellText, entry.Completion.Task, reused); }
     private void Retain(Entry entry)
     {
         if (entry.Historical is not null) { _history.Remove(entry.Historical); entry.Historical = null; }
@@ -320,7 +344,12 @@ public sealed class WorkbookSession : IAsyncDisposable
                 Task resumed;
                 lock (_sync) resumed = _resume?.Task ?? Task.CompletedTask;
                 await resumed.WaitAsync(linked.Token).ConfigureAwait(false);
+                lock (_sync) entry.State = "waiting_inputs";
                 foreach (var dependency in entry.Dependencies) await dependency.Completion.Task.WaitAsync(linked.Token).ConfigureAwait(false);
+                lock (_sync)
+                {
+                    entry.State = "running"; entry.StartedAt = DateTimeOffset.UtcNow; entry.StartedTick = Environment.TickCount64;
+                }
                 if (entry.Request.Kind == RequestKind.Fragment)
                 {
                     await (await _backend.Value.ConfigureAwait(false)).ValidateAsync(entry.Prepared!, linked.Token).ConfigureAwait(false);
@@ -335,7 +364,7 @@ public sealed class WorkbookSession : IAsyncDisposable
                 {
                     var backend = await _backend.Value.ConfigureAwait(false);
                     Interlocked.Increment(ref _executions);
-                    result = await backend.ExecuteAsync(new(entry.Handle, entry.Prepared, entry.Request.Capture), linked.Token).ConfigureAwait(false);
+                    result = await backend.ExecuteAsync(new(entry.Handle, entry.Prepared, entry.Request.Capture, entry.Request.RowLimit), linked.Token).ConfigureAwait(false);
                     entry.Stored = true;
                     if (result.Handle != entry.Handle) throw new InvalidOperationException("Engine returned an unexpected result identity.");
                 }
@@ -348,6 +377,8 @@ public sealed class WorkbookSession : IAsyncDisposable
                 lock (_sync)
                 {
                     _pending--;
+                    entry.CompletedAt = DateTimeOffset.UtcNow;
+                    entry.ElapsedMilliseconds = entry.StartedAt is null ? 0 : Environment.TickCount64 - entry.StartedTick;
                     if (entry.Request.Kind is RequestKind.Query or RequestKind.Capture)
                     {
                         foreach (var dependency in entry.Dependencies) Release(dependency);

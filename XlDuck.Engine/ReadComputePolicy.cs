@@ -32,6 +32,9 @@ internal sealed class ReadComputePolicy
     internal ReadComputePolicy(DuckDBConnection connection)
     {
         _connection = connection;
+        // UNNEST is a special SELECT expression, not a scalar entry in duckdb_functions().
+        // Its children still pass through the complete capability walk below.
+        _expressions.Add("unnest");
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT version()";
         if (!string.Equals((string)command.ExecuteScalar()!, EngineVersion, StringComparison.Ordinal))
@@ -68,12 +71,18 @@ internal sealed class ReadComputePolicy
                     foreach (var definition in definitions) Validate("SELECT " + definition, []);
                     changed |= _expressions.Add(name);
                 }
-                catch (ArgumentException) { /* Unsupported macro remains unavailable. */ }
+                catch (ComputationException) { /* Unsupported macro remains unavailable. */ }
             }
         } while (changed);
     }
 
     internal void Validate(string sql, IEnumerable<ResultHandle> inputs)
+    {
+        try { ValidateCore(sql, inputs); }
+        catch (ArgumentException error) { throw new ComputationException(new("sql_validation", error.Message)); }
+    }
+
+    private void ValidateCore(string sql, IEnumerable<ResultHandle> inputs)
     {
         using var command = _connection.CreateCommand();
         command.CommandText = "SELECT json_serialize_sql(CAST($sql AS VARCHAR))";
@@ -106,6 +115,8 @@ internal sealed class ReadComputePolicy
             }
         }
         var type = Text(node, "type");
+        if (type == "SHOW_REF")
+            throw new ArgumentException("DESCRIBE and SHOW are not worksheet SELECT queries. Use DuckSchema(sql, arguments...) to inspect a source query, or DuckInspect(handle) for a retained table.");
         if (type == "BASE_TABLE")
         {
             var name = Text(node, "table_name");

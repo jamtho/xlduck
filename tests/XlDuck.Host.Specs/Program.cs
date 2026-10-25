@@ -22,6 +22,19 @@ await Check("connection settings are optional and preserve routing without crede
     await store.SaveAsync(workbook, settings);
     Equal("research", (await new WorkbookSettingsStore(storePath).ReadAsync(workbook))!.S3[0].Profile);
 });
+await Check("resource settings persist with connections and old settings receive explicit defaults", async () =>
+{
+    var original = new WorkbookSettings([new("s3://research/", S3CredentialSource.AwsProfile, Profile: "research")], new(2048, 8, 3));
+    await store.SaveAsync(workbook, original);
+    var restored = (await store.ReadAsync(workbook))!;
+    Equal(original.Resources, restored.Resources); Equal(original.Resources, restored.ForSession(Path.GetFullPath(".")).Resources);
+    Equal(new ResourceSettings(), System.Text.Json.JsonSerializer.Deserialize<WorkbookSettings>("{}")!.Resources);
+    foreach (var resources in new[] { new ResourceSettings(0), new ResourceSettings(SpillGiB: 0), new ResourceSettings(Threads: 17) })
+    {
+        try { (original with { Resources = resources }).Validate(); throw new Exception("Expected invalid budget rejection"); }
+        catch (ArgumentException) { }
+    }
+});
 await Check("connection settings survive external edits and remain scoped to the workbook path", async () =>
 {
     var copy = Path.Combine(files.Path, "copy.xlsx"); File.Copy(workbook, copy);

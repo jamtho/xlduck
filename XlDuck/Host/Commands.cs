@@ -3,6 +3,7 @@
 using System.Text.Json;
 using ExcelDna.Integration;
 using XlDuck.Host;
+using XlDuck.Core;
 
 namespace XlDuck;
 
@@ -25,6 +26,14 @@ public static class DuckCommands
         settings.Validate();
         var book = Book(workbookName);
         WorkbookHost.ApplySettings(book, settings);
+    }
+    [ExcelCommand(Name = "DuckSetResources", Description = "Set this workbook's resource budgets as JSON and restart its worker.")]
+    public static void DuckSetResources(string resourcesJson, string workbookName)
+    {
+        if (resourcesJson.Length > 1024) throw new ArgumentException("Resource settings are too large.");
+        var resources = JsonSerializer.Deserialize<ResourceSettings>(resourcesJson) ?? throw new ArgumentException("Missing resource settings.");
+        resources.Validate(); var book = Book(workbookName);
+        WorkbookHost.ApplySettings(book, book.Settings with { Resources = resources });
     }
     [ExcelCommand(Name = "DuckPauseQueries")]
     public static void DuckPauseQueries(string workbookName) => Book(workbookName).Session?.SetPaused(true);

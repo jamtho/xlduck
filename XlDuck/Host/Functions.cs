@@ -27,9 +27,35 @@ public sealed class AddIn : IExcelAddIn
     }
 }
 
-public static class DuckFunctions
+public static partial class DuckFunctions
 {
-    internal static string Error(Exception error) => "#ERROR: " + error.GetBaseException().Message;
+    internal static string Error(Exception error)
+    {
+        var failure = ComputationFailure.From(error);
+        return "#ERROR: " + failure.Message + (failure.Advice is null ? "" : " " + failure.Advice);
+    }
+    private static string Fail(Exception error)
+    {
+        try
+        {
+            var (book, address, formula) = WorkbookHost.Caller();
+            WorkbookHost.Touch(book, address, formula).ImmediateFailure = ComputationFailure.From(error);
+        }
+        catch { /* The caller may be unavailable during shutdown or outside a worksheet. */ }
+        return Error(error);
+    }
+    private static object Propagate(object value)
+    {
+        try
+        {
+            var (book, address, formula) = WorkbookHost.Caller();
+            var cell = WorkbookHost.Touch(book, address, formula);
+            if (value is ExcelError.ExcelErrorNA) cell.WaitingInputs = true;
+            else cell.ImmediateFailure = new("input_error", "An input contains an error.", "Inspect the source cell's status.");
+        }
+        catch { }
+        return value;
+    }
     private static object Evaluate(string key, Func<OpenWorkbook, CellBinding> create)
     {
         if (ExcelDnaUtil.IsInFunctionWizard()) return "XlDuck";
@@ -37,12 +63,8 @@ public static class DuckFunctions
         {
             var (book, address, formula) = WorkbookHost.Caller();
             key += ":date1904=" + book.Date1904;
+            var cell = WorkbookHost.Touch(book, address, formula);
             if (book.Session is null) return ExcelError.ExcelErrorNA;
-            if (!book.Cells.TryGetValue(address, out var cell) || cell.Formula != formula)
-            {
-                cell?.Dispose(); book.Cells[address] = cell = new(formula);
-            }
-            cell.Touched = true;
             if (!cell.Bindings.TryGetValue(key, out var binding))
             {
                 binding = create(book); binding.Key = key; cell.Bindings.Add(key, binding);
@@ -50,16 +72,17 @@ public static class DuckFunctions
                 _ = binding.Value.ContinueWith(_ => WorkbookHost.Publish(book, address, currentCell, current), TaskScheduler.Default);
             }
             binding.Seen = true;
+            if (binding.Value.IsCompleted) binding.Published = true;
             if (binding.Value.IsCompletedSuccessfully) return binding.Value.Result;
             if (binding.Value.IsFaulted) return Error(binding.Value.Exception!);
-            if (binding.Value.IsCanceled) return "#ERROR: Computation cancelled. Use Retry failed results or restart this workbook.";
+            if (binding.Value.IsCanceled) return Error(new OperationCanceledException());
             // RTD is a fallback notification. Targeted publication reads the completed cached value,
             // including arrays, without putting it through RTD's value and throttle limitations.
             _ = ExcelAsyncUtil.Observe("XlDuck", new object[] { book.Id.ToString(), book.Session.Id.ToString(),
                 address.Sheet.ToInt64(), address.Row, address.Column, key, binding.Lease.Handle.ToString() }, () => new CompletionSignal(binding.Value));
             return ExcelError.ExcelErrorNA;
         }
-        catch (Exception error) { return Error(error); }
+        catch (Exception error) { return Fail(error); }
     }
     private static object Request(ComputationRequest request, ReadPurpose? output = null)
     {
@@ -90,29 +113,31 @@ public static class DuckFunctions
             ? QueryArgument.Reference(ResolveHandle(handle))
             : new QueryArgument(value is ExcelEmpty or ExcelMissing ? CellValue.Empty : CellValue.From(value));
     }
-    private static object Query(string sql, RequestKind kind, ReadPurpose? output, params object[] supplied)
+    private static object Query(object sql, RequestKind kind, ReadPurpose? output, params object[] supplied)
     {
         try
         {
+            if (sql is ExcelError || sql is string text && text.StartsWith("#ERROR:", StringComparison.Ordinal)) return Propagate(sql);
+            if (sql is not string statement) throw new ArgumentException("SQL must be text or a reference to a cell containing SQL text.");
             var args = supplied.ToList();
             while (args.Count > 0 && args[^1] is ExcelMissing or null) args.RemoveAt(args.Count - 1);
             foreach (var value in args)
-                if (value is ExcelError || value is string error && error.StartsWith("#ERROR:", StringComparison.Ordinal)) return value;
-            return Request(new(kind, sql, [.. args.Select(Argument)]), output);
+                if (value is ExcelError || value is string error && error.StartsWith("#ERROR:", StringComparison.Ordinal)) return Propagate(value);
+            return Request(new(kind, statement, [.. args.Select(Argument)]), output);
         }
-        catch (Exception error) { return Error(error); }
+        catch (Exception error) { return Fail(error); }
     }
     [ExcelFunction(IsMacroType = true, Description = "Read and compute SQL. Bind values or handles with positional ? arguments.")]
-    public static object DuckQuery(string sql, object arg1 = null!, object arg2 = null!, object arg3 = null!, object arg4 = null!, object arg5 = null!, object arg6 = null!, object arg7 = null!, object arg8 = null!) =>
+    public static object DuckQuery(object sql, object arg1 = null!, object arg2 = null!, object arg3 = null!, object arg4 = null!, object arg5 = null!, object arg6 = null!, object arg7 = null!, object arg8 = null!) =>
         Query(sql, RequestKind.Query, null, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
     [ExcelFunction(IsMacroType = true, Description = "Create a checked SQL recipe for composition. Use DuckQuery to retain a source snapshot.")]
-    public static object DuckFrag(string sql, object arg1 = null!, object arg2 = null!, object arg3 = null!, object arg4 = null!, object arg5 = null!, object arg6 = null!, object arg7 = null!, object arg8 = null!) =>
+    public static object DuckFrag(object sql, object arg1 = null!, object arg2 = null!, object arg3 = null!, object arg4 = null!, object arg5 = null!, object arg6 = null!, object arg7 = null!, object arg8 = null!) =>
         Query(sql, RequestKind.Fragment, null, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
     [ExcelFunction(IsMacroType = true, Description = "Read and compute SQL, then spill its bounded result with column headers.")]
-    public static object DuckQueryOut(string sql, object arg1 = null!, object arg2 = null!, object arg3 = null!, object arg4 = null!, object arg5 = null!, object arg6 = null!, object arg7 = null!, object arg8 = null!) =>
+    public static object DuckQueryOut(object sql, object arg1 = null!, object arg2 = null!, object arg3 = null!, object arg4 = null!, object arg5 = null!, object arg6 = null!, object arg7 = null!, object arg8 = null!) =>
         Query(sql, RequestKind.Query, ReadPurpose.Output, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
     [ExcelFunction(IsMacroType = true, Description = "Read and compute SQL returning exactly one row and one column.")]
-    public static object DuckQueryOutScalar(string sql, object arg1 = null!, object arg2 = null!, object arg3 = null!, object arg4 = null!, object arg5 = null!, object arg6 = null!, object arg7 = null!, object arg8 = null!) =>
+    public static object DuckQueryOutScalar(object sql, object arg1 = null!, object arg2 = null!, object arg3 = null!, object arg4 = null!, object arg5 = null!, object arg6 = null!, object arg7 = null!, object arg8 = null!) =>
         Query(sql, RequestKind.Query, ReadPurpose.Scalar, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
     [ExcelFunction(IsMacroType = true, Description = "Capture a range with a header row, preserving its cell types.")]
     public static object DuckCapture(object[,] range)
@@ -127,7 +152,7 @@ public static class DuckFunctions
                 range[row, column] is ExcelEmpty ? CellValue.Empty : CellValue.From(range[row, column])).ToImmutableArray()).ToImmutableArray();
             return Request(ComputationRequest.CaptureRange(new(headers, rows)));
         }
-        catch (Exception error) { return Error(error); }
+        catch (Exception error) { return Fail(error); }
     }
     [ExcelFunction(IsMacroType = true, Description = "Spill a retained table or fragment with headers. Oversized results fail without truncation.")]
     public static object DuckOut(object handle, int maxRows = 10000) => Output(handle, ReadPurpose.Output, maxRows);
@@ -135,7 +160,7 @@ public static class DuckFunctions
     public static object DuckScalar(object handle) => Output(handle, ReadPurpose.Scalar, 1);
     private static object Output(object input, ReadPurpose purpose, int maxRows)
     {
-        if (input is ExcelError || input is string failure && failure.StartsWith('#')) return input;
+        if (input is ExcelError || input is string failure && failure.StartsWith('#')) return Propagate(input);
         try
         {
             if (maxRows < 1 || maxRows > 1000000) throw new ArgumentException("maxRows must be between 1 and 1000000.");
@@ -146,7 +171,7 @@ public static class DuckFunctions
                 return new(key, lease, Read(book.Session, lease, purpose, book.Date1904, maxRows));
             });
         }
-        catch (Exception error) { return Error(error); }
+        catch (Exception error) { return Fail(error); }
     }
     private static async Task<object> Read(WorkbookSession session, ResultLease lease, ReadPurpose purpose, bool date1904, int maxRows)
     {
@@ -165,7 +190,7 @@ public static class DuckFunctions
     [ExcelFunction(IsMacroType = true, Description = "Create a plot handle. Select its cell to view the chart in the preview pane.")]
     public static object DuckPlot(object handle, string template, object name1 = null!, object value1 = null!, object name2 = null!, object value2 = null!, object name3 = null!, object value3 = null!, object name4 = null!, object value4 = null!, object name5 = null!, object value5 = null!, object name6 = null!, object value6 = null!)
     {
-        if (handle is ExcelError || handle is string failure && failure.StartsWith('#')) return handle;
+        if (handle is ExcelError || handle is string failure && failure.StartsWith('#')) return Propagate(handle);
         try
         {
             template = template.ToLowerInvariant();
@@ -182,21 +207,25 @@ public static class DuckFunctions
             }
             return Request(ComputationRequest.Plot(ResolveHandle(Convert.ToString(handle)!), template, options));
         }
-        catch (Exception error) { return Error(error); }
+        catch (Exception error) { return Fail(error); }
     }
     [ExcelFunction(IsMacroType = true, Description = "Inspect a result: schema (spilled column names/types), rows, or definition (JSON recipe).")]
     public static object DuckInspect(object input, string field = "schema")
     {
-        if (input is ExcelError || input is string failure && failure.StartsWith('#')) return input;
+        if (input is ExcelError || input is string failure && failure.StartsWith('#')) return Propagate(input);
         try
         {
             var handle = ResolveHandle(Convert.ToString(input)!); field = field.ToLowerInvariant();
+            if (field is not ("schema" or "rows" or "definition")) throw new ArgumentException("Choose schema, rows or definition.");
             var key = "inspect:" + field + ":" + handle;
             return Evaluate(key, book =>
             {
                 var definition = book.Session!.GetDefinition(handle);
                 var date1904 = book.Date1904;
-                var lease = field == "definition" ? book.Session.AcquireExisting(handle) : book.Session.AcquireData(handle);
+                var lease = field == "definition" ? book.Session.AcquireExisting(handle)
+                    : field == "schema" && handle.Kind == ResultKind.Fragment
+                        ? book.Session.Acquire(ComputationRequest.Query("SELECT * FROM ?", QueryArgument.Reference(handle)) with { RowLimit = 0 })
+                        : book.Session.AcquireData(handle);
                 async Task<object> Inspect()
                 {
                     var result = await lease.Completion.ConfigureAwait(false);
@@ -206,7 +235,6 @@ public static class DuckFunctions
                         var json = JsonSerializer.Serialize(definition);
                         return json.Length <= 30000 ? json : throw new ArgumentException("Definition exceeds one cell. Inspect its source formula.");
                     }
-                    if (field != "schema") throw new ArgumentException("Choose schema, rows or definition.");
                     var schema = new object[result.Columns.Length + 1, 2]; schema[0, 0] = "Column"; schema[0, 1] = "Type";
                     for (var i = 0; i < result.Columns.Length; i++) { schema[i + 1, 0] = result.Columns[i].Name; schema[i + 1, 1] = result.Columns[i].Type; }
                     return schema;
@@ -214,18 +242,18 @@ public static class DuckFunctions
                 return new(key, lease, Inspect());
             });
         }
-        catch (Exception error) { return Error(error); }
+        catch (Exception error) { return Fail(error); }
     }
     [ExcelFunction(IsMacroType = true)] public static object DuckDate(double serial) => Date(serial, false);
     [ExcelFunction(IsMacroType = true)] public static object DuckDateTime(double serial) => Date(serial, true);
-    private static object Date(double serial, bool time) { try { return ExcelValues.DateText(serial, WorkbookHost.Caller().Book.Date1904, time); } catch (Exception error) { return Error(error); } }
+    private static object Date(double serial, bool time) { try { return ExcelValues.DateText(serial, WorkbookHost.Caller().Book.Date1904, time); } catch (Exception error) { return Fail(error); } }
     [ExcelFunction] public static string DuckVersion() => "0.2.0-dev";
     [ExcelFunction] public static string DuckLibraryVersion() => "v1.5.6";
     [ExcelFunction(IsMacroType = true, IsVolatile = true, Description = "Workbook readiness and computation diagnostics as JSON; no SQL or credentials.")]
     public static string DuckStatus()
     {
-        try { var book = WorkbookHost.Caller().Book; return JsonSerializer.Serialize(new { ready = book.Session is not null, connections = book.Settings.S3.Length, connectionsSaved = book.SettingsSaved, paused = book.Session?.IsPaused ?? false, session = book.Session?.Id, runtime = Environment.Version.ToString(), statistics = book.Session?.Statistics, message = book.Status }); }
-        catch (Exception error) { return Error(error); }
+        try { var book = WorkbookHost.Caller().Book; return JsonSerializer.Serialize(new { ready = book.Session is not null, connections = book.Settings.S3.Length, connectionsSaved = book.SettingsSaved, paused = book.Session?.IsPaused ?? false, session = book.Session?.Id, runtime = Environment.Version.ToString(), statistics = book.Session?.Statistics, resources = book.Settings.Resources, message = book.Status }); }
+        catch (Exception error) { return Fail(error); }
     }
     private sealed class CompletionSignal(Task task) : IExcelObservable
     {

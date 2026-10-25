@@ -8,18 +8,20 @@ using XlDuck.Core;
 
 namespace XlDuck.Host;
 
-public sealed record WorkbookSettings(ImmutableArray<S3Connection> S3 = default)
+public sealed record WorkbookSettings(ImmutableArray<S3Connection> S3 = default, ResourceSettings? Resources = null)
 {
+    public ResourceSettings Resources { get; init; } = Resources ?? new();
     public ImmutableArray<S3Connection> S3 { get; init; } = S3.IsDefault ? [] : S3;
     public ConnectionSettings ForSession(string readerDirectory, Func<string, S3AccessKey>? loadKey = null)
     {
         var keys = S3.Where(connection => connection.Credentials == S3CredentialSource.AccessKey)
             .Select(connection => connection.CredentialId!).Distinct(StringComparer.Ordinal)
             .ToImmutableDictionary(id => id, id => (loadKey ?? throw new InvalidOperationException("An access-key store is required."))(id));
-        return new(true, readerDirectory, S3, keys);
+        return new(true, readerDirectory, S3, keys, Resources);
     }
     public void Validate()
     {
+        (Resources ?? throw new ArgumentException("Resource settings are missing.")).Validate();
         if (S3.IsDefault || S3.Length > 32) throw new ArgumentException("At most 32 S3 connections are supported per workbook.");
         foreach (var connection in S3)
         {

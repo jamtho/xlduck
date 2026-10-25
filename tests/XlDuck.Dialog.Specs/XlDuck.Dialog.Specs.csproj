@@ -10,5 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="../../XlDuck.Host/XlDuck.Host.csproj" />
     <Compile Include="../../XlDuck/Host/ConnectionsDialog.cs" Link="ConnectionsDialog.cs" />
+    <Compile Include="../../XlDuck/Host/ResourcesDialog.cs" Link="ResourcesDialog.cs" />
   </ItemGroup>
 </Project>

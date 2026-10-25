@@ -25,6 +25,15 @@ internal static class Program
         try
         {
             var output = args.FirstOrDefault() ?? Path.GetFullPath("artifacts/dialog-review"); Directory.CreateDirectory(output);
+            using (var resources = new ResourcesDialog("Research.xlsx", new(2048, 8, 3)))
+            {
+                ShowOwned(resources);
+                Assert(resources.Settings == new ResourceSettings(2048, 8, 3), "Resource budgets did not round-trip");
+                Get<NumericUpDown>(resources, "MemoryMiB").Value = 4096;
+                Assert(resources.Settings.MemoryMiB == 4096, "Edited memory budget was lost");
+                Render(resources, Path.Combine(output, "resources.png")); resources.Close();
+                Console.WriteLine("PASS resource budgets round-trip and render with their scope explained");
+            }
             using (var editor = new ConnectionEditor(null, null))
             {
                 ShowOwned(editor);

@@ -34,6 +34,40 @@ function Wait-Handle([string]$address) {
 }
 function Command([string]$name) { Invoke-XlDuckExcel { $excel.Run($name, $session.Workbook.Name) } | Out-Null }
 function Pass([string]$name) { $script:passed++; Write-Host "PASS $name" }
+function Cell-Status([string]$address) {
+    $json = Invoke-XlDuckExcel { $sheet.Evaluate("DuckCellStatus($address)") }
+    if ($json -isnot [string] -or -not $json.StartsWith('{')) { throw "Cell status did not return JSON: $json" }
+    $json | ConvertFrom-Json
+}
+function Explore-Raw($request) {
+    $json = $request | ConvertTo-Json -Depth 8 -Compress
+    $formula = 'DuckExplore(AZ1000,"' + $json.Replace('"','""') + '")'
+    $result = Invoke-XlDuckExcel { $sheet.Evaluate($formula) }
+    if ($result -isnot [string] -or -not $result.StartsWith('{')) { throw "Exploration did not return JSON: $result" }
+    $result | ConvertFrom-Json
+}
+function Explore($request) {
+    $json = $request | ConvertTo-Json -Depth 8 -Compress
+    if (('DuckExplore(AZ1000,"' + $json.Replace('"','""') + '")').Length -le 255) { return Explore-Raw $request }
+    # Small synthetic-test chunks also exercise the native Evaluate limit; production helper packs dynamically.
+    $count = [int][Math]::Ceiling($json.Length / 24.0)
+    for ($index = 0; $index -lt $count; $index++) {
+        $part = $json.Substring($index * 24, [Math]::Min(24, $json.Length - $index * 24))
+        $ack = Explore-Raw @{op='stage';id=$request.id;index=$index;count=$count;text=$part}
+        if ($ack.state -ne 'staged') { return $ack }
+    }
+    Explore-Raw @{op='submit';id=$request.id}
+}
+function Wait-Explore($request) {
+    $result = Explore $request
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    while ($result.state -notin @('succeeded','failed','cancelled') -and $watch.Elapsed.TotalSeconds -lt 15) {
+        Start-Sleep -Milliseconds 30
+        $result = Explore @{op='poll';id=$request.id}
+    }
+    if ($result.state -ne 'succeeded') { throw "Exploration failed: $($result | ConvertTo-Json -Depth 8 -Compress)" }
+    $result
+}
 function Stats {
     Invoke-XlDuckExcel { $sheet.Range('Z1').Calculate() }
     $sheet.Range('Z1').Value2 | ConvertFrom-Json
@@ -61,6 +95,52 @@ try {
     Wait-Value 'D1' 1
     if ((Wait-Handle 'A1').Length -gt 27) { throw 'Table handles are not compact numbered aliases.' }
     Pass 'new workbooks compute automatically and return compact handles'
+    $cellStatus = Cell-Status 'A1'
+    if ($cellStatus.state -ne 'succeeded' -or -not $cellStatus.resultReady -or $cellStatus.computations[0].computation.rows -ne 1) { throw "Incorrect cell status: $($cellStatus | ConvertTo-Json -Depth 8 -Compress)" }
+    Formula 'AF1' '=DuckCellStatus(A1)'
+    [void](Wait-XlDuckCell $sheet 'AF1' -Until { param($v) $v -is [string] -and ($v | ConvertFrom-Json).state -eq 'succeeded' })
+    Formula 'AF3' '=DuckSchema("SELECT error(''must not execute'') AS n, 1::BIGINT AS id")'
+    Wait-Value 'AF4' 'n'; Wait-Value 'AG5' 'BIGINT'
+    Formula 'AF7' '=DuckQuery("SELECT missing FROM (SELECT 1 n)")'
+    [void](Wait-XlDuckCell $sheet 'AF7' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') })
+    if ((Cell-Status 'AF7').failure.code -ne 'sql_binding') { throw 'Binding failure lost its category.' }
+    Formula 'AF7' '=DuckQuery("SELECT ?", 1, 2)'
+    [void](Wait-XlDuckCell $sheet 'AF7' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') })
+    if ((Cell-Status 'AF7').failure.code -ne 'invalid_input') { throw 'Synchronous argument failure was not tracked.' }
+    $sheet.Range('AF9').Value2 = 'blocked'
+    Formula 'AF8' '=DuckQueryOut("SELECT 123 n")'
+    [void](Wait-XlDuckCell $sheet 'AF8' -Until { param($v) $v -eq -2146826243 })
+    $spill = Cell-Status 'AF8'
+    if ($spill.failure.code -ne 'excel_spill' -or -not $spill.resultReady) { throw "Spill failure was mistaken for execution failure: $($spill | ConvertTo-Json -Depth 8 -Compress)" }
+    $sheet.Range('AF1:AG12').ClearContents()
+    Pass 'per-cell status works through Evaluate, separates failures and detects blocked spill; schema does not evaluate rows'
+    $beforeExplore = [string]$sheet.UsedRange.Address()
+    $exploration = Wait-Explore @{op='query';id='native-query';sql='SELECT unnest([1,2,3]) n';maxRows=2}
+    if ($exploration.result.rows.Count -ne 2 -or -not $exploration.result.hasMore) { throw 'Exploration did not bound its rows.' }
+    $exploration = Wait-Explore @{op='schema';id='native-schema';sql='SELECT error(''must not execute'') AS n, 1::BIGINT AS id'}
+    if ($exploration.result.columns[1].type -ne 'BIGINT' -or $exploration.result.rows.Count -ne 0) { throw 'Exploration did not return schema only.' }
+    $exploration = Wait-Explore @{op='inspect';id='native-inspect';handle=(Wait-Handle 'A1')}
+    if ($exploration.computation.rows -ne 1) { throw 'Exploration did not inspect the retained handle.' }
+    $exploration = Wait-Explore @{op='query';id='native-reference';sql='SELECT n + ? AS n FROM ?';arguments=@(41,(Wait-Handle 'A1'))}
+    if ($exploration.result.rows[0][0].text -ne '42') { throw 'Exploration did not bind a scalar and retained handle.' }
+    if ([string]$sheet.UsedRange.Address() -ne $beforeExplore -or $sheet.Range('AZ1000').Value2) { throw 'Exploration changed the worksheet.' }
+    Pass 'bounded query, schema and retained-handle inspection work through Evaluate without worksheet edits'
+    $longRequest = @{op='query';id='long-query';sql=('SELECT ? AS n /*' + ('long SQL ' * 100) + '*/');arguments=@(42)}
+    $exploration = Wait-Explore $longRequest
+    if ($exploration.result.rows[0][0].text -ne '42') { throw 'Long query transfer changed the query or arguments.' }
+    $beforeResubmit = (Stats).statistics.Executions
+    $again = Wait-Explore $longRequest
+    if ($again.computation.handle -ne $exploration.computation.handle -or (Stats).statistics.Executions -ne $beforeResubmit) { throw 'Resubmitting a long request executed it again.' }
+    $duplicateSubmit = Explore-Raw @{op='submit';id='long-query'}
+    if ($duplicateSubmit.state -ne 'succeeded') { throw 'Duplicate submit was not idempotent.' }
+    $longRequest.sql = $longRequest.sql.Replace('AS n','+ 1 AS n')
+    if ((Explore $longRequest).state -ne 'failed') { throw 'Changed inputs with a staged request id were accepted.' }
+    Pass 'requests longer than Evaluate limits transfer without cells and remain idempotent'
+    Formula 'AF1' '=DuckFrag("SELECT error(''must not execute'') AS n")'
+    [void](Wait-Handle 'AF1')
+    Formula 'AF3' '=DuckInspect(AF1)'; Wait-Value 'AF4' 'n'
+    $sheet.Range('AF1:AG6').ClearContents()
+    Pass 'fragment schema inspection avoids materializing data expressions'
     $sheet.Range('B1').Value2 = 2
     Formula 'A1' '=DuckQuery("SELECT ? n", B1)'
     for ($i = 2; $i -le 9; $i++) { Formula "A$i" ('=DuckQuery("SELECT n+1 n FROM ?", A{0})' -f ($i - 1)) }
@@ -156,8 +236,12 @@ try {
     Pass 'date output and helpers respect workbook date systems'
     Command 'DuckPauseQueries'; $beforePause = (Stats).statistics.Executions
     Formula 'F11' '=DuckQueryOutScalar("SELECT 777")'
+    if ((Cell-Status 'F11').state -ne 'paused') { throw 'Pending cell did not report paused state.' }
+    Formula 'AF1' '=DuckQuery("SELECT ? n", F11)'
+    if ((Cell-Status 'AF1').state -ne 'waiting_inputs') { throw 'Dependent formula did not report waiting for inputs.' }
     if ((Stats).statistics.Executions -ne $beforePause) { throw 'A paused query started execution.' }
     Command 'DuckResumeQueries'; Wait-Value 'F11' 777
+    [void](Wait-Handle 'AF1'); $sheet.Range('AF1').ClearContents()
     Pass 'pause holds new work; resume publishes the retained request'
     Formula 'F13' '=DuckQueryOutScalar("SELECT sum(sqrt(i)) FROM range(1000000000) r(i)")'
     [void](Wait-Status { param($s) $s.statistics.Pending -gt 0 })
@@ -168,15 +252,20 @@ try {
     $source = Join-Path $caseDirectory 'source.csv'; $sheet.Range('R1').Value2 = $source
     Formula 'F15' '=DuckQueryOutScalar("SELECT sum(n) FROM read_csv(?)", R1)'
     [void](Wait-XlDuckCell $sheet 'F15' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') })
+    if ((Cell-Status 'F15').failure.code -ne 'source_access') { throw 'Source failure lost its category.' }
     [IO.File]::WriteAllText($source, "n`n99`n")
     Formula 'F15' $sheet.Range('F15').Formula2
     if ($sheet.Range('F15').Value2 -isnot [string] -or -not $sheet.Range('F15').Value2.StartsWith('#ERROR:')) { throw 'Failure retried implicitly.' }
     Command 'DuckRetryFailed'; Wait-Value 'F15' 99
     Pass 'external read failures stay stable until an explicit retry'
     $excel.Calculation = -4135
+    Command 'DuckPauseQueries'
     Formula 'F18' '=DuckQueryOutScalar("SELECT 314")'; $sheet.Range('F18').Calculate()
+    Command 'DuckResumeQueries'
     [void](Wait-Status { param($s) $s.statistics.Pending -eq 0 })
     if ($excel.Calculation -ne -4135) { throw 'XlDuck changed Excel calculation mode.' }
+    $manualStatus = Cell-Status 'F18'
+    if ($manualStatus.state -ne 'awaiting_calculation' -or -not $manualStatus.resultReady -or $manualStatus.calculationMode -ne 'manual') { throw "Incorrect manual completion status: $($manualStatus | ConvertTo-Json -Depth 8 -Compress)" }
     $sheet.Range('F18').Calculate(); Wait-Value 'F18' 314
     $manualSource = Join-Path $caseDirectory 'manual.csv'; $sheet.Range('R2').Value2 = $manualSource
     Formula 'F19' '=DuckQueryOutScalar("SELECT sum(n) FROM read_csv(?)", R2)'; $sheet.Range('F19').Calculate()
@@ -217,6 +306,12 @@ public sealed class XlDuckCancelClose : IDisposable {
     Wait-Value 'D1' 20
     if ($otherSheet.Range('A1').Value2 -ne $otherHandle) { throw 'Connection changes restarted another workbook.' }
     Pass 'connection settings apply without enablement and restart only their workbook'
+    $beforeResources = (Stats).session
+    $excel.Run('DuckSetResources', '{"MemoryMiB":1536,"SpillGiB":6,"Threads":1}', $session.Workbook.Name) | Out-Null
+    [void](Wait-Status { param($s) $s.session -ne $beforeResources -and $s.resources.MemoryMiB -eq 1536 -and $s.connections -eq 1 })
+    Wait-Value 'D1' 20
+    if ($otherSheet.Range('A1').Value2 -ne $otherHandle) { throw 'Resource changes restarted another workbook.' }
+    Pass 'resource changes preserve connections and restart only the selected workbook'
     $saved = Join-Path $caseDirectory 'research.xlsx'; $savedPaths += $saved
     $session.Workbook.SaveAs($saved, 51)
     [void](Wait-Status { param($s) $s.connectionsSaved })
@@ -232,6 +327,7 @@ public sealed class XlDuckCancelClose : IDisposable {
     $session.Workbook = $excel.Workbooks.Open($renamed); $sheet = $session.Workbook.Worksheets.Item(1)
     [void](Wait-Status { param($s) $s.ready -and $s.connections -eq 1 -and $s.session -ne $savedSession })
     Wait-Value 'F15' 100; Wait-Value 'D1' 20
+    if ((Stats).resources.MemoryMiB -ne 1536) { throw 'Reopening lost the saved resource budget.' }
     Pass 'opening an ordinary saved workbook starts a fresh session and rereads its sources'
     $copy = Join-Path $caseDirectory 'unfamiliar copy.xlsx'
     $originalSession = (Stats).session

@@ -85,6 +85,7 @@ public sealed class WorkerBackend : IExecutionBackend
             var response = await completion.Task.ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             if (response.Cancelled) throw new OperationCanceledException("The query was cancelled.", token);
+            if (response.Failure is not null) throw new ComputationException(response.Failure);
             if (response.Error is not null) throw new InvalidOperationException(response.Error);
             return response;
         }

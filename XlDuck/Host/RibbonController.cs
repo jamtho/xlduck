@@ -32,6 +32,12 @@ public sealed class RibbonController : ExcelRibbon
     public void OnRibbonLoad(IRibbonUI ribbon) { _ribbon = ribbon; WorkbookHost.Changed += () => _ribbon?.Invalidate(); }
     private static void Run(Action action) { try { action(); } catch (Exception error) { MessageBox.Show(error.Message, "XlDuck", MessageBoxButtons.OK, MessageBoxIcon.Information); } }
     public void OnConnections(IRibbonControl control) => Run(() => { using var dialog = new ConnectionsDialog(WorkbookHost.Active()); dialog.ShowDialog(); });
+    public void OnResources(IRibbonControl control) => Run(() =>
+    {
+        var book = WorkbookHost.Active();
+        using var dialog = new ResourcesDialog(book.Name, book.Settings.Resources);
+        if (dialog.ShowDialog() == DialogResult.OK) WorkbookHost.ApplySettings(book, book.Settings with { Resources = dialog.Settings });
+    });
     public void OnRestart(IRibbonControl control) => Run(() => DuckCommands.DuckRestartWorkbook(""));
     public void OnRetry(IRibbonControl control) => Run(() => DuckCommands.DuckRetryFailed(""));
     public void OnCancelQuery(IRibbonControl control) => Run(() => DuckCommands.DuckInterrupt(""));

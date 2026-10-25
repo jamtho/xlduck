@@ -23,11 +23,15 @@ The policy inspects the entire parsed tree. Scalar and aggregate functions come 
 | Parquet metadata | Supported metadata, schema and bloom-probe functions |
 | In-memory computation | Supplied table/fragment handles, captures, CTEs, range/series, unnest and other admitted built-ins |
 | Catalog inspection | Selected table, column, type, function, setting and extension metadata |
+| Source schema | `DuckSchema` or a checked SELECT with zero-row materialization; schema binding can access metadata |
+| DESCRIBE / SHOW | Rejected before materialization with guidance to DuckSchema/DuckInspect |
 | Worksheet writes and configuration | No DDL, DML, COPY/export, ATTACH, PRAGMA, SET, INSTALL, LOAD, macros, sequences or secret creation |
 | Dynamic SQL and arbitrary readers | No `query`, `query_table`, serialized SQL execution, foreign database queries or unreviewed extensions |
 | CSV reject tables | Reject-table options are unavailable because they create mutable auxiliary state outside result ownership |
 
 The exact function lists and exclusions are maintained in [ReadComputePolicy.cs](ReadComputePolicy.cs). Internal result creation, dropping tables and connection setup use separate, host-owned commands. User SQL is never treated as one of those commands.
+
+UNNEST is explicitly supported as a SELECT-list special expression as well as a table function, including recursive flattening. Its arguments still undergo the full policy walk. Syntax/capability validation is distinct from source binding and from data conversion during execution. Errors carry stable categories across the worker protocol; memory and spill failures recommend query changes and host Resources controls, not forbidden SET statements. Resource defaults are 1024 MiB memory, 4 GiB spill and two threads per workbook worker.
 
 For an Excel coding agent:
 

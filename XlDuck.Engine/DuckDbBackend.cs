@@ -39,7 +39,7 @@ public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null,
                 using var interrupt = linked.Token.Register(() => _connection.NativeConnection.Interrupt());
                 try { return action(linked.Token); }
                 catch when (linked.IsCancellationRequested) { throw new OperationCanceledException(linked.Token); }
-                catch (DuckDBException error) { throw new InvalidOperationException(QueryDiagnostics.PublicMessage(error.Message)); }
+                catch (DuckDBException error) { throw new ComputationException(QueryDiagnostics.Failure(error.Message)); }
             }, linked.Token).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
@@ -48,6 +48,7 @@ public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null,
     public Task<ComputationResult> ExecuteAsync(BackendRequest request, CancellationToken token) => WithConnection(ct =>
     {
         ValidateHandle(request.Output);
+        if (request.RowLimit is < 0 or > 1000000) throw new ArgumentException("Invalid bounded query limit.");
         if (_tables.ContainsKey(request.Output)) throw new ArgumentException("Output handle already exists.");
         var name = SqlTemplate.QuoteIdentifier(request.Output.TableName);
         var committed = false;
@@ -60,7 +61,8 @@ public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null,
                 foreach (var input in query.Tables) Resolve(input);
                 _policy!.Validate(query.Sql, query.Tables);
                 using var command = _connection!.CreateCommand();
-                command.CommandText = $"CREATE TEMP TABLE {name} AS {query.Sql}";
+                var sql = request.RowLimit is { } limit ? $"SELECT * FROM (\n{query.Sql}\n) AS __xl_bounded LIMIT {limit}" : query.Sql;
+                command.CommandText = $"CREATE TEMP TABLE {name} AS {sql}";
                 foreach (var parameter in query.Parameters) AddParameter(command, parameter.Name, parameter.Value);
                 command.ExecuteNonQuery();
             }
@@ -97,11 +99,11 @@ public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null,
         var table = Resolve(handle);
         if (request.MaxRows < 1 || request.MaxCells < 1) throw new ArgumentOutOfRangeException(nameof(request));
         if (request.Purpose == ReadPurpose.Scalar && (table.RowCount != 1 || table.Columns.Length != 1))
-            throw new InvalidOperationException("Scalar output requires exactly one row and one column. Aggregate or filter the query explicitly.");
+            throw new ComputationException(new("output_shape", "Scalar output requires exactly one row and one column. Aggregate or filter the query explicitly."));
         var maxRows = Math.Min(request.MaxRows, Math.Max(0, request.MaxCells / Math.Max(1, table.Columns.Length) - 1));
-        if (maxRows < 1) throw new InvalidOperationException("The column count exceeds the output cell limit.");
+        if (maxRows < 1) throw new ComputationException(new("output_limit", "The column count exceeds the output cell limit."));
         if (request.Purpose == ReadPurpose.Output && table.RowCount > maxRows)
-            throw new InvalidOperationException($"Result has {table.RowCount} rows and exceeds the output limit of {maxRows}. Filter or aggregate it, or request a sampled preview.");
+            throw new ComputationException(new("output_limit", $"Result has {table.RowCount} rows and exceeds the output limit of {maxRows}. Filter or aggregate it, or request a sampled preview."));
         if (request.Purpose == ReadPurpose.Scalar) maxRows = 1;
         var projections = table.Columns.Select(column => IsNested(column.Type)
             ? $"to_json({SqlTemplate.QuoteIdentifier(column.Name)})::VARCHAR"
@@ -119,7 +121,7 @@ public sealed class DuckDbBackend(Guid sessionId, string? spillDirectory = null,
             {
                 var value = reader.IsDBNull(column) ? CellValue.Null : ParseValue(table.Columns[column].Type, reader.GetString(column));
                 characters += value.Text.Length;
-                if (characters > 8 * 1024 * 1024) throw new InvalidOperationException("Output text exceeds 8 MiB of characters. Filter or shorten the requested output.");
+                if (characters > 8 * 1024 * 1024) throw new ComputationException(new("output_limit", "Output text exceeds 8 MiB of characters. Filter or shorten the requested output."));
                 row.Add(value);
             }
             rows.Add(row.ToImmutable());

@@ -43,6 +43,8 @@ jobs:
           pnpm exec playwright install chromium
       - name: Preview correctness and offline charts
         run: node tests/preview/preview.test.cjs
+      - name: Read-only agent polling helper
+        run: node tests/agent-exploration.test.cjs
       - name: Build an unsigned candidate and check its manifest
         shell: powershell
         run: |

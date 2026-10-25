@@ -13,7 +13,11 @@ XlDuck uses Excel's dependency graph to connect immutable query results. Excel s
 | `XlDuck.Worker` | One workbook's private engine process |
 | `XlDuck.Engine` | DuckDB connection, parsed capability enforcement, curated readers, temporary tables and typed readback |
 
-The Excel process does not load native DuckDB. Each worker owns one in-memory connection and executes serially; DuckDB can use two threads internally. Default limits include 512 MB engine memory, 1 GiB spill and bounded request/response sizes. These do not bound every allocation in the worker or Excel.
+The Excel process does not load native DuckDB. Each worker owns one in-memory connection and executes serially. Host-controlled resource defaults are two query threads, 1024 MiB DuckDB memory and 4 GiB spill. The Resources dialog stores validated per-workbook settings and restarts that workbook to apply them. These budgets do not bound every allocation in the worker or Excel, and several workers can consume their budgets at once.
+
+Core entries retain timing, state and dependency aliases independently of released input leases. Protocol v3 carries structured public failure codes across the worker boundary. `DuckCellStatus` aggregates the formula's live bindings, synchronous failures and Excel display state; it accepts a reference even before a result handle exists. It describes last evaluated inputs, and reports ready-but-unpublished work separately in manual mode.
+
+`DuckSchema` and fragment schema inspection use a checked zero-row query; source binding may still read metadata or infer types. `DuckExplore` is a bounded read-only prototype anchored explicitly to a workbook. It uses the same session and worker, with eight tracked requests, small typed results, 30-second deadlines and idempotent polling. Exploration leases never replace worksheet ownership. The Office.js bridge uses desktop Worksheet.evaluate; native Excel Evaluate is tested, but no commands have been sent to the user's live agent session to establish the complete roundtrip.
 
 ## Computation and publication
 

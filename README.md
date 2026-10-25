@@ -39,9 +39,14 @@ An unchanged query and unchanged typed inputs reuse their retained result. F9, S
 | `DuckInspect(handle, [field])` | `schema`, `rows`, or `definition` |
 | `DuckDate(serial)`, `DuckDateTime(serial)` | ISO text for explicit SQL date/timestamp casts |
 | `DuckStatus()` | Workbook readiness, session and computation counts as JSON |
+| `DuckCellStatus(cell)` | Per-cell execution, structured failure and Excel display status as JSON |
+| `DuckSchema(sql, …)` | Column names/types without retaining source data rows |
+| `DuckExplore(anchor, requestJson)` | Bounded, read-only agent inspection prototype, including start/poll |
 | `DuckVersion()`, `DuckLibraryVersion()` | Add-in and engine versions |
 
 Read the [formula and agent reference](docs/FORMULAS.md) for types, limits, fragments, chart options, source connections and recovery. `DuckExecute`, `DuckConfig`, `DuckConfigReady` and the `AfterConfig` functions have been removed.
+
+Discover source columns with `DuckSchema` before selecting and retaining data. For large archives, retain metadata first and fetch a few text excerpts separately. **Resources** sets the workbook worker's memory, temporary disk and thread budgets (defaults: 1 GiB, 4 GiB, two threads). Applying changes restarts that workbook. `DuckCellStatus` distinguishes pending queries, SQL/source/memory failures and Excel spill errors. The direct inspection prototype is tested through native Excel Evaluate; its Office.js agent bridge awaits an end-to-end trial.
 
 ## Data and access
 

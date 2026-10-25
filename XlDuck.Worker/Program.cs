@@ -65,10 +65,10 @@ async Task Respond(WorkerRequest request, CancellationTokenSource cancellation)
         };
     }
     catch (OperationCanceledException) { response = new(request.Id, Cancelled: true); }
-    catch (Exception error) { response = new(request.Id, Error: error.Message); }
+    catch (Exception error) { response = new(request.Id, Failure: ComputationFailure.From(error)); }
     finally { lock (cancellation) { requests.TryRemove(request.Id, out _); cancellation.Dispose(); } }
     try { await Send(response); }
-    catch (InvalidOperationException error) { await Send(new(request.Id, Error: error.Message)); }
+    catch (InvalidOperationException error) { await Send(new(request.Id, Failure: new("output_limit", error.Message))); }
 }
 async Task<WorkerResponse> Drop(WorkerRequest request)
 {

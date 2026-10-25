@@ -13,8 +13,9 @@ internal static class ConnectionSetup
         settings.Validate();
         var builder = new DuckDBConnectionStringBuilder
         {
-            ["DataSource"] = ":memory:", ["threads"] = "2", ["memory_limit"] = "512MB",
-            ["temp_directory"] = spillDirectory, ["max_temp_directory_size"] = "1GiB",
+            ["DataSource"] = ":memory:", ["threads"] = settings.Resources.Threads.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["memory_limit"] = settings.Resources.MemoryMiB + "MiB",
+            ["temp_directory"] = spillDirectory, ["max_temp_directory_size"] = settings.Resources.SpillGiB + "GiB",
             ["autoinstall_known_extensions"] = "false", ["autoload_known_extensions"] = "false",
             ["allow_community_extensions"] = "false", ["allow_unsigned_extensions"] = "false",
             ["enable_external_access"] = settings.EnableExternalReads ? "true" : "false",

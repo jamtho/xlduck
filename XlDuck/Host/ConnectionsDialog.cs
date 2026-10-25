@@ -42,7 +42,7 @@ internal sealed class ConnectionsDialog : Form
         var cancel = new Button { Text = "Cancel", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, DialogResult = DialogResult.Cancel };
         var apply = Button("Apply and restart", () =>
         {
-            var settings = new WorkbookSettings([.. _entries.Select(entry => entry.Connection)]); settings.Validate();
+            var settings = book.Settings with { S3 = [.. _entries.Select(entry => entry.Connection)] }; settings.Validate();
             foreach (var entry in _entries.Where(entry => entry.Key is not null)) CredentialStore.Save(entry.Connection.CredentialId!, entry.Key!);
             WorkbookHost.ApplySettings(book, settings); DialogResult = DialogResult.OK; Close();
         });

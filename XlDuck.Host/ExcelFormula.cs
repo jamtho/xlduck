@@ -7,7 +7,7 @@ public static class ExcelFormula
     private static readonly HashSet<string> Functions = new(StringComparer.OrdinalIgnoreCase)
     {
         "DuckQuery", "DuckQueryOut", "DuckQueryOutScalar", "DuckFrag", "DuckCapture", "DuckOut", "DuckScalar",
-        "DuckPlot", "DuckInspect", "DuckDate", "DuckDateTime", "DuckStatus"
+        "DuckPlot", "DuckInspect", "DuckDate", "DuckDateTime", "DuckStatus", "DuckCellStatus", "DuckSchema", "DuckExplore"
     };
     public static bool UsesXlDuck(string formula)
     {

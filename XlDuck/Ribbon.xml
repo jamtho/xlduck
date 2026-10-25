@@ -29,6 +29,8 @@
           <button id="RetryButton" label="Retry failed results" onAction="OnRetry" imageMso="Refresh" />
         </group>
         <group id="ConfigGroup" label="Workbook">
+          <button id="ResourcesButton" label="Resources" onAction="OnResources" imageMso="PropertySheet"
+                  supertip="Set this workbook's memory, temporary disk and thread budgets. Applying changes restarts its worker." />
           <button id="ConnectionsButton" label="Connections" onAction="OnConnections" imageMso="Connections" size="large"
                   supertip="Configure endpoints and credentials for S3-compatible storage." />
           <button id="RestartButton" label="Restart XlDuck"

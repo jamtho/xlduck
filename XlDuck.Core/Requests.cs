@@ -41,7 +41,7 @@ public sealed record CaptureData(ImmutableArray<string> Headers, ImmutableArray<
 }
 
 public sealed record ComputationRequest(RequestKind Kind, string Sql, ImmutableArray<QueryArgument> Arguments,
-    CaptureData? Capture = null, string? PlotTemplate = null, ImmutableSortedDictionary<string, string>? PlotOptions = null)
+    CaptureData? Capture = null, string? PlotTemplate = null, ImmutableSortedDictionary<string, string>? PlotOptions = null, int? RowLimit = null)
 {
     public static ComputationRequest Query(string sql, params QueryArgument[] arguments) => new(RequestKind.Query, sql, [.. arguments]);
     public static ComputationRequest Fragment(string sql, params QueryArgument[] arguments) => new(RequestKind.Fragment, sql, [.. arguments]);
@@ -56,6 +56,8 @@ public sealed record ComputationRequest(RequestKind Kind, string Sql, ImmutableA
     }
     public void Validate()
     {
+        if (RowLimit is < 0 or > 1000000 || RowLimit is not null && Kind != RequestKind.Query)
+            throw new ArgumentException("A bounded query needs a row limit between 0 and 1000000.");
         if (Arguments.IsDefault) throw new ArgumentException("Arguments are missing.");
         foreach (var argument in Arguments) argument.Validate();
         if (Kind is RequestKind.Query or RequestKind.Fragment && string.IsNullOrWhiteSpace(Sql)) throw new ArgumentException("SQL is empty.");
@@ -73,7 +75,7 @@ public sealed record ComputationResult(ResultHandle Handle, ImmutableArray<Colum
 public enum ReadPurpose { Output, Preview, Scalar }
 public sealed record ReadRequest(ReadPurpose Purpose, int MaxRows = 10000, int MaxCells = 1000000);
 public sealed record TablePage(ImmutableArray<ColumnSchema> Columns, ImmutableArray<ImmutableArray<CellValue>> Rows, long TotalRows, bool IsSample);
-public sealed record BackendRequest(ResultHandle Output, PreparedQuery? Query = null, CaptureData? Capture = null);
+public sealed record BackendRequest(ResultHandle Output, PreparedQuery? Query = null, CaptureData? Capture = null, int? RowLimit = null);
 
 public interface IExecutionBackend : IAsyncDisposable
 {

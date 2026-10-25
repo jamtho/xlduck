@@ -16,12 +16,15 @@ internal sealed class CellBinding(string key, ResultLease lease, Task<object> va
     internal ResultLease Lease { get; } = lease;
     internal Task<object> Value { get; } = value;
     internal bool Seen;
+    internal bool Published;
     public void Dispose() => Lease.Dispose();
 }
 internal sealed class FormulaCell(string formula) : IDisposable
 {
     internal string Formula = formula;
     internal bool Touched;
+    internal ComputationFailure? ImmediateFailure;
+    internal bool WaitingInputs;
     internal readonly Dictionary<string, CellBinding> Bindings = new(StringComparer.Ordinal);
     public void Dispose() { foreach (var binding in Bindings.Values) binding.Dispose(); Bindings.Clear(); }
 }
@@ -34,6 +37,8 @@ internal sealed class OpenWorkbook(Excel.Workbook workbook)
     internal bool Date1904 = workbook.Date1904;
     internal WorkbookSettings Settings = new();
     internal WorkbookSession? Session;
+    internal ExplorationSession? Exploration;
+    internal ExplorationTransfer? ExplorationTransfer;
     internal int PreviewGeneration;
     internal bool SettingsSaved;
     internal bool Closed;
@@ -173,6 +178,12 @@ internal static class WorkbookHost
     {
         if (XlCall.Excel(XlCall.xlfCaller) is not ExcelReference reference)
             throw new ArgumentException("Use this function in a worksheet cell.");
+        return Context(reference);
+    }
+    internal static (OpenWorkbook Book, CellAddress Address, string Formula) Context(ExcelReference reference)
+    {
+        if (reference.RowFirst != reference.RowLast || reference.ColumnFirst != reference.ColumnLast || reference.InnerReferences.Count != 1)
+            throw new ArgumentException("Reference one worksheet cell.");
         if (!Sheets.TryGetValue(reference.SheetId, out var book))
         {
             Queue(Reconcile);
@@ -181,6 +192,16 @@ internal static class WorkbookHost
         RequireOrdinaryWorkbook(book.Workbook);
         var formula = Convert.ToString(XlCall.Excel(XlCall.xlfGetCell, 41, reference)) ?? "";
         return (book, new(reference.SheetId, reference.RowFirst, reference.ColumnFirst), formula);
+    }
+    internal static FormulaCell Touch(OpenWorkbook book, CellAddress address, string formula)
+    {
+        if (!book.Cells.TryGetValue(address, out var cell) || cell.Formula != formula)
+        {
+            cell?.Dispose(); book.Cells[address] = cell = new(formula);
+        }
+        if (!cell.Touched) { cell.ImmediateFailure = null; cell.WaitingInputs = false; }
+        cell.Touched = true;
+        return cell;
     }
     internal static void RequireOrdinaryWorkbook(Excel.Workbook workbook)
     {
@@ -208,10 +229,14 @@ internal static class WorkbookHost
         var settings = book.Settings;
         var readers = System.IO.Path.Combine(InstallDirectory, "readers");
         book.Session = new(id => new WorkerBackend(id, worker, settings.ForSession(readers, CredentialStore.Read)));
+        book.Exploration = new(book.Session);
+        book.ExplorationTransfer = new();
         Recalculate(book); Changed?.Invoke();
     }
     private static void RetireSession(OpenWorkbook book)
     {
+        book.Exploration?.Dispose(); book.Exploration = null;
+        book.ExplorationTransfer = null;
         foreach (var cell in book.Cells.Values) cell.Dispose(); book.Cells.Clear();
         if (book.Session is { } session)
         {

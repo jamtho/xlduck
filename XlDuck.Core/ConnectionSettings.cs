@@ -38,11 +38,13 @@ public sealed record S3Connection(string Scope, S3CredentialSource Credentials =
 
 /// <summary>Host-supplied settings fixed for a session. Worksheet SQL cannot construct or update these.</summary>
 public sealed record ConnectionSettings(bool EnableExternalReads = false, string? ReaderExtensionDirectory = null,
-    ImmutableArray<S3Connection> S3 = default, ImmutableDictionary<string, S3AccessKey>? AccessKeys = null)
+    ImmutableArray<S3Connection> S3 = default, ImmutableDictionary<string, S3AccessKey>? AccessKeys = null, ResourceSettings? Resources = null)
 {
+    public ResourceSettings Resources { get; init; } = Resources ?? new();
     public ImmutableArray<S3Connection> S3 { get; init; } = S3.IsDefault ? [] : S3;
     public void Validate()
     {
+        (Resources ?? throw new ArgumentException("Resource settings are missing.")).Validate();
         if (S3.IsDefault) throw new ArgumentException("Connection list is missing.");
         if (!S3.IsDefault && S3.Length > 32) throw new ArgumentException("At most 32 S3 connections are supported per session.");
         if (!S3.IsDefaultOrEmpty)

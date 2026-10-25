@@ -24,6 +24,75 @@ void Throws<T>(Action action) where T : Exception { try { action(); } catch (T) 
 PreparedQuery Prepare(string sql, params QueryArgument[] args) => SqlTemplate.Prepare(ComputationRequest.Query(sql, args), _ => null);
 CaptureData Capture(CellValue value) => new(["value"], [[value]]);
 
+await Check("status identifies paused, completed and reused computations and preserves dependency history", async () =>
+{
+    await using var session = new WorkbookSession(_ => new FakeBackend());
+    session.SetPaused(true);
+    using var first = session.Acquire(ComputationRequest.Query("SELECT 1"));
+    Equal("paused", session.GetStatus(first.Handle).State); Equal(false, first.Reused);
+    Equal(true, session.GetStatus(first.Handle).StartedAt is null);
+    session.SetPaused(false); await first.Completion;
+    var status = session.GetStatus(first.Handle);
+    Equal("succeeded", status.State); Equal(true, status.CompletedAt >= status.StartedAt);
+    using var same = session.Acquire(ComputationRequest.Query("SELECT 1"));
+    Equal(true, same.Reused); Equal(status, session.GetStatus(same.Handle));
+    using var child = session.Acquire(ComputationRequest.Query("SELECT * FROM ?", QueryArgument.Reference(first.Handle)));
+    await child.Completion;
+    Equal(first.CellText, session.GetStatus(child.Handle).Dependencies.Single());
+    session.SetPaused(true);
+    using var cancelled = session.Acquire(ComputationRequest.Query("SELECT 2"));
+    session.CancelPending(); try { await cancelled.Completion; } catch (OperationCanceledException) { }
+    Equal("cancelled", session.GetStatus(cancelled.Handle).State);
+    Equal("cancelled", session.GetStatus(cancelled.Handle).Failure!.Code);
+});
+await Check("exploration polling is idempotent, bounded and cannot cancel another owner's computation", async () =>
+{
+    var backend = new FakeBackend(block: true);
+    await using var session = new WorkbookSession(_ => backend, new(HistoricalResults: 0));
+    using var explorer = new ExplorationSession(session, TimeSpan.FromMilliseconds(100));
+    var request = new ExplorationRequest("query", "owned", "SELECT 1");
+    using var owner = session.Acquire(ComputationRequest.Query("SELECT 1") with { RowLimit = 21 });
+    await backend.Started.Task;
+    Equal("running", explorer.Invoke(request).State);
+    Equal("running", explorer.Invoke(new("poll", "owned")).State);
+    Equal("running", explorer.Invoke(request).State);
+    Throws<ArgumentException>(() => explorer.Invoke(request with { Sql = "SELECT 2" }));
+    ExplorationStatus status;
+    do { await Task.Delay(10); status = explorer.Invoke(new("poll", "owned")); } while (status.State != "failed");
+    Equal("timeout", status.Failure!.Code); Equal(1, backend.Executions); Equal(false, owner.Completion.IsCanceled);
+    backend.Continue.TrySetResult(); await owner.Completion;
+    Equal("succeeded", session.GetStatus(owner.Handle).State);
+    Throws<ArgumentException>(() => explorer.Invoke(new("poll", "unknown")));
+    Throws<ArgumentException>(() => explorer.Invoke(new("query", "invalid", "SELECT 1", MaxRows: 201)));
+});
+await Check("exploration queue admission and disposal release only exploration leases", async () =>
+{
+    await using var session = new WorkbookSession(_ => new FakeBackend(), new(HistoricalResults: 0));
+    session.SetPaused(true);
+    using var explorer = new ExplorationSession(session);
+    for (var i = 0; i < 8; i++) Equal("paused", explorer.Invoke(new("query", "request-" + i, "SELECT " + i)).State);
+    Throws<ComputationException>(() => explorer.Invoke(new("query", "ninth", "SELECT 9")));
+    explorer.Dispose(); await session.WaitForIdleAsync(); Equal(0, session.Statistics.ReferencedNodes);
+    Throws<ObjectDisposedException>(() => explorer.Invoke(new("poll", "request-0")));
+});
+await Check("exploration transfer is bounded, idempotent and cannot submit incomplete or changed parts", () =>
+{
+    var transfer = new ExplorationTransfer();
+    transfer.Add("id-1", 1, 2, "world"); transfer.Add("id-1", 1, 2, "world");
+    Throws<ArgumentException>(() => transfer.Complete("id-1"));
+    Throws<ArgumentException>(() => transfer.Add("id-1", 1, 2, "changed"));
+    Throws<ArgumentException>(() => transfer.Add("id-1", 0, 3, "hello"));
+    transfer.Add("id-1", 0, 2, "hello "); Equal("hello world", transfer.Complete("id-1"));
+    Equal("hello world", transfer.Complete("id-1"));
+    Throws<ArgumentException>(() => transfer.Add("id-1", 0, 2, "changed"));
+    for (var i = 0; i < 30; i++) transfer.Add("size", i, 31, new string('x', 1000));
+    Throws<ArgumentException>(() => transfer.Add("size", 30, 31, "x"));
+    for (var i = 0; i < 7; i++) transfer.Add("pending-" + i, 0, 2, "a");
+    Equal<string?>(null, transfer.Complete("id-1")); // Completed transfer was evicted to admit pending work.
+    Throws<ArgumentException>(() => transfer.Add("ninth", 0, 1, "a"));
+    Throws<ArgumentException>(() => new ExplorationTransfer().Add("bad", 0, 2049, "a"));
+    return Task.CompletedTask;
+});
 await Check("compact handles resolve only live results in their own workbook session", async () =>
 {
     await using var session = new WorkbookSession(_ => new FakeBackend(), new(HistoricalResults: 0));

@@ -30,7 +30,7 @@ foreach ($folder in @('worker','readers','preview','runtimes/win-x64/native')) {
 }
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE'),(Join-Path $repo 'README.md') -Destination $package
 [void][IO.Directory]::CreateDirectory((Join-Path $package 'docs'))
-Copy-Item -LiteralPath (Join-Path $repo 'docs/FORMULAS.md'),(Join-Path $repo 'docs/RELEASE.md') -Destination (Join-Path $package 'docs')
+Copy-Item -LiteralPath (Join-Path $repo 'docs/FORMULAS.md'),(Join-Path $repo 'docs/RELEASE.md'),(Join-Path $repo 'docs/agent-exploration.js') -Destination (Join-Path $package 'docs')
 [void][IO.Directory]::CreateDirectory((Join-Path $package 'scripts'))
 Copy-Item -LiteralPath (Join-Path $repo 'scripts/Get-Diagnostics.ps1'),(Join-Path $repo 'scripts/Verify-Package.ps1') -Destination (Join-Path $package 'scripts')
 $sourceCommit = & git -C $repo rev-parse HEAD

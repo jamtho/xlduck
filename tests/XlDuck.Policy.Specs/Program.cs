@@ -71,6 +71,73 @@ await Check("CTEs, windows, macros, lambdas and random computations remain avail
     Equal(2d, (await Query(session, "WITH a AS (SELECT 1 n) SELECT * FROM (WITH a AS (SELECT 2 n) SELECT * FROM a) q")).Rows[0][0].ToDisplayValue());
     Equal(1d, (await Query(session, "PIVOT (SELECT 'a' k, 1 n) ON k IN ('a') USING sum(n)")).Rows[0][0].ToDisplayValue());
 });
+await Check("UNNEST works in SELECT expressions, recursively and in FROM without bypassing policy", async () =>
+{
+    await using var session = Session();
+    Equal(3L, (await Query(session, "SELECT unnest([1,2,3]) AS n")).TotalRows);
+    Equal(3L, (await Query(session, "SELECT * FROM unnest([1,2,3]) AS t(n)")).TotalRows);
+    var nested = await Query(session, "SELECT unnest([{'a': 1, 'b': [2,3]}], recursive := true)");
+    Equal("a", nested.Columns[0].Name); Equal("b", nested.Columns[1].Name);
+    Equal(3L, (await Query(session, "SELECT unnest([[1,2],[3]], recursive := true) AS n")).TotalRows);
+    await Reject(async () => await Query(session, "SELECT unnest([nextval('forbidden')])"), "read-and-compute SQL");
+});
+await Check("schema-only queries bind columns without evaluating data expressions", async () =>
+{
+    await using var session = Session();
+    using var schema = session.Acquire(ComputationRequest.Query("SELECT error('must not execute') AS n, 1::BIGINT AS id; -- end") with { RowLimit = 0 });
+    var result = await schema.Completion;
+    Equal(0L, result.RowCount); Equal("BIGINT", result.Columns[1].Type);
+    await Reject(async () => await Query(session, "DESCRIBE SELECT 1 n"), "DuckSchema");
+    using var describe = session.Acquire(ComputationRequest.Fragment("DESCRIBE SELECT 1 n"));
+    await Reject(async () => await describe.Completion, "DuckSchema");
+    using var bad = session.Acquire(ComputationRequest.Query("SELECT missing FROM (SELECT 1 n)") with { RowLimit = 0 });
+    try { await bad.Completion; throw new Exception("Expected binding error"); }
+    catch (ComputationException error) { Equal("sql_binding", error.Failure.Code); }
+});
+await Check("exploration shares the worker and bounds results while preserving exact values", async () =>
+{
+    await using var session = Session(); using var explorer = new ExplorationSession(session);
+    async Task<ExplorationStatus> Explore(ExplorationRequest request)
+    {
+        var status = explorer.Invoke(request);
+        while (status.State is not ("succeeded" or "failed" or "cancelled"))
+        {
+            await Task.Delay(10); status = explorer.Invoke(new("poll", request.Id));
+        }
+        return status;
+    }
+    var sample = await Explore(new("query", "sample", "SELECT i, 9007199254740993::HUGEINT AS exact FROM range(100) t(i)", MaxRows: 3));
+    Equal("succeeded", sample.State); Equal(3, sample.Result!.Rows.Length); Equal(true, sample.Result.HasMore);
+    Equal("9007199254740993", sample.Result.Rows[0][1].Text);
+    var overflow = await Explore(new("query", "large", "SELECT repeat('x', 31000) AS body"));
+    Equal("output_limit", overflow.Failure!.Code); Equal(true, ExplorationSession.Serialize(overflow).Length < 30000);
+    var validation = await Explore(new("validate", "validate", "SELECT not_bound FROM range(3)"));
+    Equal("succeeded", validation.State); Equal("syntax_and_capabilities_only", validation.Result!.Validation);
+    var binding = await Explore(new("schema", "bind", "SELECT not_bound FROM range(3)"));
+    Equal("sql_binding", binding.Failure!.Code);
+    var denied = await Explore(new("query", "denied", "SELECT unnest([nextval('forbidden')])"));
+    Equal("sql_validation", denied.Failure!.Code);
+    using var fragment = session.Acquire(ComputationRequest.Fragment("SELECT error('must not execute')")); await fragment.Completion;
+    var inspect = await Explore(new("inspect", "recipe", Handle: fragment.CellText));
+    Equal("succeeded", inspect.State); Equal(RequestKind.Fragment, inspect.Result!.Definition!.Kind);
+    Equal(0, inspect.Result.Columns.Length);
+});
+await Check("resource budgets are supplied by the host and failures retain structured categories", async () =>
+{
+    await using var session = Session(new(Resources: new(128, 2, 1)));
+    Equal("128.0 MiB", (await Query(session, "SELECT current_setting('memory_limit')")).Rows[0][0].Text);
+    Equal("2.0 GiB", (await Query(session, "SELECT current_setting('max_temp_directory_size')")).Rows[0][0].Text);
+    Equal(1d, (await Query(session, "SELECT current_setting('threads')")).Rows[0][0].ToDisplayValue());
+    try { await Query(session, "SELECT list(n) FROM range(100000000) t(n)"); throw new Exception("Expected memory failure"); }
+    catch (ComputationException error)
+    {
+        Equal("memory_limit", error.Failure.Code);
+        Equal(true, error.Failure.Advice!.Contains("metadata"));
+        Equal(false, error.Message.Contains("SET "));
+    }
+    try { await Query(session, "SELECT CAST('private' AS INTEGER)"); throw new Exception("Expected conversion failure"); }
+    catch (ComputationException error) { Equal("data_conversion", error.Failure.Code); Equal(false, error.Message.Contains("private")); }
+});
 await Check("changed external data is reused until a new session is explicitly created", async () =>
 {
     var changing = Path.Combine(files.Path, "changing.csv");

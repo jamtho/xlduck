@@ -27,6 +27,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1 -Wit
 
 Use `-NoRestore` after dependencies have been restored, or `-NoBuild` for existing binaries. The core tests cover typed identities, SQL placeholders, leases, dependency retention, cancellation, bounds and protocol frames. Host tests cover path-based connection settings, Windows credential persistence, exact dates, formula selection and WebView access policy. Dialog tests render off-screen, exercise authentication and advanced fields, and verify that editing alone never saves a credential. Review images are written to `artifacts/dialog-review`. Engine tests run directly and through a worker; worker failure tests terminate only their own child process. A narrow separate Excel test add-in preserves the execution prototype's latency and ownership checks.
 
+The agent-feedback regressions cover per-cell state, last-input reuse, cancellation/timeout ownership, bounded exploration, SELECT-list/recursive UNNEST, schema binding without evaluating rows, precise typed samples, structured memory/source/binding failures, resource persistence and its dialog. Native production tests call `Worksheet.Evaluate` on status/exploration without editing cells and distinguish Excel spill failure from query failure. They preserve manual calculation and verify per-workbook resource restarts. The actual Office.js connector roundtrip remains untested in the user's session.
+
+Run `node tests/agent-exploration.test.cjs` for the standalone Office.js helper's idempotent polling, bounded waits, session-change handling and manual-calculation handoff. This test uses a synthetic Office.js context and does not connect to Excel.
+
+Long requests are tested through native Evaluate using bounded staged parts, followed by explicit submission. Repeating a request or submit does not rerun it; changing inputs with a live request id fails. Helper tests preserve Unicode, quotes and backslashes across formula/JSON encoding and assert every expression stays within native Evaluate's 255-character limit.
+
 Reader tests use a loopback server and dummy credentials, never a real bucket or user credential files. They cover HTTP/S3 reads, listing, explicit saved keys, named profiles, headers, errors and extension integrity. They do not verify AWS signatures cryptographically or establish live AWS/SSO/proxy compatibility. Omit `-WithReaders` to run local-only policy checks.
 
 ## Browser rendering
