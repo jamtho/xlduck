@@ -135,16 +135,10 @@ public class PreviewPane : UserControl, IPreviewPane
         _isWebViewReady = e.IsSuccess;
         if (!e.IsSuccess) { ShowFallbackMessage("Preview failed to load. Repair the XlDuck installation."); return; }
 
-        // Compensate for DPI double-scaling: the host task pane already handles
-        // DPI scaling, so partially undo the extra scaling WebView2 applies.
-        // A small boost (1.15x) over full compensation keeps text readable
-        // on high-DPI displays and through RDP.
-        var dpiScale = DeviceDpi / 96.0;
-        if (_webView != null && dpiScale > 1.01)
-        {
-            _webView.ZoomFactor = Math.Min(1.0, 2.0 / dpiScale);
+        // WebView2 handles display scaling. Page zoom is a separate user setting;
+        // reducing it for high-DPI displays made the pane too small over RDP.
+        if (_webView is not null)
             Log.Write($"[PreviewPane] DPI={DeviceDpi}, ZoomFactor={_webView.ZoomFactor:F3}");
-        }
 
         // Send any pending state
         if (_pendingJson != null)

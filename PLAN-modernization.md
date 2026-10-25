@@ -16,6 +16,13 @@ Milestone 7 has a tested local foundation: .NET 10 runtime/load-order probes, cl
 
 ## Agreed product scope
 
+Feedback from the first research-demo trial on 25 October 2026:
+
+- The RDP preview was too small. Its log reported DPI 240 and page zoom 0.8. Remove the manual page-zoom reduction and verify native startup at full page zoom; monitor/RDP transition behaviour still needs visual testing.
+- Demo-only constant display formats obscure the actual chart/table handles and can hide text errors. Revisit the presentation; the engine still uses typed session-qualified handles.
+- Prefer examples with SQL stored as ordinary cell text, with the executing formula below. Named SQL cells and positional argument conventions remain useful and supported; add native integration coverage.
+- Reconsider the combined workbook enablement/S3 dialog. Worker startup is already lazy, while enablement implements the earlier unfamiliar-workbook access decision. Separate those concepts before changing the access policy; AWS settings should be optional source configuration.
+
 - Keep Excel, Excel-DNA, DuckDB, and the formula DAG as the foundation. Excel owns worksheet dependencies; XlDuck manages computation and result lifetimes.
 - Design for sophisticated users doing research. Most queries should finish quickly, generally within a few seconds. Occasional 30 to 60 second trunk queries can work, but extensive expensive preparation belongs outside the workbook or behind better materialization choices.
 - Support read-and-compute SQL only. Worksheet SQL cannot modify external data, issue general DDL or DML, export files, install arbitrary extensions, or change security settings. Internal temporary tables and engine spill files remain necessary implementation details.

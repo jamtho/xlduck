@@ -75,6 +75,16 @@ try {
     Wait-Value 'D1' 18
     if ((Wait-Handle 'A1') -ne $handle -or (Stats).statistics.Executions -ne $executions) { throw 'Unchanged calculation reran SQL.' }
     Pass 'full calculation and unchanged formula reentry retain results'
+    $sheet.Range('J40').Value2 = 'SELECT ? * ? AS n'
+    $sqlReference = "='" + $sheet.Name.Replace("'", "''") + "'!" + '$J$40'
+    $session.Workbook.Names.Add('Demo_Scale_SQL', $sqlReference) | Out-Null
+    Formula 'J41' '=DuckQueryOutScalar(J40, 6, 7)'; Wait-Value 'J41' 42
+    Formula 'J42' '=DuckQueryOutScalar(Demo_Scale_SQL, 9, 5)'; Wait-Value 'J42' 45
+    Formula 'J43' '=DuckQuery(Demo_Scale_SQL, 2, 3)'
+    Formula 'J44' '=DuckScalar(J43)'; Wait-Value 'J44' 6
+    $sheet.Range('J40').Value2 = 'SELECT ? + ? AS n'
+    Wait-Value 'J41' 13; Wait-Value 'J42' 14; Wait-Value 'J44' 5
+    Pass 'SQL in ordinary and named cells supports repeated calls and updates its dependents'
     Formula 'F1' '=DuckQueryOutScalar("SELECT ?+?", 20, 22) + DuckQueryOutScalar("SELECT 1")'
     Wait-Value 'F1' 43
     Formula 'F2' '=DuckScalar(DuckQuery("SELECT 42"))'

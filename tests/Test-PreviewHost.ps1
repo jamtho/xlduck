@@ -28,11 +28,15 @@ try {
     do {
         $log = Get-ChildItem (Join-Path $env:LOCALAPPDATA 'XlDuck') -Filter "xlduck-*-$($session.ProcessId).log" | Select-Object -First 1
         $text = if ($log) { Get-Content -LiteralPath $log.FullName -Raw } else { '' }
-        if ($text -match 'NavigationCompleted, success=True' -and $text -match 'SetState: plot') { break }
+        if ($text -match 'NavigationCompleted, success=True' -and $text -match 'SetState: plot' -and $text -match 'DPI=\d+, ZoomFactor=') { break }
         if ($watch.Elapsed.TotalSeconds -gt 25) { throw 'The native preview did not become ready with a plot.' }
         Start-Sleep -Milliseconds 100
     } while ($true)
     Write-Host 'PASS Excel task pane starts its local WebView and receives the selected plot.'
+    $scaling = [regex]::Match($text, 'DPI=(\d+), ZoomFactor=([0-9.,]+)')
+    $zoom = [double]::Parse($scaling.Groups[2].Value.Replace(',','.'), [Globalization.CultureInfo]::InvariantCulture)
+    if ([Math]::Abs($zoom - 1) -gt 0.0001) { throw "The preview reduced its page zoom at DPI $($scaling.Groups[1].Value): $zoom" }
+    Write-Host "PASS native preview keeps 100% page zoom at DPI $($scaling.Groups[1].Value)."
     $before = (Get-Content -LiteralPath $log.FullName -Raw).Length
     $sheet.Range('A3').Formula2 = '=DuckQuery("SELECT i::DOUBLE x, cos(i/10.0) y FROM range(100) r(i)")'
     [void](Wait-XlDuckCell $sheet 'A4' -Until { param($v) $v -is [string] -and $v.StartsWith('xlduck://') })
