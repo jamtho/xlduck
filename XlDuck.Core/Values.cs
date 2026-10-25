@@ -87,20 +87,6 @@ public sealed record CellValue(ValueKind Kind, string Text)
 public enum ResultKind { Table, Fragment, Plot }
 public readonly record struct ResultHandle(Guid Session, Guid Id, ResultKind Kind)
 {
-    [System.Text.Json.Serialization.JsonIgnore]
-    public string CellText => $"xlduck://{Kind.ToString().ToLowerInvariant()}/{Convert.ToBase64String(Id.ToByteArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_')}";
-    internal static ResultHandle FromCellText(string text, Guid session)
-    {
-        var parts = text.Split('/');
-        if (parts.Length != 4 || parts[0] != "xlduck:" || parts[1] != "" ||
-            parts[2] is not ("table" or "fragment" or "plot") || parts[3].Length != 22 ||
-            parts[3].Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('-' or '_')))
-            throw new ArgumentException("Invalid XlDuck handle. Reference the cell that produces the result.");
-        var id = new Guid(Convert.FromBase64String(parts[3].Replace('-', '+').Replace('_', '/') + "=="));
-        var handle = new ResultHandle(session, id, Enum.Parse<ResultKind>(parts[2], true));
-        if (handle.CellText != text) throw new ArgumentException("Invalid XlDuck handle.");
-        return handle;
-    }
     public override string ToString() => $"xlduck://{Session:N}/{Kind.ToString().ToLowerInvariant()}/{Id:N}";
     public static ResultHandle Parse(string text)
     {

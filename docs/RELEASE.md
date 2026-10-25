@@ -38,11 +38,13 @@ Run `scripts/Get-Diagnostics.ps1 -PackageDirectory <package>` from the repositor
 
 ## Gates before public publication
 
+Development validation includes live reads from the user's Hetzdev S3-compatible endpoint, Enron workbook edits/cache reuse, simulated authenticated S3 outages and recovery, and native preview checks at DPI 192 and 240. These are local results, not certification of every provider or display configuration.
+
 - Clean supported Windows machine: runtime/WebView prerequisites, first install and workbook/preview smoke test.
 - Actual upgrade, rollback and removal, including files locked by an open Excel instance.
 - Representative third-party add-ins and the supported Excel/Windows matrix.
 - Visual review of connections and preview at common DPI/scale settings.
-- Live S3-compatible endpoints, access-key/session-token renewal and enterprise-network behaviour. Certify optional AWS profile/SSO providers separately before advertising their support.
+- Broader S3-compatible provider coverage, access-key/session-token renewal and enterprise-network behaviour. Certify optional AWS profile/SSO providers separately before advertising their support.
 - Complete redistribution notice review, including native extension dependencies; signing identity and installer design.
 - Validate release artifacts against the final tested commit. Crash-orphan spill recovery is implemented and tested against active host/worker leases and unmarked directories.
 

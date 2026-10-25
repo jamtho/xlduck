@@ -17,6 +17,8 @@ internal sealed class ReaderServer : IAsyncDisposable
     private readonly byte[] _csv, _parquet;
     internal ConcurrentQueue<string> Requests { get; } = new();
     private int _authenticated;
+    private int _unavailable;
+    internal bool Unavailable { get => Volatile.Read(ref _unavailable) != 0; set => Volatile.Write(ref _unavailable, value ? 1 : 0); }
     internal int AuthenticatedS3Reads => Volatile.Read(ref _authenticated);
     internal string Endpoint { get; }
     internal string BaseUrl => "http://" + Endpoint + "/";
@@ -59,7 +61,7 @@ internal sealed class ReaderServer : IAsyncDisposable
             var listing = target.Contains("list-type=2", StringComparison.Ordinal);
             var payload = listing ? Encoding.UTF8.GetBytes($"<?xml version=\"1.0\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>bucket</Name><Prefix></Prefix><KeyCount>1</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>sample.parquet</Key><LastModified>2026-10-24T00:00:00.000Z</LastModified><ETag>&quot;fixture&quot;</ETag><Size>{_parquet.Length}</Size><StorageClass>STANDARD</StorageClass></Contents></ListBucketResult>") :
                 target.EndsWith("sample.csv", StringComparison.Ordinal) ? _csv : target.EndsWith("sample.parquet", StringComparison.Ordinal) ? _parquet : [];
-            var status = payload.Length == 0 ? "404 Not Found" : s3 && !authenticated ? "403 Forbidden" : "200 OK";
+            var status = Unavailable ? "503 Service Unavailable" : payload.Length == 0 ? "404 Not Found" : s3 && !authenticated ? "403 Forbidden" : "200 OK";
             if (status != "200 OK") payload = [];
             var start = 0; var end = payload.Length - 1;
             var rangeHeader = "";

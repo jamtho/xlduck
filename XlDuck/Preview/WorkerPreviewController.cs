@@ -33,7 +33,7 @@ internal sealed class PreviewController(PreviewPane pane) : IDisposable
             Status("Excel reports an unavailable input or error." + (_hasSuccess ? " Showing the previous result." : "")); return;
         }
         if (text?.StartsWith("#ERROR:", StringComparison.Ordinal) == true) { Status(text); return; }
-        if (book.Session is null || text?.StartsWith("xlduck://", StringComparison.Ordinal) != true)
+        if (!CellHandle.IsToken(text))
         {
             _hasSuccess = false;
             pane.SetState(new EmptyPreviewModel { Title = "Preview", Message = "Select a table, fragment or plot handle." }); return;

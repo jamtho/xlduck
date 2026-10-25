@@ -554,7 +554,9 @@
 
             // Add title if specified
             if (title) {
-                spec.title = title;
+                // A title may be wider than the whole task pane on RDP. Bound it
+                // to the live view width; the full text remains in the details.
+                spec.title = { text: title, anchor: 'start', limit: { expr: 'width' } };
             }
 
             // Apply explicit scale domains if provided (merge with existing scale)

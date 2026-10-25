@@ -91,6 +91,36 @@ const { chromium } = require('playwright');
       check(`bundled ${template} chart renders under CSP without network or eval`, () => { assert.equal(rendered.error, undefined); assert.equal(rendered.canvas,true); });
     }
     check('offline chart rendering makes no external requests', () => assert.deepEqual(external, []));
+    await page.setViewportSize({width:240,height:650});
+    await page.evaluate(() => renderState({kind:'plot',title:'Chart',handle:'P1~abcdefghijk',plot:{
+      template:'line',overrides:{x:'month',y:'records',title:'Monthly mail records in the California research selection (UTC)'},
+      columns:['month','records'],types:['VARCHAR','DOUBLE'],rows:[['Jan',1354],['Feb',932]],
+      kinds:[['Text','Number'],['Text','Number']],rowCount:2
+    }}));
+    await page.waitForFunction(() => activeView !== null);
+    const narrow = await page.evaluate(() => {
+      const target = document.getElementById('plot-target');
+      const info = document.querySelector('.plot-info');
+      const titleWidths = [];
+      function visit(item) {
+        if (typeof item.text === 'string' && item.text.startsWith('Monthly mail records') && item.bounds)
+          titleWidths.push(item.bounds.x2 - item.bounds.x1);
+        for (const child of item.items || []) visit(child);
+      }
+      visit(activeView.scenegraph().root);
+      return {width:target.clientWidth,canvas:target.querySelector('canvas').getBoundingClientRect().width,
+        infoWidth:info.clientWidth,infoContent:info.scrollWidth,fullTitle:info.textContent.includes('California research selection (UTC)'),titleWidths};
+    });
+    check('narrow preview fits its chart and preserves the full title in wrapped details', () => {
+      assert.ok(narrow.canvas <= narrow.width + 1, JSON.stringify(narrow));
+      assert.ok(narrow.infoContent <= narrow.infoWidth + 1, JSON.stringify(narrow));
+      assert.equal(narrow.fullTitle,true);
+      assert.ok(narrow.titleWidths.length > 0 && narrow.titleWidths.every(width => width <= narrow.width), JSON.stringify(narrow));
+    });
+    await page.setViewportSize({width:600,height:650});
+    await page.waitForFunction(width => document.querySelector('#plot-target canvas').getBoundingClientRect().width > width + 100, narrow.canvas);
+    check('selected chart grows with the preview pane without reselection', () => assert.ok(true));
+    await page.setViewportSize({width:1280,height:720});
     const fields = await page.evaluate(() => {
       const spec = buildVegaSpec('point',{x:'a.b',y:'c[0]'},['a.b','c[0]'],['DOUBLE','DOUBLE'],[{'a.b':1,'c[0]':2}]);
       let rejected = false;

@@ -29,21 +29,42 @@ await Check("compact handles resolve only live results in their own workbook ses
     await using var session = new WorkbookSession(_ => new FakeBackend(), new(HistoricalResults: 0));
     await using var other = new WorkbookSession(_ => new FakeBackend());
     var lease = session.Acquire(ComputationRequest.Query("SELECT 1")); await lease.Completion;
-    var text = lease.Handle.CellText;
-    Equal(37, text.Length); Equal(false, text.Contains(session.Id.ToString("N")));
+    var text = lease.CellText;
+    Equal(14, text.Length); Equal(true, text.StartsWith("T1~")); Equal(true, CellHandle.IsToken(text));
+    Equal(false, text.Contains(session.Id.ToString("N")));
+    Equal(text, session.GetCellText(lease.Handle));
     Equal(lease.Handle, session.ResolveCellHandle(text));
     Throws<ArgumentException>(() => other.ResolveCellHandle(text));
-    Throws<ArgumentException>(() => session.ResolveCellHandle(text.Replace("/table/", "/plot/")));
+    Throws<ArgumentException>(() => session.ResolveCellHandle("P" + text[1..]));
     Throws<ArgumentException>(() => session.ResolveCellHandle(text + "="));
     Throws<ArgumentException>(() => session.ResolveCellHandle(lease.Handle.ToString()));
     using (var fragment = session.Acquire(ComputationRequest.Fragment("SELECT * FROM ?", QueryArgument.Reference(lease.Handle))))
     {
-        await fragment.Completion; Equal(fragment.Handle, session.ResolveCellHandle(fragment.Handle.CellText));
+        await fragment.Completion; Equal(fragment.Handle, session.ResolveCellHandle(fragment.CellText));
+        Equal(true, fragment.CellText.StartsWith("F2~"));
         using var plot = session.Acquire(ComputationRequest.Plot(lease.Handle, "bar")); await plot.Completion;
-        Equal(plot.Handle, session.ResolveCellHandle(plot.Handle.CellText));
+        Equal(plot.Handle, session.ResolveCellHandle(plot.CellText)); Equal(true, plot.CellText.StartsWith("P"));
     }
     lease.Dispose(); await session.WaitForIdleAsync();
     Throws<ArgumentException>(() => session.ResolveCellHandle(text));
+});
+await Check("numbered cell aliases reuse live results but never reuse retired numbers", async () =>
+{
+    await using var session = new WorkbookSession(_ => new FakeBackend(), new(HistoricalResults: 0));
+    var first = session.Acquire(ComputationRequest.Query("SELECT 1")); await first.Completion;
+    var original = first.CellText;
+    using (var duplicate = session.Acquire(ComputationRequest.Query("SELECT 1"))) Equal(original, duplicate.CellText);
+    var tag = original.Split('~')[1];
+    first.Dispose(); await session.WaitForIdleAsync();
+    using var second = session.Acquire(ComputationRequest.Query("SELECT 1")); await second.Completion;
+    Equal("T2~" + tag, second.CellText);
+    Throws<ArgumentException>(() => session.ResolveCellHandle(original));
+    await using var reopened = new WorkbookSession(_ => new FakeBackend());
+    using var fresh = reopened.Acquire(ComputationRequest.Query("SELECT 1")); await fresh.Completion;
+    Equal(true, fresh.CellText.StartsWith("T1~")); Equal(false, fresh.CellText == original);
+    Throws<ArgumentException>(() => reopened.ResolveCellHandle(original));
+    foreach (var bad in new[] { "T0~" + tag, "T01~" + tag, "t2~" + tag, "T-2~" + tag, "T2~" + tag + "=", "T2~" + tag[..10], "T9223372036854775808~" + tag, "2026-10-25", "Table 2" })
+        Equal(false, CellHandle.IsToken(bad));
 });
 await Check("spill recovery preserves active hosts/workers and unmarked directories", async () =>
 {

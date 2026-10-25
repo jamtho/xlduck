@@ -20,7 +20,7 @@ try {
     $sheet.Range('A1').Value2 = 'XlDuck preview integration'
     $sheet.Range('A3').Formula2 = '=DuckQuery("SELECT i::DOUBLE x, sin(i/10.0) y FROM range(100) r(i)")'
     $sheet.Range('A4').Formula2 = '=DuckPlot(A3,"line","x","x","y","y","title","Research preview")'
-    [void](Wait-XlDuckCell $sheet 'A4' -Until { param($v) $v -is [string] -and $v.StartsWith('xlduck://') })
+    [void](Wait-XlDuckCell $sheet 'A4' -Until { param($v) $v -is [string] -and $v -cmatch '^[TFP][1-9][0-9]*~[A-Za-z0-9_-]{11}$' })
     $sheet.Range('A4').Select() | Out-Null
     $excel.Run('DuckTogglePreview') | Out-Null
     $watch = [Diagnostics.Stopwatch]::StartNew()
@@ -38,7 +38,7 @@ try {
     Write-Host "PASS native preview keeps 100% page zoom at DPI $($scaling.Groups[1].Value)."
     $before = (Get-Content -LiteralPath $log.FullName -Raw).Length
     $sheet.Range('A3').Formula2 = '=DuckQuery("SELECT i::DOUBLE x, cos(i/10.0) y FROM range(100) r(i)")'
-    [void](Wait-XlDuckCell $sheet 'A4' -Until { param($v) $v -is [string] -and $v.StartsWith('xlduck://') })
+    [void](Wait-XlDuckCell $sheet 'A4' -Until { param($v) $v -is [string] -and $v -cmatch '^[TFP][1-9][0-9]*~[A-Za-z0-9_-]{11}$' })
     $watch.Restart()
     do {
         $updates = (Get-Content -LiteralPath $log.FullName -Raw).Substring($before)

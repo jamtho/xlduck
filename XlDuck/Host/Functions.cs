@@ -71,7 +71,11 @@ public static class DuckFunctions
                 : Handle(lease));
         });
     }
-    private static async Task<object> Handle(ResultLease lease) => (await lease.Completion.ConfigureAwait(false)).Handle.CellText;
+    private static async Task<object> Handle(ResultLease lease)
+    {
+        await lease.Completion.ConfigureAwait(false);
+        return lease.CellText;
+    }
     private static ResultHandle ResolveHandle(string text) => (WorkbookHost.Caller().Book.Session
         ?? throw new InvalidOperationException("XlDuck is initializing this workbook.")).ResolveCellHandle(text);
     private static QueryArgument Argument(object? value)
@@ -82,7 +86,7 @@ public static class DuckFunctions
             value = array[0, 0];
         }
         if (value is ExcelError) throw new ArgumentException("An input contains an Excel error.");
-        return value is string handle && handle.StartsWith("xlduck://", StringComparison.Ordinal)
+        return value is string handle && CellHandle.IsToken(handle)
             ? QueryArgument.Reference(ResolveHandle(handle))
             : new QueryArgument(value is ExcelEmpty or ExcelMissing ? CellValue.Empty : CellValue.From(value));
     }

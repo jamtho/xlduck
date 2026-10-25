@@ -234,6 +234,8 @@
         }
 
         .plot-info-value {
+            min-width: 0;
+            overflow-wrap: anywhere;
             font-family: 'Consolas', 'Monaco', monospace;
             color: #0066cc;
         }

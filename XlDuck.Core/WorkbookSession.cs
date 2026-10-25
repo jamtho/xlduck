@@ -13,20 +13,22 @@ public sealed class ResultLease : IDisposable
 {
     private WorkbookSession? _owner;
     public ResultHandle Handle { get; }
+    public string CellText { get; }
     public Task<ComputationResult> Completion { get; }
-    internal ResultLease(WorkbookSession owner, ResultHandle handle, Task<ComputationResult> completion)
-        => (_owner, Handle, Completion) = (owner, handle, completion);
+    internal ResultLease(WorkbookSession owner, ResultHandle handle, string cellText, Task<ComputationResult> completion)
+        => (_owner, Handle, CellText, Completion) = (owner, handle, cellText, completion);
     public Task<ComputationResult> WaitAsync(CancellationToken token = default) => Completion.WaitAsync(token);
     public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Release(Handle);
 }
 
 public sealed class WorkbookSession : IAsyncDisposable
 {
-    private sealed class Entry(string key, ComputationRequest request, ResultHandle handle, PreparedQuery? prepared, Entry[] dependencies)
+    private sealed class Entry(string key, ComputationRequest request, ResultHandle handle, string cellText, PreparedQuery? prepared, Entry[] dependencies)
     {
         public readonly string Key = key;
         public readonly ComputationRequest Request = request;
         public readonly ResultHandle Handle = handle;
+        public readonly string CellText = cellText;
         public readonly PreparedQuery? Prepared = prepared;
         public Entry[] Dependencies = dependencies;
         public readonly TaskCompletionSource<ComputationResult> Completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -42,6 +44,9 @@ public sealed class WorkbookSession : IAsyncDisposable
     private readonly Lazy<Task<IExecutionBackend>> _backend;
     private readonly Dictionary<string, Entry> _requests = new(StringComparer.Ordinal);
     private readonly Dictionary<ResultHandle, Entry> _handles = new();
+    private readonly Dictionary<string, Entry> _cellHandles = new(StringComparer.Ordinal);
+    private readonly string _cellTag = CellHandle.NewSessionTag();
+    private long _nextCellNumber;
     private readonly LinkedList<Entry> _history = new();
     private readonly HashSet<Task> _cleanup = new();
     private readonly HashSet<Task<TablePage>> _reads = new();
@@ -143,10 +148,12 @@ public sealed class WorkbookSession : IAsyncDisposable
                 if (_pending + _cleanup.Count >= _options.MaxPending)
                     throw new InvalidOperationException("This workbook's computation queue is full. Wait for pending work, then retry.");
                 var kind = request.Kind switch { RequestKind.Fragment => ResultKind.Fragment, RequestKind.Plot => ResultKind.Plot, _ => ResultKind.Table };
-                var entry = new Entry(key, request, new(Id, Guid.NewGuid(), kind), prepared, dependencies);
+                var text = CellHandle.Format(kind, checked(++_nextCellNumber), _cellTag);
+                var entry = new Entry(key, request, new(Id, Guid.NewGuid(), kind), text, prepared, dependencies);
                 foreach (var dependency in dependencies) Retain(dependency);
                 _requests[key] = entry;
                 _handles.Add(entry.Handle, entry);
+                _cellHandles.Add(entry.CellText, entry);
                 _pending++;
                 var lease = Lease(entry);
                 if (!_queue.Writer.TryWrite(entry))
@@ -213,14 +220,16 @@ public sealed class WorkbookSession : IAsyncDisposable
         return page;
     }
 
-    /// <summary>Cell tokens carry a unique result ID. Only this session may resolve them.</summary>
+    public string GetCellText(ResultHandle handle) { lock (_sync) return Find(handle).CellText; }
+
+    /// <summary>Resolve a numbered alias only in the live registry that issued it.</summary>
     public ResultHandle ResolveCellHandle(string text)
     {
         lock (_sync)
         {
             EnsureOpen();
-            var handle = ResultHandle.FromCellText(text, Id);
-            if (!_handles.TryGetValue(handle, out var entry) || entry.Retired)
+            if (!CellHandle.IsToken(text)) throw new ArgumentException("Invalid XlDuck handle. Reference the cell that produces the result.");
+            if (!_cellHandles.TryGetValue(text, out var entry) || entry.Retired)
                 throw new ArgumentException("This handle is not available in this workbook session. It may belong to a different workbook or an earlier session. Recompute its source here.");
             return entry.Handle;
         }
@@ -237,7 +246,7 @@ public sealed class WorkbookSession : IAsyncDisposable
         if (_closed) throw new ObjectDisposedException(nameof(WorkbookSession), "This workbook session has closed.");
         if (_cleanupError is not null) throw new InvalidOperationException("Result cleanup failed. Restart this workbook's XlDuck session.", _cleanupError);
     }
-    private ResultLease Lease(Entry entry) { Retain(entry); return new(this, entry.Handle, entry.Completion.Task); }
+    private ResultLease Lease(Entry entry) { Retain(entry); return new(this, entry.Handle, entry.CellText, entry.Completion.Task); }
     private void Retain(Entry entry)
     {
         if (entry.Historical is not null) { _history.Remove(entry.Historical); entry.Historical = null; }
@@ -275,6 +284,7 @@ public sealed class WorkbookSession : IAsyncDisposable
     {
         entry.Retired = true;
         _handles.Remove(entry.Handle);
+        _cellHandles.Remove(entry.CellText);
         if (_requests.GetValueOrDefault(entry.Key) == entry) _requests.Remove(entry.Key);
         if (entry.Historical is not null) _history.Remove(entry.Historical);
         entry.Historical = null;
@@ -394,7 +404,7 @@ public sealed class WorkbookSession : IAsyncDisposable
                 lock (_sync)
                 {
                     foreach (var entry in _handles.Values) entry.Cancellation.Dispose();
-                    _handles.Clear(); _requests.Clear(); _history.Clear(); _cleanup.Clear(); _reads.Clear();
+                    _handles.Clear(); _cellHandles.Clear(); _requests.Clear(); _history.Clear(); _cleanup.Clear(); _reads.Clear();
                 }
                 _lifetime.Dispose();
             }

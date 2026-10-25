@@ -215,6 +215,43 @@ if (network)
             Equal(true, server.AuthenticatedS3Reads > before);
             Equal(0d, (await Query(session, "SELECT count(*) FROM duckdb_settings() WHERE name IN ('s3_access_key_id','s3_secret_access_key','s3_session_token') AND coalesce(value,'')<>''")).Rows[0][0].ToDisplayValue());
         });
+        await Check("S3 outage preserves retained data and failed reads recover only on explicit retry", async () =>
+        {
+            var id = Guid.NewGuid().ToString("N");
+            var settings = new ConnectionSettings(true, extensionPath,
+                [new("s3://bucket/", S3CredentialSource.AccessKey, Endpoint: server.Endpoint, UseSsl: false, PathStyle: true, CredentialId: id)],
+                System.Collections.Immutable.ImmutableDictionary<string, S3AccessKey>.Empty.Add(id,
+                    new(ReaderServer.AccessKey, "fixture-secret-never-a-real-key", ReaderServer.SessionToken)));
+            await using var session = Session(settings);
+            var request = ComputationRequest.Query("SELECT * FROM read_parquet(?)", QueryArgument.Scalar("s3://bucket/sample.parquet"));
+            using var retained = session.Acquire(request); await retained.Completion;
+            var newRead = ComputationRequest.Query("SELECT * FROM read_csv(?)", QueryArgument.Scalar("s3://bucket/sample.csv"));
+            try
+            {
+                server.Unavailable = true;
+                var before = server.Requests.Count;
+                using var reused = session.Acquire(request); await reused.Completion;
+                Equal(retained.Handle, reused.Handle);
+                Equal(2L, (await session.ReadAsync(reused.Handle, new(ReadPurpose.Output))).TotalRows);
+                Equal(before, server.Requests.Count);
+                using var failedRead = session.Acquire(newRead);
+                await Reject(async () => await failedRead.Completion, "503");
+                Equal(true, server.Requests.Count > before);
+                server.Unavailable = false;
+                before = server.Requests.Count;
+                using var stillFailed = session.Acquire(newRead);
+                Equal(failedRead.Handle, stillFailed.Handle);
+                await Reject(async () => await stillFailed.Completion, "503");
+                Equal(before, server.Requests.Count);
+                session.InvalidateFailuresForRetry();
+                using var retried = session.Acquire(newRead); await retried.Completion;
+                Equal(false, failedRead.Handle == retried.Handle);
+                Equal(2L, (await session.ReadAsync(retried.Handle, new(ReadPurpose.Output))).TotalRows);
+                Equal(2L, (await session.ReadAsync(retained.Handle, new(ReadPurpose.Output))).TotalRows);
+                Equal(3d, (await Query(session, "SELECT 1+2")).Rows[0][0].ToDisplayValue());
+            }
+            finally { server.Unavailable = false; }
+        });
         await Check("HTTP failures redact signed URL parameters", async () =>
         {
             await using var session = Session(new(true, extensionPath));

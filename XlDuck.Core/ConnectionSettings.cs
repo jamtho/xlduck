@@ -18,9 +18,10 @@ public sealed record S3AccessKey(string KeyId, string Secret, string? SessionTok
 
 /// <summary>Non-secret routing. Saved credentials are referenced by ID, never embedded in workbook settings.</summary>
 public sealed record S3Connection(string Scope, S3CredentialSource Credentials = S3CredentialSource.Environment,
-    string Region = "us-east-1", string? Endpoint = null, string? Profile = null, bool UseSsl = true, bool PathStyle = false,
+    string Region = S3Connection.DefaultSigningRegion, string? Endpoint = null, string? Profile = null, bool UseSsl = true, bool PathStyle = false,
     string? CredentialId = null)
 {
+    public const string DefaultSigningRegion = "us-east-1";
     public void Validate()
     {
         if (!Enum.IsDefined(Credentials) || string.IsNullOrEmpty(Scope) || Scope.Length > 4096 || !Uri.TryCreate(Scope, UriKind.Absolute, out var scope) || scope.Scheme != "s3" || scope.Host.Length == 0 || scope.Query.Length != 0 || scope.Fragment.Length != 0 || scope.UserInfo.Length != 0)

@@ -103,7 +103,6 @@ internal sealed class ConnectionEditor : Form
         source.Items.AddRange(Sources.Select(CredentialLabel).ToArray()); source.SelectedIndex = Array.IndexOf(Sources, existing?.Credentials ?? S3CredentialSource.AccessKey);
         var keyId = new TextBox { Name = "KeyId" }; var secret = new TextBox { Name = "Secret", UseSystemPasswordChar = true }; var token = new TextBox { Name = "SessionToken", UseSystemPasswordChar = true };
         var profile = new TextBox { Name = "Profile", Text = existing?.Profile ?? "" };
-        var region = new TextBox { Name = "Region", Text = existing?.Region ?? "us-east-1" };
         var tls = new CheckBox { Name = "Tls", Text = "Use HTTPS", Checked = existing?.UseSsl ?? true, AutoSize = true };
         var pathStyle = new CheckBox { Name = "PathStyle", Text = "Put bucket in the URL path", Checked = existing?.PathStyle ?? true, AutoSize = true };
         var advanced = new CheckBox { Name = "Advanced", Text = "Advanced settings", AutoSize = true };
@@ -111,10 +110,11 @@ internal sealed class ConnectionEditor : Form
         Row("Access key ID", keyId); Row("Secret access key", secret); Row("", advanced);
         var advancedPanel = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
         void AdvancedField(string label, Control control) { advancedPanel.Controls.Add(new Label { Text = label, AutoSize = true }); control.Width = 330; advancedPanel.Controls.Add(control); }
-        AdvancedField("Signing region", region); advancedPanel.Controls.Add(tls); advancedPanel.Controls.Add(pathStyle);
+        advancedPanel.Controls.Add(tls); advancedPanel.Controls.Add(pathStyle);
         AdvancedField("Session token (optional)", token); AdvancedField("Profile name (profile credentials only)", profile);
         Row("", advancedPanel);
-        var help = new Label { AutoSize = true, MaximumSize = new(350, 0), Text = "Endpoint: hostname and optional port. Leave blank only for the default S3 service. Environment credentials use AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and optional AWS_SESSION_TOKEN, including for compatible servers." };
+        var help = new Label { AutoSize = true, MaximumSize = new(350, 0) };
+        string? credentialNotice = null;
         Row("", help);
         void UpdateFields()
         {
@@ -123,6 +123,9 @@ internal sealed class ConnectionEditor : Form
             profile.Enabled = chosen is S3CredentialSource.AwsProfile or S3CredentialSource.AwsSso;
             if (profile.Enabled) advanced.Checked = true;
             advancedPanel.Visible = advanced.Checked;
+            help.Text = credentialNotice ?? (chosen == S3CredentialSource.Environment
+                ? "Use AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and optional AWS_SESSION_TOKEN. These environment-variable names also apply to S3-compatible servers."
+                : "Endpoint: your storage server's hostname and optional port. Leave it blank only for Amazon S3.");
         }
         source.SelectedIndexChanged += (_, _) => UpdateFields(); advanced.CheckedChanged += (_, _) => UpdateFields();
         if (existing?.Credentials == S3CredentialSource.AccessKey)
@@ -132,7 +135,7 @@ internal sealed class ConnectionEditor : Form
                 var saved = editedKey ?? CredentialStore.Read(existing.CredentialId!);
                 keyId.Text = saved.KeyId; secret.Text = saved.Secret; token.Text = saved.SessionToken ?? "";
             }
-            catch (InvalidOperationException) { help.Text = "The saved key is unavailable. Enter it again to repair this connection."; }
+            catch (InvalidOperationException) { credentialNotice = "The saved key is unavailable. Enter it again to repair this connection."; }
         }
         UpdateFields(); scroll.Controls.Add(fields); outer.Controls.Add(scroll, 0, 0);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
@@ -144,7 +147,9 @@ internal sealed class ConnectionEditor : Form
             {
                 var chosen = Sources[source.SelectedIndex];
                 var credentialId = chosen == S3CredentialSource.AccessKey ? existing?.CredentialId ?? Guid.NewGuid().ToString("N") : null;
-                var connection = new S3Connection(scope.Text.Trim(), chosen, region.Text.Trim(), NullIfEmpty(endpoint.Text),
+                // Signing is a protocol detail. Keep provider overrides already set
+                // through host configuration; ordinary users need only their endpoint.
+                var connection = new S3Connection(scope.Text.Trim(), chosen, existing?.Region ?? S3Connection.DefaultSigningRegion, NullIfEmpty(endpoint.Text),
                     chosen is S3CredentialSource.AwsProfile or S3CredentialSource.AwsSso ? NullIfEmpty(profile.Text) : null, tls.Checked, pathStyle.Checked, credentialId);
                 connection.Validate();
                 var key = chosen == S3CredentialSource.AccessKey ? new S3AccessKey(keyId.Text.Trim(), secret.Text, string.IsNullOrEmpty(token.Text) ? null : token.Text) : null;

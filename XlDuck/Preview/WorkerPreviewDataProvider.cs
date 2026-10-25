@@ -14,7 +14,7 @@ internal static class PreviewDataProvider
             return new FragPreviewModel { Title = "SQL fragment", Handle = value, Frag = new()
             {
                 Sql = definition.Sql,
-                Args = definition.Arguments.Select((argument, i) => new FragmentArg { Name = "?" + (i + 1), Value = argument.Handle?.CellText ?? argument.Value!.Text }).ToList()
+                Args = definition.Arguments.Select((argument, i) => new FragmentArg { Name = "?" + (i + 1), Value = argument.Handle is { } dependency ? session.GetCellText(dependency) : argument.Value!.Text }).ToList()
             } };
         using var lease = session.AcquireData(handle);
         await lease.WaitAsync(token).ConfigureAwait(false);

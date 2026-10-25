@@ -36,6 +36,7 @@ internal static class Program
                 Assert(Get<TextBox>(editor, "Secret").UseSystemPasswordChar, "Secret is not masked");
                 Render(editor, Path.Combine(output, "connection.png"));
                 Get<CheckBox>(editor, "Advanced").Checked = true; Application.DoEvents();
+                Assert(editor.Controls.Find("Region", true).Length == 0, "Protocol signing region still appears in the connection editor");
                 Render(editor, Path.Combine(output, "connection-advanced.png"));
                 Get<Button>(editor, "Done").PerformClick();
                 Assert(editor.Connection is { Credentials: S3CredentialSource.AccessKey, UseSsl: true, PathStyle: true, Region: "us-east-1" }, "Incorrect connection defaults");
@@ -53,10 +54,16 @@ internal static class Program
                 Assert(!Get<TextBox>(editor, "KeyId").Enabled && !Get<TextBox>(editor, "Secret").Enabled, "Anonymous mode still requests credentials");
                 Get<CheckBox>(editor, "Advanced").Checked = true;
                 Get<CheckBox>(editor, "Tls").Checked = false;
-                Get<TextBox>(editor, "Region").Text = "local-1";
                 Get<Button>(editor, "Done").PerformClick();
-                Assert(editor.Connection is { Credentials: S3CredentialSource.Anonymous, UseSsl: false, Region: "local-1", CredentialId: null } && editor.Key is null, "Advanced or anonymous settings were lost");
+                Assert(editor.Connection is { Credentials: S3CredentialSource.Anonymous, UseSsl: false, Region: S3Connection.DefaultSigningRegion, CredentialId: null } && editor.Key is null, "Advanced or anonymous settings were lost");
                 Console.WriteLine("PASS anonymous and advanced settings round-trip without an AWS profile");
+            }
+            using (var editor = new ConnectionEditor(new("s3://custom/", S3CredentialSource.Anonymous, Region: "local-1", Endpoint: "storage.example.test"), null))
+            {
+                ShowOwned(editor);
+                Get<Button>(editor, "Done").PerformClick();
+                Assert(editor.Connection?.Region == "local-1", "Editing an existing connection lost its server-specific signing override");
+                Console.WriteLine("PASS existing server signing override survives ordinary connection edits");
             }
             using (var dialog = new ConnectionsDialog(new("Research.xlsx", new([new("s3://research/", S3CredentialSource.Environment, Endpoint: "storage.example.test:9000", PathStyle: true)]))))
             {
