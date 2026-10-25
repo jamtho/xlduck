@@ -48,4 +48,7 @@ jobs:
         run: |
           ./scripts/Build-Package.ps1 -Destination artifacts/ci-package
           ./scripts/Verify-Package.ps1 -Directory artifacts/ci-package
+      - name: Package failure and diagnostics regressions (no Excel)
+        shell: powershell
+        run: ./tests/Test-Package.ps1 -PackageDirectory artifacts/ci-package
       # Excel and live AWS/SSO checks require their separate owned-machine workflows.

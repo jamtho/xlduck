@@ -20,7 +20,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Get-PreviewAssets.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/Build-Package.ps1
 ```
 
-The build uses a fresh output directory and NuGet lockfiles. Dependency acquisition checks package integrity and reader hashes. Packaging selects the intended x64 files explicitly, includes licence metadata/notices and creates a SHA-256 manifest and ZIP. `build-info.json` records the source commit, whether tracked changes or untracked files were present, SDK and build time. This makes dependencies and packaged contents reviewable; it does not promise byte-identical ZIP timestamps. Do not publish a candidate with missing tests or notices.
+The build uses a fresh output directory and NuGet lockfiles. Dependency acquisition checks package integrity and reader hashes. Packaging selects the intended x64 files explicitly, includes licence metadata/notices and creates a SHA-256 manifest and ZIP. Before reporting success, it verifies both the folder and archive against the required host, worker, reader and preview files. The verifier rejects missing dependencies even if their manifest entries are also missing, changed or unlisted files, noncanonical paths, links/junctions and unexpected ZIP entries. These checks detect incomplete or damaged distributions; they do not authenticate an unsigned release.
+
+`build-info.json` records the source commit, whether tracked changes or untracked files were present, SDK and build time. This makes dependencies and packaged contents reviewable; it does not promise byte-identical ZIP timestamps. Do not publish a candidate with missing tests or notices. `tests/Test-Package.ps1 -PackageDirectory <package>` exercises release failures using disposable file fixtures without starting Excel; CI runs it after packaging.
 
 Run `tests/Run-Tests.ps1 -AddInPath <package>/XlDuck-AddIn64.xll -WithPreview` against the actual package. The portable-runtime test options use a test-only .NET Framework companion to set the runtime root inside an owned Excel process; they never change user or machine environment settings.
 
@@ -34,7 +36,7 @@ Removal must unregister the add-in before removing its versioned folder after Ex
 
 ## Support diagnostics
 
-Run `scripts/Get-Diagnostics.ps1 -PackageDirectory <package>` from the repository or packaged folder to print a JSON report with package integrity, binary versions, Windows architecture and available .NET runtimes. It does not attach to Excel or collect workbook contents, local paths, connections, credentials or logs. Include `DuckStatus()` separately when reporting the runtime actually loaded inside Excel and the affected workbook's computation state. Review any error text before sharing it; engine errors shown in cells may contain source paths or query details.
+Run `scripts/Get-Diagnostics.ps1 -PackageDirectory <package>` from the repository or packaged folder to print a JSON report with package integrity, source commit, binary versions, Windows architecture and available .NET runtimes. Schema version 2 includes a fixed `packageIssue` code on failure (for example `missing_required_file` or `file_mismatch`), and distinguishes failed runtime discovery from a missing `dotnet` command. Unreadable binary metadata does not prevent the rest of the report. It does not attach to Excel or collect workbook contents, local paths, connections, credentials or logs. Include `DuckStatus()` separately when reporting the runtime actually loaded inside Excel and the affected workbook's computation state. Review any error text before sharing it; engine errors shown in cells may contain source paths or query details.
 
 ## Gates before public publication
 

@@ -76,5 +76,6 @@ try {
         [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $entry, [IO.Compression.CompressionLevel]::Optimal)
     }
 } finally { $archive.Dispose() }
+& (Join-Path $PSScriptRoot 'Verify-Package.ps1') -Directory $package
 Write-Host "Unsigned development package: $package"
 Write-Host "Archive: $package.zip"
