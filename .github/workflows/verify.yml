@@ -64,9 +64,10 @@ jobs:
           New-Item -ItemType Directory artifacts/downloads | Out-Null
           Copy-Item artifacts/ci-package.zip "artifacts/downloads/xlduck-$version-windows-x64.zip"
           Copy-Item artifacts/ci-package/agent/xlduck-skill.zip artifacts/downloads/
-          Copy-Item 'examples/research-demo/XlDuck Research Demo.xlsx' artifacts/downloads/
+          Copy-Item 'examples/research-demo/XlDuck Research Demo.xlsx' artifacts/downloads/XlDuck-Research-Demo.xlsx
           Copy-Item artifacts/ci-package/build-info.json artifacts/downloads/
           Get-ChildItem artifacts/downloads -File | Sort-Object Name | ForEach-Object {
+            if ($_.Name -cnotmatch '^[A-Za-z0-9._-]+$') { throw 'Release filenames must survive GitHub asset-name normalization.' }
             "$((Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant())  $($_.Name)"
           } | Set-Content artifacts/downloads/SHA256SUMS.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
