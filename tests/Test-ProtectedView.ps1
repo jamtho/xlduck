@@ -45,6 +45,11 @@ $directory = Join-Path (Split-Path $PSScriptRoot -Parent) ('artifacts/protected-
 $path = Join-Path $directory 'Owned download fixture.xlsx'
 $server = [ProtectedViewReaderFixture]::new()
 $session = $null; $sheet = $null; $view = $null; $protectedBook = $null; $protectedSheet = $null
+function Test-SandboxedWorkbook($Workbook) {
+    $owner = $Workbook.Application
+    try { return $owner.IsSandboxed }
+    finally { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($owner) }
+}
 try {
     $build = Copy-XlDuckDevelopmentBuild $AddInPath
     if ($RuntimeRoot) {
@@ -66,7 +71,7 @@ try {
     Set-Content -LiteralPath $path -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3" -Encoding ASCII
     $view = Invoke-XlDuckExcel { $excel.ProtectedViewWindows.Open($path) }
     $protectedBook = $view.Workbook; $protectedSheet = $protectedBook.Worksheets.Item(1)
-    if ($excel.Workbooks.Count -ne 0 -or -not $protectedBook.Application.IsSandboxed) { throw 'Fixture did not enter Protected View.' }
+    if ($excel.Workbooks.Count -ne 0 -or -not (Test-SandboxedWorkbook $protectedBook)) { throw 'Fixture did not enter Protected View.' }
     Invoke-XlDuckExcel { $excel.CalculateFull() }
     # Allow host reconciliation and any accidental background work to reach the loopback server.
     Start-Sleep -Milliseconds 1500
@@ -82,7 +87,7 @@ try {
         $ordinary = $excel.Workbooks.Add(); $ordinarySheet = $ordinary.Worksheets.Item(1)
         $ordinarySheet.Range('A1').Formula2 = '=DuckQueryOutScalar("SELECT 7")'
         [void](Wait-XlDuckCell $ordinarySheet 'A1' -Until { param($v) $v -eq 7 })
-        if ($ordinary.Application.IsSandboxed -or -not $protectedBook.Application.IsSandboxed -or $server.Requests -ne $before) { throw 'Protected and ordinary workbook identities were confused.' }
+        if ((Test-SandboxedWorkbook $ordinary) -or -not (Test-SandboxedWorkbook $protectedBook) -or $server.Requests -ne $before) { throw 'Protected and ordinary workbook identities were confused.' }
     } finally {
         if ($ordinarySheet) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ordinarySheet) }
         if ($ordinary) { $ordinary.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($ordinary) }

@@ -3,7 +3,11 @@
 param([string]$Destination, [string]$Dotnet = 'dotnet')
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-if (-not $Destination) { $Destination = Join-Path $repo ('artifacts/packages/xlduck-0.2.0-dev-' + [guid]::NewGuid().ToString('N').Substring(0,8)) }
+& (Join-Path $PSScriptRoot 'Verify-Notices.ps1') -Root $repo
+if (-not $Destination) {
+    $version = ([xml](Get-Content -LiteralPath (Join-Path $repo 'Directory.Build.props'))).Project.PropertyGroup.Version
+    $Destination = Join-Path $repo ('artifacts/packages/xlduck-' + $version + '-' + [guid]::NewGuid().ToString('N').Substring(0,8))
+}
 $package = [IO.Path]::GetFullPath($Destination)
 if (Test-Path -LiteralPath $package) { throw 'Package destination already exists; choose a new directory.' }
 if (Test-Path -LiteralPath ($package + '.zip')) { throw 'Package archive already exists; choose a new destination.' }
@@ -29,10 +33,26 @@ foreach ($folder in @('worker','readers','preview','runtimes/win-x64/native')) {
     }
 }
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE'),(Join-Path $repo 'README.md') -Destination $package
+Copy-Item -LiteralPath (Join-Path $repo 'THIRD-PARTY-NOTICES.md') -Destination $package
+Copy-Item -LiteralPath (Join-Path $repo 'third-party') -Destination $package -Recurse
 [void][IO.Directory]::CreateDirectory((Join-Path $package 'docs'))
-Copy-Item -LiteralPath (Join-Path $repo 'docs/FORMULAS.md'),(Join-Path $repo 'docs/RELEASE.md'),(Join-Path $repo 'docs/agent-exploration.js') -Destination (Join-Path $package 'docs')
+Copy-Item -LiteralPath (Join-Path $repo 'docs/assets') -Destination (Join-Path $package 'docs') -Recurse
+[void][IO.Directory]::CreateDirectory((Join-Path $package 'examples/research-demo'))
+Copy-Item -LiteralPath (Join-Path $repo 'examples/research-demo/XlDuck Research Demo.xlsx'),(Join-Path $repo 'examples/research-demo/README.md') -Destination (Join-Path $package 'examples/research-demo')
+Copy-Item -LiteralPath (Join-Path $repo 'docs/FORMULAS.md'),(Join-Path $repo 'docs/RELEASE.md'),(Join-Path $repo 'docs/INSTALL.md'),(Join-Path $repo 'docs/AGENT-INTEGRATION.md'),(Join-Path $repo 'docs/AGENT-WORKFLOW.md'),(Join-Path $repo 'docs/agent-exploration.js') -Destination (Join-Path $package 'docs')
 [void][IO.Directory]::CreateDirectory((Join-Path $package 'scripts'))
-Copy-Item -LiteralPath (Join-Path $repo 'scripts/Get-Diagnostics.ps1'),(Join-Path $repo 'scripts/Verify-Package.ps1') -Destination (Join-Path $package 'scripts')
+Copy-Item -LiteralPath (Join-Path $repo 'scripts/Get-Diagnostics.ps1'),(Join-Path $repo 'scripts/Verify-Package.ps1'),(Join-Path $repo 'scripts/Setup.ps1'),(Join-Path $repo 'scripts/Setup.Core.ps1') -Destination (Join-Path $package 'scripts')
+foreach ($launcher in @('Install.cmd','Uninstall.cmd','Rollback.cmd','Install Codex Skill.cmd','START-HERE.html')) {
+    Copy-Item -LiteralPath (Join-Path $repo ('installer/' + $launcher)) -Destination $package
+}
+[void][IO.Directory]::CreateDirectory((Join-Path $package 'agent/xlduck'))
+Copy-Item -LiteralPath (Join-Path $repo 'skill/xlduck/SKILL.md') -Destination (Join-Path $package 'agent/xlduck/SKILL.md')
+Add-Type -AssemblyName System.IO.Compression,System.IO.Compression.FileSystem
+$skillArchive = [IO.Compression.ZipFile]::Open((Join-Path $package 'agent/xlduck-skill.zip'), [IO.Compression.ZipArchiveMode]::Create)
+try {
+    [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($skillArchive,
+        (Join-Path $package 'agent/xlduck/SKILL.md'), 'xlduck/SKILL.md', [IO.Compression.CompressionLevel]::Optimal)
+} finally { $skillArchive.Dispose() }
 $sourceCommit = & git -C $repo rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Could not identify source commit.' }
 $trackedChanges = @(& git -C $repo status --porcelain --untracked-files=no).Count -gt 0
@@ -77,5 +97,5 @@ try {
     }
 } finally { $archive.Dispose() }
 & (Join-Path $PSScriptRoot 'Verify-Package.ps1') -Directory $package
-Write-Host "Unsigned development package: $package"
+Write-Host "Unsigned preview package: $package"
 Write-Host "Archive: $package.zip"

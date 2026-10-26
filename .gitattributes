@@ -1,0 +1,5 @@
+# Upstream notice hashes cover their exact downloaded bytes on every platform.
+third-party/notices/** -text -whitespace
+*.xlsx binary
+*.jpg binary
+*.png binary

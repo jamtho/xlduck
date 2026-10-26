@@ -77,7 +77,12 @@ try {
     }
     foreach ($required in @('XlDuck.dll','XlDuck.Core.dll','XlDuck-AddIn64.dna','XlDuck.runtimeconfig.json',
         'worker/XlDuck.Worker.dll','worker/XlDuck.Worker.deps.json','worker/XlDuck.Engine.dll','worker/Apache.Arrow.Scalars.dll',
-        'preview/preview.html','preview/vega-lite.min.js','preview/leaflet.js','scripts/Verify-Package.ps1')) {
+        'preview/preview.html','preview/vega-lite.min.js','preview/leaflet.js','scripts/Verify-Package.ps1',
+        'docs/INSTALL.md','docs/AGENT-INTEGRATION.md','docs/agent-exploration.js',
+        'scripts/Setup.ps1','scripts/Setup.Core.ps1','START-HERE.html','Install.cmd',
+        'agent/xlduck/SKILL.md','agent/xlduck-skill.zip','docs/AGENT-WORKFLOW.md',
+        'THIRD-PARTY-NOTICES.md','third-party/notices.json','third-party/notices/duckdb-httpfs/LICENSE',
+        'examples/research-demo/XlDuck Research Demo.xlsx','docs/assets/research-chart.jpg','docs/assets/research-table.jpg')) {
         Check "omitted required file is rejected even when its manifest entry is also missing: $required" {
             $folder = New-Fixture
             Remove-Item -LiteralPath (Join-Path $folder $required)

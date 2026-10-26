@@ -2,6 +2,12 @@
 
 XlDuck 0.2 runs read-and-compute SQL through a separate worker for each ordinary workbook. An Excel coding agent should build a small, inspectable formula DAG, materialize shared sources and use ordinary Excel dependencies for changes. Most computations should finish within a few seconds; substantial preparation belongs outside the sheet.
 
+## Discover guidance from the installed add-in
+
+`DuckHelp()` returns a short topic index. `DuckHelp("workflow")` returns the research workflow; `DuckHelp("reference")` returns this reference; `DuckHelp("officejs")` returns the JavaScript inspection helpers with a comment header. Help is embedded at build time, works offline, and performs no queries, source reads, connection changes or worksheet writes. Each response fits within one Excel text cell. Topic names are case-insensitive; an unknown topic returns an actionable error.
+
+An agent can evaluate these functions without creating cells when its host supports formula evaluation, or read an agreed help cell such as `=DuckHelp("workflow")`. The package's small bootstrap skill supplies the initial hint: “Read DuckHelp() and DuckHelp(\"workflow\") before using XlDuck.” Install it separately using [agent setup](AGENT-INTEGRATION.md), or paste that hint. Detailed guidance follows the installed add-in; the bootstrap does not duplicate the function catalogue and requires a build with DuckHelp.
+
 ## Build and inspect an analysis
 
 ```excel
@@ -152,15 +158,14 @@ Connection settings are saved on this computer by workbook path, not workbook fi
 
 ### Read-only agent inspection prototype
 
-`DuckExplore(anchorCell, requestJson)` starts or polls a bounded inspection using the anchor's existing workbook session, worker, connections and SQL policy. Use a blank single-cell anchor in the intended workbook. It does not write cells, create worksheet formulas or change settings. With desktop Office.js, [`Worksheet.evaluate`](https://learn.microsoft.com/en-us/javascript/api/excel/excel.worksheet#excel-excel-worksheet-evaluate-member(1)) (ExcelApiDesktop 1.1) provides a possible bridge from `run_officejs`. The actual tool schema must permit Office.js execution; formula access alone is insufficient. Native Excel Evaluate is integration-tested. The connected agent's Office.js roundtrip remains to be verified in a later trial.
+`DuckExplore(anchorCell, requestJson)` starts or polls a bounded inspection using the anchor's existing workbook session, worker, connections and SQL policy. Use a blank single-cell anchor in the intended workbook. It does not write cells, create worksheet formulas or change settings. Desktop Office.js [`Worksheet.evaluate`](https://learn.microsoft.com/en-us/javascript/api/excel/excel.worksheet#excel-excel-worksheet-evaluate-member(1)) (ExcelApiDesktop 1.1) bridges an agent's `run_officejs` to XlDuck. The actual tool schema must permit Office.js execution; formula access alone is insufficient. Native Evaluate and a live Windows Excel agent roundtrip have been tested; this remains an optional exploration interface, not the normal worksheet execution path.
+
+Load the helpers from `DuckHelp("officejs")` or [agent-exploration.js](agent-exploration.js), then include their declarations in the host's Office.js function body:
 
 ```js
-const sheet = ctx.workbook.worksheets.getItem("Research");
-const request = {op: "query", id: "inspect-001", sql: "SELECT unnest([1,2,3]) AS n", maxRows: 2};
-const escaped = JSON.stringify(request).replaceAll('"', '""');
-const response = sheet.evaluate(`DuckExplore(AZ1000,"${escaped}")`);
-await ctx.sync();
-return JSON.parse(response.value);
+return await xlduckExplore(ctx, "Research", {
+    op: "query", id: "inspect-001", sql: "SELECT unnest([1,2,3]) AS n", maxRows: 2
+});
 ```
 
 Use a unique `id` per exploration, then poll `{"op":"poll","id":"inspect-001"}`. Reusing the same id and inputs is idempotent; different inputs with that id fail. Do not start a new query on each poll. Terminal states are `succeeded`, `failed`, `cancelled`. Polls return the session ID: do not silently restart an investigation if that changes. Initialization can require retrying the original start request because no operation has been admitted yet.
@@ -175,7 +180,9 @@ Use a unique `id` per exploration, then poll `{"op":"poll","id":"inspect-001"}`.
 
 Arguments may be JSON scalars or exact `{kind,text}` values, e.g. `{"kind":"Integer","text":"9007199254740993"}`. Handle strings resolve only in the anchor's session. Returned cells are typed `{kind,text}` objects; do not coerce large integers or decimals into JavaScript numbers. `hasMore` reports truncation of the bounded query result, not the source's full row count. Result JSON is capped at 30000 characters, output at 4000 cells, SQL at 24000 characters, arguments at eight. Eight operations are tracked per workbook; completed operations can be evicted to admit new ones and expire after two minutes without polling. Each operation has a 30-second deadline including queue time. Timeout releases its own lease and cancels unshared work, never another formula's computation. An expired/unknown poll fails; restarting exploration requires a deliberate new id.
 
-The helper [agent-exploration.js](agent-exploration.js) performs short bounded waits and returns pending status when its wait budget expires. It never edits the workbook or restarts anything. Native Evaluate has a **255-character expression limit**, so the helper stages longer JSON requests in bounded parts before submitting them. Each expression stays within that limit, including JSON/Excel escaping. No SQL executes during staging. Transfer is in memory, scoped to the workbook session, with eight uploads, at most 2048 parts/30000 characters each, and two-minute inactivity expiry. `stage` uses `id`, `index`, `count`, `text`; `submit` uses `id`. Duplicate parts must match; incomplete or altered transfers fail. A repeated submit polls the same operation. Prefer the helper over constructing this transport manually. Transfer precedes the query's execution deadline and can take longer than the helper's polling budget.
+The helper accepts scalar JSON or a single-cell array (`[json]` / `[[json]]`) from Office.js, rejecting missing or multi-cell responses. It performs short bounded waits where timers exist; the tested Excel agent sandbox has no `setTimeout`, so it returns pending status immediately. In a later tool call, use the same helper with `{op:"poll", id:"inspect-001"}`. For an `initializing` response, retry the original request because it was not admitted. Never busy-loop, start a new request on each poll, or treat pending as failure. The helper never edits the workbook or restarts anything.
+
+Native Evaluate has a **255-character expression limit**, so the helper stages longer JSON requests in bounded parts before submitting them. Each expression stays within that limit, including JSON/Excel escaping. No SQL executes during staging. Transfer is in memory, scoped to the workbook session, with eight uploads, at most 2048 parts/30000 characters each, and two-minute inactivity expiry. `stage` uses `id`, `index`, `count`, `text`; `submit` uses `id`. Duplicate parts must match; incomplete or altered transfers fail. A repeated submit polls the same operation. Prefer the helper over constructing this transport manually. Transfer precedes the query's execution deadline and can take longer than the helper's polling budget.
 
 Use exploration for investigation, then leave reproducible worksheet formulas as the final analysis. The usual unchanged-input reuse rules still apply; a new exploration id is not a source refresh.
 

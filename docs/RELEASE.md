@@ -1,6 +1,6 @@
-# Public release preparation
+# Public preview release process
 
-The current package is an unsigned development candidate. It is a Windows x64 folder containing the Excel-DNA XLL, managed host, separate DuckDB worker, verified readers and bundled preview assets. Keep the folder intact. It is not a single-file XLL and contains no 32-bit add-in.
+Version **0.2.0-preview.1** is the first unsigned public preview of the rewrite. It is a Windows x64 folder containing the Excel-DNA XLL, managed host, separate DuckDB worker, verified readers, bundled preview assets, a synthetic demo and agent bootstrap. Keep the folder intact. It is not a single-file XLL and contains no 32-bit add-in.
 
 ## Runtime and coexistence
 
@@ -28,26 +28,45 @@ Run `tests/Run-Tests.ps1 -AddInPath <package>/XlDuck-AddIn64.xll -WithPreview` a
 
 ## Installation, upgrade and removal contract
 
-For development, extract into a new version-specific directory and load its `XlDuck-AddIn64.xll`. For persistent installation, use Excel's Add-ins dialog to select that exact file. Follow the organization's normal trusted-publisher/location policy. Do not disable Trust Center protections or bypass a blocked download.
+The user-facing [installation guide](INSTALL.md) and packaged `START-HERE.html` give prerequisite, installation, agent setup, smoke-test and recovery steps. The package now includes a per-user PowerShell installer behind `Install.cmd`, plus `Rollback.cmd`, `Uninstall.cmd` and `Install Codex Skill.cmd`. It requires Excel closed, checks installed x64 Excel/.NET 10 Desktop/WebView2, verifies and copies the complete package, and manages current-user Excel startup registration. It does not download dependencies, unblock files, change Trust Center or automatically install skills into provider accounts.
+
+Managed packages live under `%LOCALAPPDATA%/XlDuck/install/versions/package-<manifest-id>`. Identical installs reuse their directory; upgrades keep the preceding version for rollback. Startup registration preserves unrelated entries and their relative order, with recovery snapshots and rollback on state-commit failure. Manual registration through Excel's Add-ins dialog remains supported. Follow the organization's normal trusted-publisher/location policy.
 
 An upgrade must close Excel instances using the old XlDuck installation before switching the registered path. Keep the previous version until the new version passes a workbook smoke test. Runtime session handles are deliberately rebuilt, so saved files must retain formulas. Connection settings are separate under `%LOCALAPPDATA%/XlDuck/connections`; access keys are in Windows Credential Manager. The earlier development connection records are no longer read. Package replacement must not copy credentials or change Excel trust settings.
 
-Removal must unregister the add-in before removing its versioned folder after Excel exits. User-local connection settings, saved credentials, logs and WebView data require a separate, explicit remove-data choice. Never remove workbooks, AWS profiles, shared runtimes or data-source files. An installer implementing and testing this contract remains a release gate.
+Uninstall removes managed startup registrations and keeps package copies/history for deliberate manual removal. It preserves connection settings, credentials, agent skills, workbooks and unrelated registrations. There is no automatic updater, MSI or Windows Installed Apps entry yet. `tests/Test-Setup.ps1` uses disposable files and a separate test registry key to exercise install/reinstall, upgrade/rollback, third-party entries, failed commit recovery, blocked/corrupt packages and local skill preservation. It never changes the user's Office options or installed skills. CI runs it after packaging. Clean-machine validation is deferred for this preview and remains necessary before claiming that coverage.
+
+The skill ZIP contains only `xlduck/SKILL.md`. Detailed workflow/help is embedded from `docs/AGENT-WORKFLOW.md`, `docs/FORMULAS.md` and the JavaScript helper, preventing a bootstrap recursion or stale account-side API copy. Agent-provider upload/discovery and Claude execution are separate validation steps; see [agent integration](AGENT-INTEGRATION.md).
+
+On 26 October 2026, candidate 13 was installed with the public setup script on the development machine after installing Microsoft's x64 .NET 10.0.14 Desktop Runtime. Normal Excel startup loaded the XLL and worker from the managed installation and the system runtime, rebuilt the synthetic research graph to its expected 58-row result, and exited with code 0. The actual package passed all 30 production, 3 Protected View and 3 preview checks, plus 47 package and 14 isolated installer checks. This is a real startup test on an existing development machine, not a clean-machine certification.
+
+That trial found and fixed a native crash in the old build's ribbon shutdown: it called Excel's C API to remove a shortcut outside an allowed callback context. Shortcut registration/removal now belongs to Excel-DNA's `ExcelCommand.ShortCut` lifecycle. The integration harness retains the process handle and checks its exit code, so a crash can no longer count as successful cleanup. See [Excel-DNA's shortcut lifecycle](https://github.com/Excel-DNA/ExcelDna/blob/v1.9.0/Source/ExcelDna.Loader/XlRegistration.cs).
+
+The actual launchers also passed upgrade from candidate 13 to 14, rollback, uninstall and reinstall against the current user's Excel startup registration. Candidate 14 passed the same 36 native Excel checks and normal startup/shutdown. A subsequent shell test reproduced incompatible module discovery when launching a `.cmd` from PowerShell 7. Launchers now select Windows PowerShell's built-in module directory for their child process only. The installer regression exercises all four launchers with an incompatible inherited module, a path containing spaces and a nonzero probe exit code; it touches no Office registration.
 
 ## Support diagnostics
 
 Run `scripts/Get-Diagnostics.ps1 -PackageDirectory <package>` from the repository or packaged folder to print a JSON report with package integrity, source commit, binary versions, Windows architecture and available .NET runtimes. Schema version 2 includes a fixed `packageIssue` code on failure (for example `missing_required_file` or `file_mismatch`), and distinguishes failed runtime discovery from a missing `dotnet` command. Unreadable binary metadata does not prevent the rest of the report. It does not attach to Excel or collect workbook contents, local paths, connections, credentials or logs. Include `DuckStatus()` separately when reporting the runtime actually loaded inside Excel and the affected workbook's computation state. Review any error text before sharing it; engine errors shown in cells may contain source paths or query details.
 
-## Gates before public publication
+## Preview scope and follow-up trials
 
 Development validation includes live reads from the user's Hetzdev S3-compatible endpoint, Enron workbook edits/cache reuse, simulated authenticated S3 outages and recovery, and native preview checks at DPI 192 and 240. These are local results, not certification of every provider or display configuration.
 
-- Clean supported Windows machine: runtime/WebView prerequisites, first install and workbook/preview smoke test.
-- Actual upgrade, rollback and removal, including files locked by an open Excel instance.
-- Representative third-party add-ins and the supported Excel/Windows matrix.
-- Visual review of connections and preview at common DPI/scale settings.
-- Broader S3-compatible provider coverage, access-key/session-token renewal and enterprise-network behaviour. Certify optional AWS profile/SSO providers separately before advertising their support.
-- Complete redistribution notice review, including native extension dependencies; signing identity and installer design.
-- Validate release artifacts against the final tested commit. Crash-orphan spill recovery is implemented and tested against active host/worker leases and unmarked directories.
+The first preview ships with the development-machine installation evidence above. Actual upgrade, rollback, uninstall/reinstall and refusal to install while Excel is open have passed. Candidate 15 additionally passed all 36 native checks, 15 installer checks, normal startup on the system .NET 10.0.14 runtime, and a clean exit after recalculating the saved demo. Screenshots in the README show the actual running add-in with synthetic data. Native redistribution notices are now included from pinned upstream sources; see [third-party notices](../THIRD-PARTY-NOTICES.md).
 
-No public upload, signing purchase, signing identity or clean-machine result is implied by a local development ZIP.
+The following work is deliberately deferred, rather than a blocker for this exploratory preview:
+
+- Clean supported Windows machine: runtime/WebView prerequisites, first install and workbook/preview smoke test. No VM or cloud spend is required for this milestone.
+- Provider-account skill upload/discovery and a live Claude execution trial. The bootstrap-to-help-to-query path has been exercised through OpenAI's Excel integration; automatic discovery is a separate check.
+- Representative third-party add-ins and the broader Excel/Windows matrix.
+- More display scales and monitor transitions for connections and preview.
+- Broader S3-compatible provider coverage, access-key/session-token renewal and enterprise-network behaviour. Optional AWS profile/SSO providers need separate live validation before their support is advertised.
+- Code signing and a more integrated installer/updater, once the public preview demonstrates value.
+
+## Publishing a preview
+
+Run native Excel tests against a package built from the intended commit, and run the demo regression. Preserve user workbooks and original skill archives outside the staged release changes. Push the reviewed branch and check GitHub's Verify workflow before tagging.
+
+The Verify workflow builds from a clean checkout, runs core/read-policy/browser/package/installer checks and retains verified downloads. A pushed `v…-preview.…` tag also enables the publish job. That job requires the package version to match the tag and its source commit to match the clean tagged checkout; it checks download hashes and creates a GitHub **prerelease** with the ZIP, skill ZIP, demo, build metadata and SHA-256 list. It has write permission only in that publishing job. A branch push or pull request does not publish a release. Update `docs/PREVIEW-RELEASE.md` and README links when preparing the next version.
+
+Publication does not imply code signing or clean-machine certification. Crash-orphan spill recovery is implemented and tested against active host/worker leases and unmarked directories.

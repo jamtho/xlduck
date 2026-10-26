@@ -39,6 +39,12 @@ function Cell-Status([string]$address) {
     if ($json -isnot [string] -or -not $json.StartsWith('{')) { throw "Cell status did not return JSON: $json" }
     $json | ConvertFrom-Json
 }
+function Help-Text([string]$formula) {
+    # Evaluate can wrap a scalar UDF result in a single-cell array.
+    $values = @(Invoke-XlDuckExcel { $sheet.Evaluate($formula) })
+    if ($values.Count -ne 1 -or $values[0] -isnot [string]) { throw 'Help did not return exactly one text value.' }
+    [string]$values[0]
+}
 function Explore-Raw($request) {
     $json = $request | ConvertTo-Json -Depth 8 -Compress
     $formula = 'DuckExplore(AZ1000,"' + $json.Replace('"','""') + '")'
@@ -95,6 +101,23 @@ try {
     Wait-Value 'D1' 1
     if ((Wait-Handle 'A1').Length -gt 27) { throw 'Table handles are not compact numbered aliases.' }
     Pass 'new workbooks compute automatically and return compact handles'
+    $beforeHelp = (Stats).statistics.Executions
+    foreach ($topic in @('index','workflow','reference','officejs')) {
+        $help = Help-Text ('DuckHelp("' + $topic + '")')
+        $version = Help-Text 'DuckVersion()'
+        $prefix = if ($topic -eq 'officejs') { "// XlDuck $version help:" } else { "XlDuck $version help:" }
+        if ($help -isnot [string] -or -not $help.StartsWith($prefix) -or $help.Length -gt 30000) { throw "Packaged help unavailable: $topic; returned $($help | ConvertTo-Json -Compress -Depth 3)" }
+        $expectedHelp = switch ($topic) { 'index' { 'DuckHelp("workflow")' } 'workflow' { 'DuckSchema' } 'reference' { 'DuckExplore' } 'officejs' { 'function xlduckReadJson' } }
+        if (-not $help.Contains($expectedHelp)) { throw "Packaged help content incomplete: $topic" }
+    }
+    Formula 'AF1' '=DuckHelp()'
+    [void](Wait-XlDuckCell $sheet 'AF1' -Until { param($v) $v -is [string] -and $v.Contains('DuckHelp("workflow")') })
+    if (-not (Help-Text 'DuckHelp("missing")').StartsWith('#ERROR: Unknown help topic.')) { throw 'Unknown help topic was not actionable.' }
+    if (-not (Help-Text 'DuckHelp(42)').StartsWith('#ERROR: Help topic must be text.')) { throw 'Invalid help topic was accepted.' }
+    if ((Help-Text 'DuckHelp(" WORKFLOW ")') -ne (Help-Text 'DuckHelp("workflow")')) { throw 'Help topic normalization failed.' }
+    if ((Stats).statistics.Executions -ne $beforeHelp) { throw 'Reading help submitted a query.' }
+    $sheet.Range('AF1').ClearContents()
+    Pass 'embedded help is available through formulas and Evaluate without running queries'
     $cellStatus = Cell-Status 'A1'
     if ($cellStatus.state -ne 'succeeded' -or -not $cellStatus.resultReady -or $cellStatus.computations[0].computation.rows -ne 1) { throw "Incorrect cell status: $($cellStatus | ConvertTo-Json -Depth 8 -Compress)" }
     Formula 'AF1' '=DuckCellStatus(A1)'

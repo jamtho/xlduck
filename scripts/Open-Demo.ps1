@@ -1,17 +1,15 @@
 # Copyright (c) 2026 James Thompson
 # SPDX-License-Identifier: MPL-2.0
-param([string]$WorkbookPath, [string]$AddInPath)
+param([string]$WorkbookPath, [string]$AddInPath, [switch]$UseWorkbookInPlace)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'DemoSession.ps1')
 if (-not $WorkbookPath) {
-    $file = Get-ChildItem -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'outputs') -Filter 'XlDuck Research Demo.xlsx' -Recurse -File |
-        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-    if (-not $file) { throw 'Create the research demo or supply -WorkbookPath.' }
-    $WorkbookPath = $file.FullName
+    $WorkbookPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'examples/research-demo/XlDuck Research Demo.xlsx'
+    if (-not (Test-Path -LiteralPath $WorkbookPath)) { throw 'Create the research demo or supply -WorkbookPath.' }
 }
 $session = $null; $sheet = $null; $handedOver = $false
 try {
-    $session = New-XlDuckDemoSession -WorkbookPath $WorkbookPath -AddInPath $AddInPath -CopyWorkbook
+    $session = New-XlDuckDemoSession -WorkbookPath $WorkbookPath -AddInPath $AddInPath -CopyWorkbook:(-not $UseWorkbookInPlace)
     $sheet = $session.Workbook.Worksheets.Item('Research')
     $sheet.Range('C47').Formula2 = '=DuckStatus()'
     $status = Wait-XlDuckCell $sheet 'C47' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).ready }

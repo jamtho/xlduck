@@ -1,0 +1,347 @@
+﻿[
+    {
+        "path":  "duckdb-1.5.6/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/LICENSE",
+        "sha256":  "7E17FD31249FA875CB3B1C5E05C6C3E99B75509F6A2804CA176C217834DE1DCB"
+    },
+    {
+        "path":  "duckdb-1.5.6/extension/icu/third_party/icu/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/extension/icu/third_party/icu/LICENSE",
+        "sha256":  "F0E4446E54A2CEE165D69E007F4787183D497C709664E79D6955691BFEB3F837"
+    },
+    {
+        "path":  "duckdb-1.5.6/extension/tpch/dbgen/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/extension/tpch/dbgen/LICENSE",
+        "sha256":  "9707215566CCFF424AF5D763992690038D34320F1D9B596D237665975EE50476"
+    },
+    {
+        "path":  "duckdb-1.5.6/src/include/duckdb/storage/compression/alp/algorithm/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/src/include/duckdb/storage/compression/alp/algorithm/LICENSE",
+        "sha256":  "905B4E0855CE0A277D19BB7C00D61E3D46598EB62446A95FD8C8C6CCCAD53D86"
+    },
+    {
+        "path":  "duckdb-1.5.6/src/include/duckdb/storage/compression/alprd/algorithm/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/src/include/duckdb/storage/compression/alprd/algorithm/LICENSE",
+        "sha256":  "905B4E0855CE0A277D19BB7C00D61E3D46598EB62446A95FD8C8C6CCCAD53D86"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/brotli/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/brotli/LICENSE",
+        "sha256":  "3D180008E36922A4E8DAEC11C34C7AF264FED5962D07924AEA928C38E8663C94"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/concurrentqueue/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/concurrentqueue/LICENSE",
+        "sha256":  "EAF0DF40F77E929CD83CD4485DE2BDF806C7908DB84A52007A700588F6566331"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/fast_float/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/fast_float/LICENSE",
+        "sha256":  "23F18E03DC49DF91622FE2A76176497404E46CED8A715D9D2B67A7446571CCA3"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/fastpforlib/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/fastpforlib/LICENSE",
+        "sha256":  "9FF562631A04B8CB1030C53FDF461BD749C9AF0655D86E4F17EB270E935A7FE2"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/fmt/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/fmt/LICENSE",
+        "sha256":  "825C9324E70F8C839C8BA910543DD4A7DAEE243B86EF960594C11381A19980B8"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/fsst/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/fsst/LICENSE",
+        "sha256":  "20E9C14FF437A73A6E2B105F1B5AAF9EF24A84D962741C0AB01D04B4910294AB"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/httplib/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/httplib/LICENSE",
+        "sha256":  "4B45CBE16D7B71B89AE6127E26E0D90A029198CA5E958AD8E3D0B8BBED364D8B"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/hyperloglog/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/hyperloglog/LICENSE",
+        "sha256":  "3A3FCDBAECBEB1E7DEA97843961100C637766E59DE4674FED809760283B716E1"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/jaro_winkler/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/jaro_winkler/LICENSE",
+        "sha256":  "077815FFD10F0677D060E9D5C0059592D28C41D1E9985C848435E0EA17EA06C3"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/jemalloc/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/jemalloc/LICENSE",
+        "sha256":  "94AA2CAA98C25D942F58B956C71DBA6A99FF98FC3A31CBC669FE2A4CD0268B53"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/libpg_query/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/libpg_query/LICENSE",
+        "sha256":  "2780B6375A5AB1901472B7694958DD0C8C1381A21F0765CBB64E1923D94C6717"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/lz4/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/lz4/LICENSE",
+        "sha256":  "99B8D2D8011D1CE548C5AAF3270C6BEE014507FA821C4F9A7E300A9E11015DB7"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/mbedtls/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/mbedtls/LICENSE",
+        "sha256":  "9B405EF4C89342F5EAE1DD828882F931747F71001CFBA7D114801039B52AD09B"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/miniz/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/miniz/LICENSE",
+        "sha256":  "0115478D567121238CF6CC1C0C361926CF07A49D9E4C9E66DA97FAC6A01646B3"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/parquet/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/parquet/LICENSE",
+        "sha256":  "70B6A7D630FAE9F49643F9B16BEE42A2FEDA68301F9C14470E7FB5AD0599BB9F"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/pcg/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/pcg/LICENSE",
+        "sha256":  "3FEBF788FD814BF1F350DB169BDC51B28FF7E7596FF1F09CC0181E4FDE42B480"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/pdqsort/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/pdqsort/LICENSE",
+        "sha256":  "323FC18E35FCF058D69D684022EF844F206CB8FEFB2BAC1298FA1767E0B9AE38"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/re2/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/re2/LICENSE",
+        "sha256":  "6040CDA75D90B1738292A631D89934C411EF7FFD543C4D6A1B7EDFC8EDF29449"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/ska_sort/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/ska_sort/LICENSE",
+        "sha256":  "3C3A838F6AC2201BB8255B374FAD34E3E1DE07940C3ACDC09E661E118FB75078"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/skiplist/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/skiplist/LICENSE",
+        "sha256":  "3B9CAC57DBB2D7EC76298CB0D33AFE12F891E1D0DBB38FF17993A14F3480EE7C"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/snappy/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/snappy/LICENSE",
+        "sha256":  "55172044F7E241207117448A4D9D6BA1D0925C8AD66B5D4C08C70ADFA9CC3DE6"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/snowball/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/snowball/LICENSE",
+        "sha256":  "F6F9E4C0E737728CA980DE8595DED046D5E077017C1BB0EE05DC794A01434DAE"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/tdigest/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/tdigest/LICENSE",
+        "sha256":  "43070E2D4E532684DE521B885F385D0841030EFA2B1A20BAFB76133A5E1379C1"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/tdigest/NOTICES",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/tdigest/NOTICES",
+        "sha256":  "5DED9726DA6C5360C0B0BA0725455F57B367DC9B4954BED7CA8F235D26CEE33B"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/thrift/thrift/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/thrift/thrift/LICENSE",
+        "sha256":  "23DF881CEC3192D1F4474633C14EB2EC30A45B84F8DAEB82B9DE5D2BD3AC8218"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/utf8proc/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/utf8proc/LICENSE",
+        "sha256":  "FBC720FCC90FB44396985646F67E4D19BE03E0C0539F7138ED9DC6EFBA49DC49"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/vergesort/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/vergesort/LICENSE",
+        "sha256":  "12DD392860EA2A3633BCE5F33D7EEBD4308A7E3386B4372260E5E72BE7A64033"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/yyjson/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/yyjson/LICENSE",
+        "sha256":  "734D7FB3EB56F0A04E6B7AB0C5D3634624A8BFAA2ACC87A2C03A029B20868CF8"
+    },
+    {
+        "path":  "duckdb-1.5.6/third_party/zstd/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb/069cc9f9b5be802405797faecc284961b07c70ef/third_party/zstd/LICENSE",
+        "sha256":  "8B7BC50EC3ECEE27224E17D4D316A939FA2DDDA9C88E0DDC2F059CE432EDBFB9"
+    },
+    {
+        "path":  "duckdb-httpfs/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb-httpfs/4bc690dba4496c765777a0269d48fdbaff7cdc11/LICENSE",
+        "sha256":  "7E17FD31249FA875CB3B1C5E05C6C3E99B75509F6A2804CA176C217834DE1DCB"
+    },
+    {
+        "path":  "duckdb-aws/LICENSE",
+        "source":  "https://raw.githubusercontent.com/duckdb/duckdb-aws/28c853c084a6e3acd36d7b8018c42438bb8c5a33/LICENSE",
+        "sha256":  "A457B2E4E0DAFAB867E52B8DEEAAC344681706C5020B91556F69D90DBC973894"
+    },
+    {
+        "path":  "ExcelDna-1.9.0/LICENSE.txt",
+        "source":  "https://raw.githubusercontent.com/Excel-DNA/ExcelDna/fb3c19e2def68c6c64d6fece13daa9efd36a2748/LICENSE.txt",
+        "sha256":  "55D135B166B3F19B54B1FE40712EF6FF4CC5ACCE60DE4469360A6677C09DA63B"
+    },
+    {
+        "path":  "ExcelDna-1.9.0/Source/ExcelDna.PackedResources/Lzma/LICENSE.txt",
+        "source":  "https://raw.githubusercontent.com/Excel-DNA/ExcelDna/fb3c19e2def68c6c64d6fece13daa9efd36a2748/Source/ExcelDna.PackedResources/Lzma/LICENSE.txt",
+        "sha256":  "4307BEB58D67762E7617A2AD58D02949C33680A1125852C412B6A6F97E7640BF"
+    },
+    {
+        "path":  "curl-8.17.0/COPYING",
+        "source":  "https://raw.githubusercontent.com/curl/curl/400fffa90f30c7a2dc762fa33009d24851bd2016/COPYING",
+        "sha256":  "E18F1989333B70044B2ADFB7DC2F905D0119DBDCAC3BC9F4BC9D540E3A29DE5B"
+    },
+    {
+        "path":  "curl-8.17.0/lib/curlx/inet_ntop.c",
+        "source":  "https://raw.githubusercontent.com/curl/curl/400fffa90f30c7a2dc762fa33009d24851bd2016/lib/curlx/inet_ntop.c",
+        "sha256":  "AE857FA7192122D3D84F40B14339147CCDF2F86F3D8F0021774A1AF8CCDDC40C"
+    },
+    {
+        "path":  "openssl-3.6.0/LICENSE.txt",
+        "source":  "https://raw.githubusercontent.com/openssl/openssl/7b371d80d959ec9ab4139d09d78e83c090de9779/LICENSE.txt",
+        "sha256":  "7D5450CB2D142651B8AFA315B5F238EFC805DAD827D91BA367D8516BC9D49E7A"
+    },
+    {
+        "path":  "openssl-3.6.0/external/perl/Text-Template-1.56/LICENSE",
+        "source":  "https://raw.githubusercontent.com/openssl/openssl/7b371d80d959ec9ab4139d09d78e83c090de9779/external/perl/Text-Template-1.56/LICENSE",
+        "sha256":  "9837F05336EF3CBACB6A96E1672A0426D81AD01191F214B8D48E22CA62338181"
+    },
+    {
+        "path":  "zlib-1.3.1/LICENSE",
+        "source":  "https://raw.githubusercontent.com/madler/zlib/51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf/LICENSE",
+        "sha256":  "845EFC77857D485D91FB3E0B884AAA929368C717AE8186B66FE1ED2495753243"
+    },
+    {
+        "path":  "aws-sdk-cpp-1.11.702/LICENSE",
+        "source":  "https://raw.githubusercontent.com/aws/aws-sdk-cpp/b26e514dda5e1fcd5151bfd06ea2d5e636c1a5eb/LICENSE",
+        "sha256":  "B40930BBCF80744C86C46A12BC9DA056641D722716C378F5659B9E555EF833E1"
+    },
+    {
+        "path":  "aws-sdk-cpp-1.11.702/LICENSE.txt",
+        "source":  "https://raw.githubusercontent.com/aws/aws-sdk-cpp/b26e514dda5e1fcd5151bfd06ea2d5e636c1a5eb/LICENSE.txt",
+        "sha256":  "D721F7DF04E3F82FF104DE91A734C4E2EA40E8E4BB2F89DC4D4C7DD6EBBECB40"
+    },
+    {
+        "path":  "aws-sdk-cpp-1.11.702/NOTICE.txt",
+        "source":  "https://raw.githubusercontent.com/aws/aws-sdk-cpp/b26e514dda5e1fcd5151bfd06ea2d5e636c1a5eb/NOTICE.txt",
+        "sha256":  "8F43C4888A1E14F48C102B3F5556D581D02EA3AFC9CBE31A2B714DAE9383EF36"
+    },
+    {
+        "path":  "aws-crt-cpp-0.36.0/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-crt-cpp/b6417662c0254f7fac5382d080a4dacd78e4afca/LICENSE",
+        "sha256":  "CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30"
+    },
+    {
+        "path":  "aws-crt-cpp-0.36.0/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-crt-cpp/b6417662c0254f7fac5382d080a4dacd78e4afca/NOTICE",
+        "sha256":  "90F9B4A63A71D4A70420242C414B2FE24EE809C094C2DBAC3B8871A646469293"
+    },
+    {
+        "path":  "aws-c-common-0.12.6/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-common/95515a8b1ff40d5bb14f965ca4cbbe99ad1843df/LICENSE",
+        "sha256":  "CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30"
+    },
+    {
+        "path":  "aws-c-common-0.12.6/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-common/95515a8b1ff40d5bb14f965ca4cbbe99ad1843df/NOTICE",
+        "sha256":  "F43576AD8C3330CD2647C8E8DC3572D8BF7DFC47A13D56DBDB8C1ABBEF900367"
+    },
+    {
+        "path":  "aws-c-cal-0.9.13/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-cal/1cb9412158890201a6ffceed779f90fe1f48180c/LICENSE",
+        "sha256":  "09E8A9BCEC8067104652C168685AB0931E7868F9C8284B66F5AE6EDAE5F1130B"
+    },
+    {
+        "path":  "aws-c-cal-0.9.13/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-cal/1cb9412158890201a6ffceed779f90fe1f48180c/NOTICE",
+        "sha256":  "06DA05EC640017CC2BC80E4856CF14A9002EFDD57B1ED4655714BFE5E777D216"
+    },
+    {
+        "path":  "aws-c-io-0.24.0/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-io/996d42e484a3749c4dd05e4e9fed1d38de95eb81/LICENSE",
+        "sha256":  "CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30"
+    },
+    {
+        "path":  "aws-c-io-0.24.0/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-io/996d42e484a3749c4dd05e4e9fed1d38de95eb81/NOTICE",
+        "sha256":  "F0604DF9ED45FB474874F8B363700AA2E493705799FFD6E1362B899AA70653E4"
+    },
+    {
+        "path":  "aws-c-event-stream-0.5.9/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-event-stream/f43a3d24a7c1f8b50f709ccb4fdf4c7fd2827fff/LICENSE",
+        "sha256":  "CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30"
+    },
+    {
+        "path":  "aws-c-event-stream-0.5.9/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-event-stream/f43a3d24a7c1f8b50f709ccb4fdf4c7fd2827fff/NOTICE",
+        "sha256":  "CA6098641E6982418933B0EB3973E56F544E94932F1244CB9352DB60321A040F"
+    },
+    {
+        "path":  "aws-checksums-0.2.7/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-checksums/9978ba2c33a7a259c1a6bd0f62abe26827d03b85/LICENSE",
+        "sha256":  "B40930BBCF80744C86C46A12BC9DA056641D722716C378F5659B9E555EF833E1"
+    },
+    {
+        "path":  "aws-c-auth-0.9.4/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-auth/37ebf2d27cf44386c7f194221c3e03992fcb4c8d/LICENSE",
+        "sha256":  "CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30"
+    },
+    {
+        "path":  "aws-c-auth-0.9.4/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-auth/37ebf2d27cf44386c7f194221c3e03992fcb4c8d/NOTICE",
+        "sha256":  "F228F9B9F0405035D8BC2DBD9F018533B641136C7110F9E6A34EDEC7DD52E310"
+    },
+    {
+        "path":  "aws-c-http-0.10.7/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-http/07302aa4a2892adbbf95ee6d458db3bb240030d3/LICENSE",
+        "sha256":  "CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30"
+    },
+    {
+        "path":  "aws-c-http-0.10.7/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-http/07302aa4a2892adbbf95ee6d458db3bb240030d3/NOTICE",
+        "sha256":  "2D1F498EF5EC8F71A7590AD3447688DE6F0276434C619B5C4CE6E53C068EA33E"
+    },
+    {
+        "path":  "aws-c-mqtt-0.13.3/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-mqtt/1d512d92709f60b74e2cafa018e69a2e647f28e9/LICENSE",
+        "sha256":  "CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30"
+    },
+    {
+        "path":  "aws-c-mqtt-0.13.3/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-mqtt/1d512d92709f60b74e2cafa018e69a2e647f28e9/NOTICE",
+        "sha256":  "09211EC471E551C78CD57ABA8344847091F297A6AE389288BEB5D55076AB2C76"
+    },
+    {
+        "path":  "aws-c-s3-0.11.3/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-s3/3f81fc9e90b11e6b3e434b166e275f65d5c98d39/LICENSE",
+        "sha256":  "09E8A9BCEC8067104652C168685AB0931E7868F9C8284B66F5AE6EDAE5F1130B"
+    },
+    {
+        "path":  "aws-c-s3-0.11.3/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-s3/3f81fc9e90b11e6b3e434b166e275f65d5c98d39/NOTICE",
+        "sha256":  "D4290ED64C2EDD0FCE1D84E3F9DFB2881240FE534DEF76B8CD29ED6AF683E287"
+    },
+    {
+        "path":  "aws-c-sdkutils-0.2.4/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-sdkutils/f678bda9e21f7217e4bbf35e0d1ea59540687933/LICENSE",
+        "sha256":  "09E8A9BCEC8067104652C168685AB0931E7868F9C8284B66F5AE6EDAE5F1130B"
+    },
+    {
+        "path":  "aws-c-sdkutils-0.2.4/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-sdkutils/f678bda9e21f7217e4bbf35e0d1ea59540687933/NOTICE",
+        "sha256":  "D4290ED64C2EDD0FCE1D84E3F9DFB2881240FE534DEF76B8CD29ED6AF683E287"
+    },
+    {
+        "path":  "aws-c-compression-0.3.1/LICENSE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-compression/f951ab2b819fc6993b6e5e6cfef64b1a1554bfc8/LICENSE",
+        "sha256":  "CFC7749B96F63BD31C3C42B5C471BF756814053E847C10F3EB003417BC523D30"
+    },
+    {
+        "path":  "aws-c-compression-0.3.1/NOTICE",
+        "source":  "https://raw.githubusercontent.com/awslabs/aws-c-compression/f951ab2b819fc6993b6e5e6cfef64b1a1554bfc8/NOTICE",
+        "sha256":  "758DB6C88293E55E9790ADC73E9E58066405C408797AFA9D48BEF18D308EB49E"
+    }
+]

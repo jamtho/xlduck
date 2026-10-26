@@ -95,8 +95,15 @@ $requiredFiles = @(
     'preview/leaflet.js','preview/leaflet.css','preview/sql-formatter.min.js',
     'preview/licenses/vega.txt','preview/licenses/vega-lite.txt','preview/licenses/vega-embed.txt',
     'preview/licenses/vega-interpreter.txt','preview/licenses/leaflet.txt','preview/licenses/sql-formatter.txt',
-    'LICENSE','README.md','docs/FORMULAS.md','docs/RELEASE.md','licenses/nuget-packages.json',
-    'build-info.json','scripts/Get-Diagnostics.ps1','scripts/Verify-Package.ps1'
+    'LICENSE','README.md','docs/FORMULAS.md','docs/RELEASE.md','docs/INSTALL.md','docs/AGENT-INTEGRATION.md','docs/agent-exploration.js','licenses/nuget-packages.json',
+    'build-info.json','scripts/Get-Diagnostics.ps1','scripts/Verify-Package.ps1',
+    'docs/AGENT-WORKFLOW.md','scripts/Setup.ps1','scripts/Setup.Core.ps1',
+    'Install.cmd','Uninstall.cmd','Rollback.cmd','Install Codex Skill.cmd','START-HERE.html',
+    'agent/xlduck/SKILL.md','agent/xlduck-skill.zip',
+    'THIRD-PARTY-NOTICES.md','third-party/notices.json',
+    'third-party/notices/duckdb-1.5.6/LICENSE','third-party/notices/duckdb-httpfs/LICENSE','third-party/notices/duckdb-aws/LICENSE',
+    'docs/assets/xlduck-logo.png','docs/assets/research-chart.jpg','docs/assets/research-table.jpg',
+    'examples/research-demo/XlDuck Research Demo.xlsx','examples/research-demo/README.md'
 )
 foreach ($required in $requiredFiles) {
     if (-not $seen.ContainsKey($required)) { Fail-Package 'missing_required_file' "Missing required package file: $required" }

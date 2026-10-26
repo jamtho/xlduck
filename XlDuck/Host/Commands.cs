@@ -54,6 +54,6 @@ public static class DuckCommands
         }
         WorkbookHost.Recalculate(book);
     }
-    [ExcelCommand(Name = "DuckTogglePreview")]
+    [ExcelCommand(Name = "DuckTogglePreview", ShortCut = "^+P")]
     public static void TogglePreview() => Preview.PreviewPaneManager.Instance.TogglePane();
 }

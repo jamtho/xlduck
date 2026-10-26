@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Workbook, SpreadsheetFile } from '@oai/artifact-tool';
 
-const outputDir = path.resolve(process.argv[2] ?? 'outputs/01a16b0a-0074-7383-ba33-19bcf4c27b0f');
+const outputDir = path.resolve(process.argv[2] ?? 'examples/research-demo');
 const supportDir = path.resolve('artifacts/demo-authoring');
 await fs.mkdir(outputDir, {recursive:true});
 await fs.mkdir(supportDir, {recursive:true});
@@ -19,7 +19,7 @@ for (const [sheet, extent] of [[demo,'A1:H47'],[data,'A1:G92']]) {
   sheet.getRange(extent).format.verticalAlignment = 'center';
   sheet.getRange('A:A').format.columnWidth = 3;
 }
-for (const [column,width] of Object.entries({B:25,C:26,D:18,E:25,F:17,G:20,H:3}))
+for (const [column,width] of Object.entries({B:25,C:32,D:3,E:25,F:17,G:20,H:3}))
   demo.getRange(`${column}:${column}`).format.columnWidth = width;
 for (const [column,width] of Object.entries({B:20,C:12,D:18,E:20,F:18,G:3}))
   data.getRange(`${column}:${column}`).format.columnWidth = width;
@@ -40,8 +40,8 @@ function section(sheet,range,label) {
   text(sheet,range.split(':')[0],label);
 }
 title(demo,'XlDuck research playground','G');
-text(demo,'B4','Enable this workbook from XlDuck > Enable / Connections.');
-text(demo,'B5','Synthetic sensor data. Edit the amber inputs, then select a chart handle to preview it.');
+text(demo,'B4','Edit the amber inputs. The query graph updates automatically.');
+text(demo,'B5','Select a handle, then press Ctrl+Shift+P to inspect it.');
 demo.getRange('B4:G5').format.font.color = palette.muted;
 demo.getRange('B7:B9').values = [['First day (1–28)'],['Site'],['Minimum response (a.u.)']];
 demo.getRange('C7:C9').values = [[8],['All'],[35]];
@@ -87,7 +87,7 @@ const formulas = {
 for (const [cell,formula] of Object.entries(formulas)) demo.getRange(cell).formulas = [[formula]];
 const handleLabels = {C11:'Select for line chart',C12:'Select for bar chart',C16:'Captured table',C17:'Filtered table',C18:'Lazy SQL recipe',C19:'Shared table',C20:'Site summary',C21:'Daily means'};
 for (const [cell,label] of Object.entries(handleLabels)) {
-  demo.getRange(cell).setNumberFormat(`General;General;General;"${label}"`);
+  demo.getRange(cell).setNumberFormat('General');
   demo.getRange(cell).format.fill = cell === 'C18' ? palette.purple : palette.pale;
   demo.getRange(cell).format.font.color = palette.navy;
 }

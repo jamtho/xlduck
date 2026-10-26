@@ -41,7 +41,7 @@ try {
     }
     $baseline = Verify-Results
     if ($source.Range('B7').Value2 -cne '0001' -or $source.Range('B7').Text -cne '0001' -or $sheet.Range('B30').Value2 -cne '0022' -or $sheet.Range('B30').Text -cne '0022') { throw 'The synthetic sample identifier lost its leading zeros.' }
-    if ($sheet.Range('C11').Text -ne 'Select for line chart') { throw 'Chart handle display format was not preserved.' }
+    if ($sheet.Range('C11').Text -cne $sheet.Range('C11').Value2) { throw 'The demo must display its actual chart handle.' }
     Write-Host "PASS default demo: $baseline observations, exact identifiers, summaries and plot handles."
     $sheet.Range('C7').Value2 = 15
     [void](Verify-Results 15)

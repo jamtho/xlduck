@@ -58,6 +58,9 @@ function New-XlDuckExcelSession {
             throw 'Excel reused an existing process. Refusing to modify or close it.'
         }
         $ownedProcess = Get-Process -Id $excelProcessId -ErrorAction Stop
+        # Retain a handle before Excel exits, so WaitForExit and ExitCode can
+        # distinguish clean shutdown from a crash even after the PID disappears.
+        [void]$ownedProcess.Handle
         $session = [pscustomobject]@{
             Application = $application
             Workbook = $null
@@ -123,6 +126,9 @@ function Close-XlDuckExcelSession {
         try {
             if (-not $Session.Process.WaitForExit(5000)) {
                 throw "Owned Excel PID $($Session.ProcessId) did not exit after Quit. It was not forcibly terminated."
+            }
+            if ($Session.Process.ExitCode -ne 0) {
+                throw "Owned Excel PID $($Session.ProcessId) crashed during shutdown (exit code $($Session.Process.ExitCode))."
             }
         } finally { $Session.Process.Dispose() }
     }

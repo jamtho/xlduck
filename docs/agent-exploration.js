@@ -2,6 +2,17 @@
 // SPDX-License-Identifier: MPL-2.0
 // Paste these helpers into a permitted Office.js script. They never write cells.
 // Worksheet.evaluate requires ExcelApiDesktop 1.1; use worksheet formulas if unavailable.
+function xlduckReadJson(response, functionName) {
+    let value = response.value;
+    // Desktop Office.js may wrap an XLL scalar in [value] or [[value]].
+    // Accept exactly one cell, never silently select from a larger result.
+    for (let depth = 0; depth < 2 && Array.isArray(value) && value.length === 1; depth++) value = value[0];
+    if (typeof value !== 'string' || !value.startsWith('{')) {
+        throw new Error(`${functionName} did not return one JSON value. Check the loaded XlDuck build and formula-evaluation support.`);
+    }
+    return JSON.parse(value);
+}
+
 async function xlduckExplore(ctx, sheetName, request, waitMs = 4000) {
     if (!Number.isFinite(waitMs) || waitMs < 0 || waitMs > 10000) throw new Error('waitMs must be between 0 and 10000.');
     if (typeof request.id !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(request.id)) throw new Error('Supply a request id of up to 64 letters, digits or hyphens.');
@@ -14,8 +25,7 @@ async function xlduckExplore(ctx, sheetName, request, waitMs = 4000) {
     }
     const transferred = formula(request).length > 255;
     function read(response) {
-        if (typeof response.value !== 'string' || !response.value.startsWith('{')) throw new Error('DuckExplore did not return JSON. Check this XlDuck build and formula-evaluation support.');
-        const status = JSON.parse(response.value);
+        const status = xlduckReadJson(response, 'DuckExplore');
         if (session && status.session && status.session !== session) throw new Error('The workbook session changed; review and start a new investigation explicitly.');
         session = status.session || session;
         return status;
@@ -51,7 +61,7 @@ async function xlduckExplore(ctx, sheetName, request, waitMs = 4000) {
         await ctx.sync();
         const status = read(response);
         if (transferred && status.state === 'initializing') return status;
-        if (['succeeded', 'failed', 'cancelled'].includes(status.state) || Date.now() >= deadline) return status;
+        if (['succeeded', 'failed', 'cancelled'].includes(status.state) || Date.now() >= deadline || typeof setTimeout !== 'function') return status;
         // Initialization admits no operation. Once admitted, every wait is a poll of the same id.
         next = status.state === 'initializing' ? request : {op: 'poll', id: request.id};
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -67,11 +77,10 @@ async function xlduckWaitCell(ctx, sheetName, address, waitMs = 4000) {
     for (;;) {
         const response = sheet.evaluate(`DuckCellStatus(${address})`);
         await ctx.sync();
-        if (typeof response.value !== 'string' || !response.value.startsWith('{')) throw new Error('DuckCellStatus did not return JSON.');
-        const status = JSON.parse(response.value);
+        const status = xlduckReadJson(response, 'DuckCellStatus');
         if (session && status.session && status.session !== session) throw new Error('The workbook session changed while waiting.');
         session = status.session || session;
-        if (['succeeded', 'failed', 'cancelled', 'awaiting_calculation', 'not_evaluated', 'paused'].includes(status.state) || Date.now() >= deadline) return status;
+        if (['succeeded', 'failed', 'cancelled', 'awaiting_calculation', 'not_evaluated', 'paused'].includes(status.state) || Date.now() >= deadline || typeof setTimeout !== 'function') return status;
         await new Promise(resolve => setTimeout(resolve, 100));
     }
 }

@@ -53,4 +53,56 @@ jobs:
       - name: Package failure and diagnostics regressions (no Excel)
         shell: powershell
         run: ./tests/Test-Package.ps1 -PackageDirectory artifacts/ci-package
+      - name: Installation lifecycle and bootstrap skill (isolated files and registry)
+        shell: powershell
+        run: ./tests/Test-Setup.ps1 -PackageDirectory artifacts/ci-package
       # Excel and live AWS/SSO checks require their separate owned-machine workflows.
+      - name: Prepare verified downloads
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version
+          New-Item -ItemType Directory artifacts/downloads | Out-Null
+          Copy-Item artifacts/ci-package.zip "artifacts/downloads/xlduck-$version-windows-x64.zip"
+          Copy-Item artifacts/ci-package/agent/xlduck-skill.zip artifacts/downloads/
+          Copy-Item 'examples/research-demo/XlDuck Research Demo.xlsx' artifacts/downloads/
+          Copy-Item artifacts/ci-package/build-info.json artifacts/downloads/
+          Get-ChildItem artifacts/downloads -File | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash -LiteralPath $_.FullName).Hash.ToLowerInvariant())  $($_.Name)"
+          } | Set-Content artifacts/downloads/SHA256SUMS.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verified-preview
+          path: artifacts/downloads/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-preview:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-preview.')
+    needs: core-and-preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: verified-preview
+          path: downloads
+      - name: Check release provenance
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version
+          if ($env:GITHUB_REF_NAME -cne "v$version") { throw 'Tag and package version differ.' }
+          $build = Get-Content downloads/build-info.json -Raw | ConvertFrom-Json
+          if ($build.sourceCommit -cne $env:GITHUB_SHA -or $build.trackedChanges -or $build.untrackedFilesPresent) { throw 'Release must come from the clean tagged commit.' }
+          Push-Location downloads
+          sha256sum --check SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Download checksum verification failed.' }
+          Pop-Location
+      - name: Publish the tested preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" downloads/* --verify-tag --prerelease --title "XlDuck ${RELEASE_TAG#v}" --notes-file docs/PREVIEW-RELEASE.md

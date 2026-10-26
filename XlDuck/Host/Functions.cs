@@ -14,7 +14,6 @@ public sealed class AddIn : IExcelAddIn
     public void AutoOpen()
     {
         WorkbookHost.Start();
-        XlCall.Excel(XlCall.xlcOnKey, "^+P", "DuckTogglePreview");
     }
     public void AutoClose()
     {
@@ -22,7 +21,8 @@ public sealed class AddIn : IExcelAddIn
         try { Preview.PreviewPaneManager.CloseAll(); }
         catch (Exception error) { Log.Error("Preview shutdown", error); }
         finally { WorkbookHost.Stop(); }
-        try { XlCall.Excel(XlCall.xlcOnKey, "^+P"); } catch { }
+        // Ribbon shutdown callbacks are outside Excel's C API context. Excel-DNA
+        // owns shortcut registration and cleanup through ExcelCommand.ShortCut.
         Log.Write("Add-in shutdown completed.");
     }
 }
@@ -247,7 +247,7 @@ public static partial class DuckFunctions
     [ExcelFunction(IsMacroType = true)] public static object DuckDate(double serial) => Date(serial, false);
     [ExcelFunction(IsMacroType = true)] public static object DuckDateTime(double serial) => Date(serial, true);
     private static object Date(double serial, bool time) { try { return ExcelValues.DateText(serial, WorkbookHost.Caller().Book.Date1904, time); } catch (Exception error) { return Fail(error); } }
-    [ExcelFunction] public static string DuckVersion() => "0.2.0-dev";
+    [ExcelFunction] public static string DuckVersion() => "0.2.0-preview.1";
     [ExcelFunction] public static string DuckLibraryVersion() => "v1.5.6";
     [ExcelFunction(IsMacroType = true, IsVolatile = true, Description = "Workbook readiness and computation diagnostics as JSON; no SQL or credentials.")]
     public static string DuckStatus()

@@ -46,6 +46,9 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Ribbon.xml" />
+    <EmbeddedResource Include="../docs/AGENT-WORKFLOW.md" LogicalName="XlDuck.Help.Workflow.md" />
+    <EmbeddedResource Include="../docs/FORMULAS.md" LogicalName="XlDuck.Help.Reference.md" />
+    <EmbeddedResource Include="../docs/agent-exploration.js" LogicalName="XlDuck.Help.OfficeJs.js" />
   </ItemGroup>
 
 </Project>
