@@ -1,0 +1,20 @@
+[
+  {
+    "mode": "inproc",
+    "startupMs": 67.9782,
+    "chainMs": 11.655,
+    "engineMs": 10.667599999999998,
+    "cancellationMs": 2.0916,
+    "captureMs": 8.2502,
+    "outputMs": 4.1
+  },
+  {
+    "mode": "worker",
+    "startupMs": 154.2443,
+    "chainMs": 14.3635,
+    "engineMs": 11.3874,
+    "cancellationMs": 0.7944,
+    "captureMs": 27.8835,
+    "outputMs": 15.6399
+  }
+]

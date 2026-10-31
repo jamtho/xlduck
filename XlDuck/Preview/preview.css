@@ -1,0 +1,260 @@
+* {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 13px;
+            color: #333;
+            background: #f5f5f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            padding: 12px;
+        }
+
+        .header {
+            flex-shrink: 0;
+            margin-bottom: 12px;
+        }
+
+        .title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+
+        .handle {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11px;
+            color: #666;
+            word-break: break-all;
+        }
+
+        .content {
+            flex: 1;
+            overflow: auto;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        /* Empty state */
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #888;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* Error state */
+        .error-message {
+            padding: 16px;
+            color: #c00;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Schema table */
+        .schema-section {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .schema-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .schema-table th,
+        .schema-table td {
+            text-align: left;
+            padding: 4px 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .schema-table th {
+            font-weight: 600;
+            color: #666;
+            background: #fafafa;
+        }
+
+        .schema-table .type {
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: #0066cc;
+        }
+
+        /* Data grid */
+        .data-section {
+            padding: 0;
+        }
+
+        .data-info {
+            padding: 8px 12px;
+            font-size: 11px;
+            color: #666;
+            background: #fafafa;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-grid-container {
+            overflow: auto;
+            max-height: 400px;
+        }
+
+        .data-grid {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+
+        .data-grid th,
+        .data-grid td {
+            text-align: left;
+            padding: 4px 8px;
+            border-bottom: 1px solid #eee;
+            border-right: 1px solid #eee;
+            white-space: nowrap;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .data-grid th {
+            font-weight: 600;
+            background: #f0f0f0;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .data-grid td.null {
+            color: #999;
+            font-style: italic;
+        }
+
+        .data-grid tr:hover td {
+            background: #f5f8ff;
+        }
+
+        /* Fragment display */
+        .frag-section {
+            padding: 12px;
+        }
+
+        .frag-sql {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow: auto;
+            max-height: 200px;
+        }
+
+        .frag-args {
+            margin-top: 12px;
+        }
+
+        .frag-arg {
+            display: flex;
+            padding: 4px 0;
+            font-size: 12px;
+        }
+
+        .frag-arg-name {
+            font-weight: 600;
+            color: #666;
+            min-width: 80px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+
+        .frag-arg-value {
+            flex: 1;
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: #0066cc;
+            word-break: break-all;
+        }
+
+        /* Plot display */
+        .plot-section {
+            padding: 12px;
+        }
+
+        .plot-container {
+            width: 100%;
+            min-height: 300px;
+            overflow: hidden;
+        }
+
+        .plot-info {
+            margin-top: 12px;
+            padding: 8px;
+            background: #fafafa;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #666;
+        }
+
+        .plot-info-row {
+            display: flex;
+            padding: 2px 0;
+        }
+
+        .plot-info-label {
+            font-weight: 600;
+            min-width: 80px;
+        }
+
+        .plot-info-value {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: #0066cc;
+        }
+
+        .plot-error {
+            padding: 16px;
+            background: #fff3f3;
+            border: 1px solid #ffcccc;
+            border-radius: 4px;
+            color: #c00;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+
+        /* Map container */
+        .map-container {
+            width: 100%;
+            height: clamp(280px, 65vh, 600px);
+        }
+
+        .map-tile-notice { padding: 8px; color: #765200; background: #fff7dc; }
+        .leaflet-control { max-width: calc(100% - 20px); overflow-wrap: anywhere; }

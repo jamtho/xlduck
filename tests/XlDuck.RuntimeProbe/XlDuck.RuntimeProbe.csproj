@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ProbeFramework Condition="'$(ProbeFramework)' == ''">net48</ProbeFramework>
+    <ProbeId Condition="'$(ProbeId)' == ''">Framework</ProbeId>
+    <TargetFramework>$(ProbeFramework)</TargetFramework>
+    <AssemblyName>XlDuck.RuntimeProbe$(ProbeId)</AssemblyName>
+    <NuGetLockFilePath>packages.$(ProbeId).lock.json</NuGetLockFilePath>
+    <ExcelAddInName>$(AssemblyName)</ExcelAddInName>
+    <ExcelAddInFileName>$(AssemblyName)</ExcelAddInFileName>
+    <DefineConstants>$(DefineConstants);PROBE_$(ProbeId)</DefineConstants>
+    <LangVersion>12</LangVersion>
+    <ExcelAddInExplicitExports>true</ExcelAddInExplicitExports>
+    <ExcelDnaCreate32BitAddIn>false</ExcelDnaCreate32BitAddIn>
+    <RunExcelDnaPack>false</RunExcelDnaPack>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ExcelDna.AddIn" Version="1.9.0" />
+    <PackageReference Include="ExcelDna.Integration" Version="1.9.0" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,25 @@
+﻿{
+    "mode":  "worker",
+    "publisher":  "targeted",
+    "depth":  8,
+    "repeats":  3,
+    "rtdThrottleMs":  2000,
+    "coldMs":  251.9833,
+    "editSamplesMs":  [
+                          33.264900000000004,
+                          25.8229,
+                          42.6084
+                      ],
+    "unchangedRecalcMs":  5.7261000000000006,
+    "checks":  [
+                   "chain",
+                   "changed input",
+                   "full recalc reuse",
+                   "formula reentry reuse",
+                   "scalar",
+                   "spill",
+                   "preview data",
+                   "workbook isolation",
+                   "restart"
+               ]
+}

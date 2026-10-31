@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ExcelAddInExplicitExports>true</ExcelAddInExplicitExports>
+    <ExcelDnaCreate32BitAddIn>false</ExcelDnaCreate32BitAddIn>
+    <RunExcelDnaPack>false</RunExcelDnaPack>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../XlDuck.Client/XlDuck.Client.csproj" />
+    <PackageReference Include="ExcelDna.AddIn" Version="1.9.0" />
+    <PackageReference Include="ExcelDna.Integration" Version="1.9.0" />
+    <PackageReference Include="ExcelDna.Interop" Version="15.0.1" />
+  </ItemGroup>
+</Project>

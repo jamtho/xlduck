@@ -7,19 +7,48 @@
     <UseWindowsForms>true</UseWindowsForms>
     <EnableComHosting>true</EnableComHosting>
     <ExcelDnaPackCompressResources>false</ExcelDnaPackCompressResources>
+    <ExcelAddInExplicitExports>true</ExcelAddInExplicitExports>
+    <ExcelDnaCreate32BitAddIn>false</ExcelDnaCreate32BitAddIn>
+    <RunExcelDnaPack>false</RunExcelDnaPack>
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ExcelDna.AddIn" Version="1.8.0" />
-    <PackageReference Include="ExcelDna.Integration" Version="1.8.0" />
-    <PackageReference Include="DuckDB.NET.Data.Full" Version="1.2.1" />
+    <PackageReference Include="ExcelDna.AddIn" Version="1.9.0" />
+    <PackageReference Include="ExcelDna.Integration" Version="1.9.0" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
-    <PackageReference Include="Microsoft.Office.Interop.Excel" Version="15.0.4795.1001" />
+    <PackageReference Include="ExcelDna.Interop" Version="15.0.1" />
+    <ProjectReference Include="../XlDuck.Client/XlDuck.Client.csproj" />
+    <ProjectReference Include="../XlDuck.Host/XlDuck.Host.csproj" />
+    <ProjectReference Include="../XlDuck.Worker/XlDuck.Worker.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Preview\preview.html" />
+    <Content Include="../artifacts/reader-extensions/v1.5.6/windows_amd64/*.duckdb_extension" Link="readers/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../artifacts/preview-assets/**/*" Link="preview/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Preview/preview.html;Preview/preview.js;Preview/preview.css" Link="preview/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CopyWorkbookWorker" AfterTargets="Build">
+    <MSBuild Projects="../XlDuck.Worker/XlDuck.Worker.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="WorkerTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <WorkerDirectory>@(WorkerTargetPath->'%(RootDir)%(Directory)')</WorkerDirectory>
+    </PropertyGroup>
+    <Error Condition="'$(WorkerDirectory)' == '' Or !Exists('$(WorkerDirectory)XlDuck.Worker.dll')" Text="The workbook worker output could not be located." />
+    <ItemGroup>
+      <WorkerFiles Include="$(WorkerDirectory)/*" />
+      <WorkerNative Include="$(WorkerDirectory)/runtimes/win-x64/native/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(WorkerFiles)" DestinationFolder="$(TargetDir)worker" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(WorkerNative)" DestinationFolder="$(TargetDir)worker/runtimes/win-x64/native" SkipUnchangedFiles="true" />
+  </Target>
+
+  <ItemGroup>
     <EmbeddedResource Include="Ribbon.xml" />
+    <EmbeddedResource Include="../docs/AGENT-WORKFLOW.md" LogicalName="XlDuck.Help.Workflow.md" />
+    <EmbeddedResource Include="../docs/FORMULAS.md" LogicalName="XlDuck.Help.Reference.md" />
+    <EmbeddedResource Include="../docs/agent-exploration.js" LogicalName="XlDuck.Help.OfficeJs.js" />
   </ItemGroup>
 
 </Project>

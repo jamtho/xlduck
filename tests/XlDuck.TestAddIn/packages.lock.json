@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0-windows7.0": {
+      "ExcelDna.AddIn": {
+        "type": "Direct",
+        "requested": "[1.9.0, )",
+        "resolved": "1.9.0",
+        "contentHash": "+jxXXswl6ds2ZGTwsuKWwO8crfzqvBFqd/t3PmEtg2YR6EN9F2pA97hiXblckhWZ6AKBlSGEC/ONTrCON2O33A==",
+        "dependencies": {
+          "ExcelDna.Integration": "[1.9.0]"
+        }
+      },
+      "ExcelDna.Integration": {
+        "type": "Direct",
+        "requested": "[1.9.0, )",
+        "resolved": "1.9.0",
+        "contentHash": "A1nbeRWa+rg3RoO9NV9iqNwQxWb9eVNG+Ki3uCfo8D3U8CT11/fzTIvVT3y2LoCTzqRIPwTysqp9sj42MKYw5Q=="
+      },
+      "ExcelDna.Interop": {
+        "type": "Direct",
+        "requested": "[15.0.1, )",
+        "resolved": "15.0.1",
+        "contentHash": "CIKPXlw+6C6v2Em8DVFgkTsrMZoz978CtSG722+dwHi3Tt7JTxQ2BmmBH4yJuzcA9EaOC5AMEmioLkLsvhESQw=="
+      },
+      "xlduck.client": {
+        "type": "Project",
+        "dependencies": {
+          "XlDuck.Core": "[0.2.0-dev, )"
+        }
+      },
+      "xlduck.core": {
+        "type": "Project"
+      }
+    }
+  }
+}

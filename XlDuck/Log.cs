@@ -17,7 +17,7 @@ public static class Log
 
     private static readonly string LogPath = Path.Combine(
         LogDir,
-        $"xlduck-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+        $"xlduck-{DateTime.Now:yyyyMMdd-HHmmss}-{Environment.ProcessId}.log");
 
     private static readonly object _lock = new();
 
@@ -39,6 +39,7 @@ public static class Log
         {
             lock (_lock)
             {
+                if (File.Exists(LogPath) && new FileInfo(LogPath).Length >= 5 * 1024 * 1024) return;
                 var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} {message}";
                 File.AppendAllText(LogPath, line + Environment.NewLine);
                 System.Diagnostics.Debug.WriteLine(line);
@@ -49,8 +50,8 @@ public static class Log
 
     public static void Error(string context, Exception ex)
     {
-        Write($"[ERROR] {context}: {ex.Message}");
-        Write($"        {ex.GetType().Name}: {ex.StackTrace}");
+        // Exception messages can contain SQL, local paths, signed URLs or credentials.
+        Write($"[ERROR] {context}: {ex.GetType().Name}, HRESULT 0x{ex.HResult:X8}");
     }
 
     public static string GetLogPath() => LogPath;

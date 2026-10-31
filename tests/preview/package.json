@@ -1,0 +1,11 @@
+{
+  "name": "xlduck-preview-tests",
+  "private": true,
+  "scripts": {
+    "test": "node preview.test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  },
+  "packageManager": "pnpm@11.25.0"
+}

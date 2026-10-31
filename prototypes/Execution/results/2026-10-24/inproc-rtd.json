@@ -1,0 +1,24 @@
+﻿{
+    "mode":  "inproc",
+    "publisher":  "rtd",
+    "depth":  8,
+    "repeats":  2,
+    "rtdThrottleMs":  2000,
+    "coldMs":  18157.8682,
+    "editSamplesMs":  [
+                          20008.884000000002,
+                          19986.6761
+                      ],
+    "unchangedRecalcMs":  6.0933,
+    "checks":  [
+                   "chain",
+                   "changed input",
+                   "full recalc reuse",
+                   "formula reentry reuse",
+                   "scalar",
+                   "spill",
+                   "preview data",
+                   "workbook isolation",
+                   "restart"
+               ]
+}

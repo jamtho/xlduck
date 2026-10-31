@@ -1,94 +1,50 @@
 # Agent Guidelines
 
-## Commit Messages
+## Commit messages and code
 
-- Write commit messages as a human would - concise, descriptive, imperative mood
-- Do not add "Created with Claude", "Co-Authored-By: Claude", or similar attribution
-- Do not add emoji to commit messages
-- Follow conventional commits style when appropriate (feat:, fix:, refactor:, etc.)
+- Use concise, descriptive imperative commit messages; conventional prefixes where useful. No emoji or generated/co-author attribution.
+- Target .NET 8+ and C# 12+; use file-scoped namespaces and nullable reference types.
+- Keep UDF containers static and functions focused. Catch failures at Excel boundaries and return actionable `#ERROR: message` values.
+- Keep DuckDB and native calls in `XlDuck.Engine`/`XlDuck.Worker`, outside Excel. Do not add an in-process native fast path.
 
-## Code Style
+## Structure and invariants
 
-- Target .NET 8+ with C# 12 features (file-scoped namespaces, nullable reference types)
-- Keep Excel UDFs simple and focused - one function, one purpose
-- Wrap all DuckDB calls in try/catch, returning `#ERROR: message` for Excel display
-- Use static classes for Excel function containers
+- `XlDuck/Host`: production UDFs, commands, workbook COM lifecycle and ribbon.
+- `XlDuck/Preview`: task-pane UI, worker-backed preview, bundled HTML/JS/CSS.
+- `XlDuck.Host`: testable connection/credential storage, date, formula and navigation policies.
+- `XlDuck.Core`: immutable typed requests, SQL-aware binding, leases, queues and protocol.
+- `XlDuck.Engine`, `XlDuck.Client`, `XlDuck.Worker`: one owned DuckDB worker per ordinary workbook.
 
-## Project Structure
+Excel owns the formula DAG. Unchanged SQL and typed inputs reuse retained results. F9, Shift+F9 and unchanged F2/Enter are not source refreshes. Restart affects one workbook. Opening an ordinary saved workbook starts a fresh session. Never change global RTD latency or calculation mode to improve performance.
 
-```
-XlDuck/
-├── XlDuck.csproj          # Project file with Excel-DNA and DuckDB refs
-├── DuckFunctions.cs       # Excel UDFs
-├── RibbonController.cs    # XlDuck ribbon tab callbacks
-├── Ribbon.xml             # Ribbon UI definition
-├── Log.cs                 # File logger to %LOCALAPPDATA%\XlDuck
-├── Preview/
-│   ├── PreviewPane.cs           # WebView2 host (COM-visible UserControl)
-│   ├── PreviewPaneManager.cs    # Singleton managing panes per window
-│   ├── PreviewController.cs     # Debounce and serial queue
-│   ├── PreviewDataProvider.cs   # Data access for preview
-│   ├── PreviewModels.cs         # JSON models for WebView2
-│   └── preview.html             # Embedded HTML UI
-└── bin/Debug/net8.0-windows/
-    ├── XlDuck-AddIn64.xll # Development add-in (use this)
-    └── publish/
-        └── XlDuck-AddIn64-packed.xll  # Standalone distributable
-```
+Only normal Excel Workbooks may run queries; reject IsSandboxed workbooks at host entry points and preserve Protected View. Never add a custom approval gate or change Trust Center. Cell tokens resolve only through the caller session's live registry; worker identity remains session-qualified.
 
-## Development Workflow
+Worksheet SQL is read-and-compute only. Privileged internal temporary-table and connection operations must remain separate from user SQL. No unrestricted config, writes, exports or extension installation. Workers are fault isolation, not OS sandboxes. Preserve exact types and make approximation explicit.
 
-The 64-bit add-in includes native DuckDB; 32-bit does not.
+Workbook state and COM access stay on Excel's main thread. A formula owns leases independently of RTD subscriptions. Do not dispose a workbook on BeforeClose alone: closure may be cancelled. Do not release borrowed Excel RCWs with ReleaseComObject. Retire stale completions by identity and current formula checks.
 
-### TDD Cycle
+## Development and verification
 
-After making code changes, use the reload script to rebuild and restart Excel with the add-in:
+Acquire exact build dependencies with `scripts/Get-ReaderExtensions.ps1` and `scripts/Get-PreviewAssets.ps1`. Build the 64-bit folder distribution; include worker, readers and preview assets. Do not distribute an XLL alone or stale 32-bit output.
+
+After code changes, run the appropriate core/browser checks and the isolated production integration suite:
 
 ```powershell
-# Closes Excel, rebuilds, relaunches with add-in loaded
-powershell -ExecutionPolicy Bypass -File scripts/reload-addin.ps1
-
-# Run the test suite
-powershell -ExecutionPolicy Bypass -File tests/Run-Tests.ps1
+powershell -ExecutionPolicy Bypass -File tests/Run-CoreTests.ps1 -WithReaders
+powershell -ExecutionPolicy Bypass -File tests/Run-Tests.ps1 -WithPreview
 ```
 
-The reload script:
-1. Cleanly closes Excel via COM (no save prompts)
-2. Runs `dotnet build`
-3. Launches Excel with a blank workbook
-4. Registers the XLL add-in
+Use `-NoBuild` for an existing build, `-NoRestore` on the core script after restore, and `-AddInPath` on production tests for an isolated package. Add a reproducing regression for a bug unless there is a sound reason not to. Tests should verify externally meaningful behaviour.
 
-Use `-NoBuild` to skip the build step if you only need to restart Excel.
+`scripts/Reload-AddIn.ps1` opens a new visible development Excel instance using a private build copy. It leaves existing instances alone. Close that instance manually. Ignored copies live in `artifacts/development`; remove a copy only after its owning Excel process has exited.
 
-## Testing
+## Excel automation safety
 
-### Automated Tests
+1. Use `scripts/ExcelSession.ps1` to create and verify an owned process/workbook and to wait boundedly for values. Never select a test instance through ActiveWorkbook or the Running Object Table.
+2. Write `.Formula2`, not `.Formula`, so dynamic arrays spill correctly. Assert `.Value2` independently of column width or formatting.
+3. Do not change Trust Center settings or dismiss unrelated/security prompts automatically.
+4. Never close unrelated workbooks, suppress their save prompts or kill all Excel processes. Failed tests must release their own resources in `finally`.
+5. Keep original process identity/handles for cleanup; avoid PID-reuse and process-exit races.
+6. Validate installation outside the agent's process context. Packaged apps can expose a private HKCU registry view: setup and Excel launched from Codex can both appear successful while Explorer-launched Excel sees no startup entry. Run Install.cmd from File Explorer and verify an ordinary Windows-icon launch, or independently prove that registration and startup work in the ordinary Windows context. Reading back OPEN from the installer process is insufficient.
 
-Tests use PowerShell COM automation to interact with Excel. The test suite requires Excel to be running with the add-in loaded and a workbook open - use `scripts/reload-addin.ps1` to set this up.
-
-### Regression Tests
-
-When fixing a bug, add a test that reproduces the bug unless you have a very good reason not to. This prevents the same bug from returning later. The test should fail before the fix and pass after.
-
-### Key Testing Notes
-
-1. **Use `.Formula2` not `.Formula`** when writing formulas via COM. `.Formula` adds the `@` implicit intersection operator which prevents dynamic array spilling.
-
-2. **xl.exe (xl-cli) may not find Excel via ROT** - use direct PowerShell COM instead:
-   ```powershell
-   $excel = [Runtime.InteropServices.Marshal]::GetActiveObject("Excel.Application")
-   $sheet = $excel.ActiveWorkbook.ActiveSheet
-   ```
-
-3. **Security dialogs block automation** - dismiss the unsigned add-in warning manually before running tests.
-
-4. **Excel must have a workbook open** - create one via COM if needed:
-   ```powershell
-   $excel.Workbooks.Add() | Out-Null
-   ```
-
-## DuckDB Notes
-
-- Single in-memory connection is shared across all function calls
-- Connection is lazily initialized on first use
-- Tables/data persist for the Excel session
+Read `docs/FORMULAS.md` for the user/agent contract and `PLAN-modernization.md` for remaining release gates. Update these when behaviour changes. The user-provided `skill/xlduck.zip` is an original archive; preserve it when updating the unpacked agent guidance.

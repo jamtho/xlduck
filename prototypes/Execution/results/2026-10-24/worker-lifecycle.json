@@ -1,0 +1,20 @@
+﻿{
+    "mode":  "worker",
+    "checks":  [
+                   "branching DAG",
+                   "replace pending formula and recover",
+                   "delete pending formula and recover",
+                   "one subscriber can leave shared work",
+                   "restart during pending work",
+                   "close pending workbook without changing another",
+                   "manual calculation converges without changing application mode",
+                   "worker crash is visible and restart recovers Excel"
+               ],
+    "excelWorkingSetMiB":  293.3,
+    "workerWorkingSetMiB":  43,
+    "branchMs":  29.581000000000003,
+    "replacePendingMs":  452.3055,
+    "restartPendingMs":  316.2115,
+    "manualCalculationPasses":  3,
+    "manualLeafValue":  10
+}

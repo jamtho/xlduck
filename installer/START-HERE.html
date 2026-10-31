@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Install XlDuck</title>
+<style>
+body{font:17px/1.65 system-ui,sans-serif;color:#203248;background:#f2f5f8;margin:0}
+main{max-width:780px;margin:40px auto;padding:36px 46px;background:white;border-radius:12px}
+h1{font-size:36px;margin:0}h2{font-size:23px;margin-top:32px}a{color:#1758a0}
+code,pre{background:#edf2f7;border-radius:4px}code{padding:2px 5px}pre{padding:16px;white-space:pre-wrap}
+.muted{color:#536478}.note{border-left:4px solid #ddb458;padding-left:16px}
+li{margin:8px 0} @media(max-width:700px){main{margin:0;padding:24px}}
+</style><main>
+<p class="muted">XlDuck · Windows x64 · Installation</p>
+<h1>SQL research in Excel</h1>
+<p>Install the add-in once. Excel loads it on normal startup; your workbooks stay ordinary Excel files.</p>
+<p class="note">This release is unsigned. Only use a download whose origin you trust. If Windows marks it as blocked, review the ZIP's Properties → Unblock before extracting it again. Setup does not change Excel's Trust Center or unblock files.</p>
+<h2>1. Check the prerequisites</h2>
+<ul><li>64-bit desktop Excel on Windows x64 (Microsoft 365 or Excel 2021/2024).</li>
+<li><a href="https://dotnet.microsoft.com/en-us/download/dotnet/10.0">.NET 10 Desktop Runtime, Windows x64</a> — choose “Run apps”; no SDK needed.</li>
+<li><a href="https://developer.microsoft.com/en-us/microsoft-edge/webview2/">WebView2 Evergreen Runtime</a> for previews. Many machines already have it.</li></ul>
+<h2>2. Run Install.cmd</h2>
+<p>Save your work and close Excel yourself. In the extracted package, double-click <strong>Install.cmd from Windows File Explorer</strong>. It checks the package and prerequisites, copies the complete add-in into your local application-data folder, and registers it for Excel startup. No administrator rights are needed for XlDuck itself.</p>
+<p>Open Excel from its Windows icon and enter these in separate cells:</p>
+<pre>=DuckVersion()
+=DuckQueryOutScalar("SELECT 42")</pre>
+<p>The query should settle to <strong>42</strong>. For a chart, enter the following, select its handle and choose <strong>XlDuck → Preview Pane</strong>:</p>
+<pre>=DuckPlot(DuckQuery("SELECT range AS n FROM range(5)"),"line","x","n","y","n")</pre>
+<p>Close Excel normally and reopen it to check startup loading. A previously registered development copy must be unchecked in Excel's Add-ins dialog before installation.</p>
+<h2 id="agents">3. Set up your agent (optional)</h2>
+<p>Ready to explore? Open the included <a href="examples/research-demo/XlDuck%20Research%20Demo.xlsx">research demo workbook</a> and save a working copy under Documents. It uses synthetic data, with no credentials or external sources. Select a chart handle and open the preview pane; edit the amber inputs.</p>
+<p>XlDuck runs SQL; your AI provider supplies the agent. The same tiny <a href="agent/xlduck-skill.zip" download>bootstrap skill ZIP</a> tells either agent to read guidance from the installed add-in. Detailed instructions update with XlDuck.</p>
+<p><strong>OpenAI's Excel sidebar:</strong> in an eligible ChatGPT workspace, open Plugins → Skills → Create → Upload from your computer and upload <code>agent/xlduck-skill.zip</code>. Then look for XlDuck in the Excel sidebar's + skill picker or @ menu. Upload availability depends on your plan and workspace; do not assume a personal account has this option. <a href="https://help.openai.com/en/articles/20001066-skills-in-chatgpt">Provider instructions</a>.</p>
+<p><strong>Claude for Excel:</strong> in Claude, open Customize → Skills → + → Create skill → Upload a skill. Upload the same ZIP and enable it. Use the same Claude account in Excel and look for <code>/xlduck</code>. Code execution and organization permissions must allow skills. <a href="https://support.claude.com/en/articles/12512180-use-skills-in-claude">Provider instructions</a>. Claude's XlDuck execution path still needs a live compatibility trial.</p>
+<p><strong>Codex desktop controlling Excel:</strong> double-click <strong>Install Codex Skill.cmd</strong>. This installs only the local skill under <code>%USERPROFILE%\.agents\skills\xlduck</code>; it does not install a skill into the separate Excel sidebar. It preserves any different existing skill. Start a new Codex chat, select XlDuck, and connect the open workbook through the signed-in OpenAI Excel add-in.</p>
+<p>If your provider cannot install a skill, paste this starting prompt:</p>
+<pre>Use XlDuck. Read DuckHelp() and DuckHelp("workflow") from the loaded add-in, then follow that guidance. Use formula evaluation without editing cells if available.</pre>
+<p><strong>Verify discovery:</strong> in a fresh agent conversation, select the installed skill and ask it to read XlDuck's help and evaluate <code>SELECT 42 AS answer</code> using the documented exploration interface. It should return 42, polling if needed. If its tools cannot evaluate without cells, it should explain that and use an agreed scratch area. Installing the skill does not add Office.js capabilities.</p>
+<h2>Upgrade, recover and remove</h2>
+<p>Close Excel and run <strong>Install.cmd</strong> from a newer package to upgrade. The preceding installation remains available: run <strong>Rollback.cmd</strong> to switch back. <strong>Uninstall.cmd</strong> removes XlDuck's startup registration, leaving recovery copies and user data alone. There is no automatic updater or Windows Apps entry yet.</p>
+<p>For manual registration, troubleshooting, file locations and full removal, see <a href="docs/INSTALL.md">the installation guide</a>. For agent execution details, see <a href="docs/AGENT-INTEGRATION.md">agent integration</a>.</p>
+<p class="muted">Skills support checked 26 October 2026. Availability can change; use the linked provider instructions if menus differ.</p>
+</main></html>

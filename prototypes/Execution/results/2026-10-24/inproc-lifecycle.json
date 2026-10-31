@@ -1,0 +1,18 @@
+﻿{
+    "mode":  "inproc",
+    "checks":  [
+                   "branching DAG",
+                   "replace pending formula and recover",
+                   "delete pending formula and recover",
+                   "one subscriber can leave shared work",
+                   "restart during pending work",
+                   "close pending workbook without changing another",
+                   "manual calculation converges without changing application mode"
+               ],
+    "excelWorkingSetMiB":  306,
+    "branchMs":  37.1669,
+    "replacePendingMs":  125.9779,
+    "restartPendingMs":  209.9264,
+    "manualCalculationPasses":  3,
+    "manualLeafValue":  10
+}
