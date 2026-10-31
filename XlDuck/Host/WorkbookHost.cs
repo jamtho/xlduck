@@ -332,7 +332,7 @@ internal static class WorkbookHost
         // Excel can move a formula and its cached spill without invoking the UDF
         // at its new address. Re-establish ownership there through normal
         // evaluation; unchanged requests reuse the retained computation.
-        Queue(() =>
+        if ((object?)target.HasFormula is not false) Queue(() =>
         {
             if (book.Closed || FindSheet(sheet) != book) return;
             Excel.Range formulas;

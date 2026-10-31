@@ -188,7 +188,14 @@ try {
     if ((Wait-Handle 'A1') -ne $handle -or (Stats).statistics.Executions -ne $executions) { throw 'Unchanged calculation reran SQL.' }
     Pass 'full calculation and unchanged formula reentry retain results'
     $sheet.Range('J40').Value2 = 'SELECT ? * ? AS n'
-    $sqlReference = "='" + $sheet.Name.Replace("'", "''") + "'!" + '$J$40'
+    $nameWait = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $sqlSheetName = Invoke-XlDuckExcel { $sheet.Name }
+        if (-not [string]::IsNullOrEmpty($sqlSheetName)) { break }
+        if ($nameWait.Elapsed.TotalSeconds -gt 10) { throw 'Excel did not return the owned worksheet name.' }
+        Start-Sleep -Milliseconds 25
+    } while ($true)
+    $sqlReference = "='" + $sqlSheetName.Replace("'", "''") + "'!" + '$J$40'
     $session.Workbook.Names.Add('Demo_Scale_SQL', $sqlReference) | Out-Null
     Formula 'J41' '=DuckQueryOutScalar(J40, 6, 7)'; Wait-Value 'J41' 42
     Formula 'J42' '=DuckQueryOutScalar(Demo_Scale_SQL, 9, 5)'; Wait-Value 'J42' 45
