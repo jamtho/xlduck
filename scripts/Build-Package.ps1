@@ -3,6 +3,13 @@
 param([string]$Destination, [string]$Dotnet = 'dotnet')
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+foreach ($help in @('docs/AGENT-WORKFLOW.md', 'docs/FORMULAS.md', 'docs/agent-exploration.js')) {
+    # DuckHelp caps each response at 30,000 UTF-16 characters. Reserve space for
+    # its version/topic header; validate in CI even when native Excel is absent.
+    if ([IO.File]::ReadAllText((Join-Path $repo $help)).Length -gt 29900) {
+        throw "Embedded help is too long for one cell: $help. Shorten it before packaging."
+    }
+}
 & (Join-Path $PSScriptRoot 'Verify-Notices.ps1') -Root $repo
 if (-not $Destination) {
     $version = ([xml](Get-Content -LiteralPath (Join-Path $repo 'Directory.Build.props'))).Project.PropertyGroup.Version
