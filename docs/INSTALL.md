@@ -2,7 +2,7 @@
 
 XlDuck is a Windows x64 Excel add-in for read-and-compute SQL research. Install it once and Excel loads it on normal startup. Workbooks remain ordinary `.xlsx` files. Your AI provider's Excel add-in is optional and installed separately.
 
-Download the complete Windows x64 ZIP from [1.0.0](https://github.com/jamtho/xlduck/releases/tag/v1.0.0), or build from source with `scripts/Build-Package.ps1`. This is an **unsigned release**. Do not use an older packed XLL as a substitute for this distribution. The release lists its tested scope and deferred compatibility trials.
+Download the complete Windows x64 ZIP from [1.0.1](https://github.com/jamtho/xlduck/releases/tag/v1.0.1), or build from source with `scripts/Build-Package.ps1`. This is an **unsigned release**. Do not use an older packed XLL as a substitute for this distribution. The release lists its tested scope and deferred compatibility trials.
 
 ## Install in a few steps
 

@@ -24,7 +24,7 @@ function Verify-Results([int]$day = 8, [string]$site = 'All', [double]$minimum =
         }
     } else { [void](Wait-XlDuckCell $sheet 'F8' -Until { param($v) $null -eq $v -or $v -ceq '' }) }
     foreach ($cell in @('C11','C12','C16','C17','C18','C19','C20','C21')) {
-        [void](Wait-XlDuckCell $sheet $cell -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[A-Z]{4}/[1-9][0-9]*$' })
+        [void](Wait-XlDuckCell $sheet $cell -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[A-Z]{4}/[tfp]/[1-9][0-9]*$' })
     }
     return $expected.Count
 }

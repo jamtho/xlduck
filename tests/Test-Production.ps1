@@ -30,7 +30,7 @@ function Wait-Handle([string]$address) {
     Wait-XlDuckCell $sheet $address -TimeoutSeconds 15 -Until {
         param($value)
         if ($value -is [string] -and $value.StartsWith('#ERROR:')) { throw $value }
-        $value -is [string] -and $value -cmatch '^xlduck://[tfp]/[A-Z]{4}/[1-9][0-9]*$'
+        $value -is [string] -and $value -cmatch '^xlduck://[A-Z]{4}/[tfp]/[1-9][0-9]*$'
     }
 }
 function Command([string]$name) { Invoke-XlDuckExcel { $excel.Run($name, $session.Workbook.Name) } | Out-Null }
@@ -252,7 +252,7 @@ try {
     Pass 'legacy write/configuration functions and public helpers are not registered'
     $other = $excel.Workbooks.Add(); $otherSheet = $other.Worksheets.Item(1)
     $otherSheet.Range('A1').Formula2 = '=DuckQuery("SELECT 444 n")'
-    $otherHandle = Wait-XlDuckCell $otherSheet 'A1' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[A-Z]{4}/[1-9][0-9]*$' }
+    $otherHandle = Wait-XlDuckCell $otherSheet 'A1' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[A-Z]{4}/[tfp]/[1-9][0-9]*$' }
     $sheet.Range('R2').Value2 = $otherHandle
     Formula 'F6' '=DuckScalar(R2)'
     [void](Wait-XlDuckCell $sheet 'F6' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') -and $v.Contains('different workbook') })
@@ -514,9 +514,9 @@ public sealed class XlDuckCancelClose : IDisposable {
     try {
         $auditSheet.Range('Z1').Formula2 = '=DuckStatus()'
         $auditSheet.Range('A50').Formula2 = '=DuckQuery("SELECT 7654321")'
-        [void](Wait-XlDuckCell $auditSheet 'A50' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[A-Z]{4}/[1-9][0-9]*$' })
+        [void](Wait-XlDuckCell $auditSheet 'A50' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[A-Z]{4}/[tfp]/[1-9][0-9]*$' })
         $auditSheet.Rows.Item(45).Insert() | Out-Null
-        [void](Wait-XlDuckCell $auditSheet 'A51' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[A-Z]{4}/[1-9][0-9]*$' })
+        [void](Wait-XlDuckCell $auditSheet 'A51' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[A-Z]{4}/[tfp]/[1-9][0-9]*$' })
         $auditSheet.Range('A51').ClearContents() | Out-Null
         [void](Wait-XlDuckCell $auditSheet 'Z1' -Until {
             param($v)

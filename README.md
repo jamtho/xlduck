@@ -4,7 +4,7 @@
 
 XlDuck lets researchers build SQL analyses through Excel cells. DuckDB computes tables in a worker process; cells hold handles that connect sources, intermediate analyses, outputs and charts. Excel owns the dependency graph. AI working inside Excel can write the SQL and inspect results through the same worksheet functions.
 
-**[Download XlDuck 1.0.0 for Windows x64](https://github.com/jamtho/xlduck/releases/tag/v1.0.0)**. The first full release of the rewrite brings workbook-local computation, portable connection definitions and tools for agents exploring data in Excel. The distribution is unsigned; see the [tested scope and follow-up work](docs/RELEASE.md#tested-scope-and-follow-up-work).
+**[Download XlDuck 1.0.1 for Windows x64](https://github.com/jamtho/xlduck/releases/tag/v1.0.1)**. The research rewrite brings workbook-local computation, portable connection definitions and tools for agents exploring data in Excel. This patch puts the workbook tag first in handles: `xlduck://ABCD/t/123`. The distribution is unsigned; see the [tested scope and follow-up work](docs/RELEASE.md#tested-scope-and-follow-up-work).
 
 ![A live XlDuck workbook with editable filters, a graph of table handles, and a line chart in the preview pane](docs/assets/research-chart.jpg)
 
@@ -12,7 +12,7 @@ The included demo uses synthetic observations. Selecting a plot handle displays 
 
 ## Install
 
-Download the ZIP from the [release](https://github.com/jamtho/xlduck/releases/tag/v1.0.0), extract the complete folder and open **START-HERE.html**. After installing the x64 .NET 10 Desktop Runtime and WebView2 if needed, save your work, close Excel and run **Install.cmd** from File Explorer. The per-user setup copies the complete add-in to a stable folder and registers it for normal Excel startup. It includes rollback, removal and optional agent setup; no SDK is needed. See the [Windows installation guide](docs/INSTALL.md) for exact steps, manual registration and troubleshooting.
+Download the ZIP from the [release](https://github.com/jamtho/xlduck/releases/tag/v1.0.1), extract the complete folder and open **START-HERE.html**. After installing the x64 .NET 10 Desktop Runtime and WebView2 if needed, save your work, close Excel and run **Install.cmd** from File Explorer. The per-user setup copies the complete add-in to a stable folder and registers it for normal Excel startup. It includes rollback, removal and optional agent setup; no SDK is needed. See the [Windows installation guide](docs/INSTALL.md) for exact steps, manual registration and troubleshooting.
 
 The package includes a tiny XlDuck skill ZIP for compatible Excel agents and **Install Codex Skill.cmd** for local Codex. The skill reads its detailed guidance from the installed add-in, so most upgrades need no new skill upload. See [agent setup](docs/AGENT-INTEGRATION.md#install-the-bootstrap-skill) for provider-specific availability and verification.
 
@@ -36,7 +36,7 @@ A4: =DuckPlot(A2, "line", "x", "n", "y", "square")
 D1: =DuckOut(A2)
 ```
 
-Select A4 and open **Preview Pane** (Ctrl+Shift+P) to see the chart. Select A1, A2, or any cell in the D1 spill for the underlying table's preview. Handles such as `xlduck://t/ABCD/42` are opaque session references; refer to their producing cells and use `DuckOut`, `DuckScalar` or `DuckInspect` to read them.
+Select A4 and open **Preview Pane** (Ctrl+Shift+P) to see the chart. Select A1, A2, or any cell in the D1 spill for the underlying table's preview. Handles such as `xlduck://ABCD/t/42` are opaque session references; refer to their producing cells and use `DuckOut`, `DuckScalar` or `DuckInspect` to read them.
 
 ![Selecting a retained table shows its typed columns and rows in the live XlDuck preview pane](docs/assets/research-table.jpg)
 
