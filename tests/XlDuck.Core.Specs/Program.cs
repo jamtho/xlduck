@@ -99,21 +99,23 @@ await Check("compact handles resolve only live results in their own workbook ses
     await using var other = new WorkbookSession(_ => new FakeBackend());
     var lease = session.Acquire(ComputationRequest.Query("SELECT 1")); await lease.Completion;
     var text = lease.CellText;
-    Equal(17, text.Length); Equal(true, text.StartsWith("xlduck://t/")); Equal(true, text.EndsWith("/1")); Equal(true, CellHandle.IsToken(text));
-    var tag = text.Split('/')[3]; Equal(4, tag.Length); Equal(true, tag.All(c => c is >= 'A' and <= 'Z'));
+    Equal(17, text.Length); Equal(true, text.StartsWith("xlduck://")); Equal(true, text.EndsWith("/t/1")); Equal(true, CellHandle.IsToken(text));
+    var tag = text.Split('/')[2]; Equal(4, tag.Length); Equal(true, tag.All(c => c is >= 'A' and <= 'Z'));
+    Equal("xlduck://" + tag + "/t/1", text);
     Equal(false, text.Contains(session.Id.ToString("N")));
     Equal(text, session.GetCellText(lease.Handle));
     Equal(lease.Handle, session.ResolveCellHandle(text));
     Throws<ArgumentException>(() => other.ResolveCellHandle(text));
-    Throws<ArgumentException>(() => session.ResolveCellHandle(text.Replace("://t/", "://p/", StringComparison.Ordinal)));
+    Throws<ArgumentException>(() => session.ResolveCellHandle(text.Replace("/t/", "/p/", StringComparison.Ordinal)));
+    Throws<ArgumentException>(() => session.ResolveCellHandle("xlduck://t/" + tag + "/1"));
     Throws<ArgumentException>(() => session.ResolveCellHandle(text + "="));
     Throws<ArgumentException>(() => session.ResolveCellHandle(lease.Handle.ToString()));
     using (var fragment = session.Acquire(ComputationRequest.Fragment("SELECT * FROM ?", QueryArgument.Reference(lease.Handle))))
     {
         await fragment.Completion; Equal(fragment.Handle, session.ResolveCellHandle(fragment.CellText));
-        Equal("xlduck://f/" + tag + "/2", fragment.CellText);
+        Equal("xlduck://" + tag + "/f/2", fragment.CellText);
         using var plot = session.Acquire(ComputationRequest.Plot(lease.Handle, "bar")); await plot.Completion;
-        Equal(plot.Handle, session.ResolveCellHandle(plot.CellText)); Equal("xlduck://p/" + tag + "/3", plot.CellText);
+        Equal(plot.Handle, session.ResolveCellHandle(plot.CellText)); Equal("xlduck://" + tag + "/p/3", plot.CellText);
     }
     lease.Dispose(); await session.WaitForIdleAsync();
     Throws<ArgumentException>(() => session.ResolveCellHandle(text));
@@ -124,23 +126,23 @@ await Check("numbered cell aliases reuse live results but never reuse retired nu
     var first = session.Acquire(ComputationRequest.Query("SELECT 1")); await first.Completion;
     var original = first.CellText;
     using (var duplicate = session.Acquire(ComputationRequest.Query("SELECT 1"))) Equal(original, duplicate.CellText);
-    var tag = original.Split('/')[3];
+    var tag = original.Split('/')[2];
     first.Dispose(); await session.WaitForIdleAsync();
     using var second = session.Acquire(ComputationRequest.Query("SELECT 1")); await second.Completion;
-    Equal("xlduck://t/" + tag + "/2", second.CellText);
+    Equal("xlduck://" + tag + "/t/2", second.CellText);
     Throws<ArgumentException>(() => session.ResolveCellHandle(original));
     await using var reopened = new WorkbookSession(_ => new FakeBackend());
     using var fresh = reopened.Acquire(ComputationRequest.Query("SELECT 1")); await fresh.Completion;
     Equal(true, fresh.CellText.EndsWith("/1")); Equal(false, fresh.CellText == original);
     Throws<ArgumentException>(() => reopened.ResolveCellHandle(original));
-    Equal(true, CellHandle.IsToken("xlduck://t/" + tag + "/9223372036854775807"));
+    Equal(true, CellHandle.IsToken("xlduck://" + tag + "/t/9223372036854775807"));
     foreach (var bad in new[] {
-        "xlduck://t/ABCD/0", "xlduck://t/ABCD/01", "xlduck://T/ABCD/2",
-        "xlduck://t/ABCD/-2", "xlduck://t/ABCD/+2", "xlduck://t/ABCD/2=",
-        "xlduck://t/ABC/2", "xlduck://t/ABCD/9223372036854775808",
-        "xlduck://t/ABCDE/2", "xlduck://t/ABCD/", "xlduck://t/AbCD/2",
-        "xlduck://t/A!CD/2", "xlduck://t/ABCD/2/", "xlduck://t/1::Ab3dE6gH9jk",
-        "XLDUCK://t/ABCD/2", "xlduck://x/ABCD/2", "2026-10-25", "Table 2" })
+        "xlduck://ABCD/t/0", "xlduck://ABCD/t/01", "xlduck://ABCD/T/2",
+        "xlduck://ABCD/t/-2", "xlduck://ABCD/t/+2", "xlduck://ABCD/t/2=",
+        "xlduck://ABC/t/2", "xlduck://ABCD/t/9223372036854775808",
+        "xlduck://ABCDE/t/2", "xlduck://ABCD/t/", "xlduck://AbCD/t/2",
+        "xlduck://A!CD/t/2", "xlduck://ABCD/t/2/", "xlduck://t/1::Ab3dE6gH9jk",
+        "XLDUCK://ABCD/t/2", "xlduck://ABCD/x/2", "xlduck://t/ABCD/2", "2026-10-25", "Table 2" })
         Equal(false, CellHandle.IsToken(bad));
 });
 await Check("short session tags stay distinct across concurrent and retired sessions", async () =>
@@ -150,7 +152,7 @@ await Check("short session tags stay distinct across concurrent and retired sess
     {
         await using var session = new WorkbookSession(_ => new FakeBackend());
         using var lease = session.Acquire(ComputationRequest.Query("SELECT 1"));
-        await lease.Completion; tags.Add(lease.CellText.Split('/')[3]);
+        await lease.Completion; tags.Add(lease.CellText.Split('/')[2]);
     }));
     Equal(2000, tags.Distinct(StringComparer.Ordinal).Count());
 });

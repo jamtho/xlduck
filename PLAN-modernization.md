@@ -1,6 +1,6 @@
 # XlDuck modernization plan
 
-XlDuck is a public Excel add-in for researchers composing SQL through cells and retained table handles. AI working inside Excel is expected to write most of the SQL. The rewrite is implemented; the current milestone is **1.0.0**, authorized for verification, PR merge and publication. Earlier design experiments and candidate-by-candidate evidence remain in Git history. The maintained [release guide](docs/RELEASE.md) distinguishes tested coverage from accepted follow-up work.
+XlDuck is a public Excel add-in for researchers composing SQL through cells and retained table handles. AI working inside Excel is expected to write most of the SQL. The rewrite shipped as 1.0.0; the current patch is **1.0.1**, putting the workbook tag first in handles. Earlier design experiments and candidate-by-candidate evidence remain in Git history. The maintained [release guide](docs/RELEASE.md) distinguishes tested coverage from accepted follow-up work.
 
 ## Agreed product scope
 
@@ -25,7 +25,7 @@ XlDuck is a public Excel add-in for researchers composing SQL through cells and 
 | An ordinary saved workbook opens | Start a fresh workbook session and rebuild according to calculation mode |
 | Restart XlDuck for this workbook | Cancel old work, discard that session and rebuild, preserving formulas and settings |
 
-Handles identify immutable results or recipes and resolve only through the caller workbook's live registry. Cell aliases use `xlduck://t/ABCD/123` (also `f` and `p`); four-letter tags are never reused within an Excel process, but can coincide across processes or later launches. Reference cells rather than copying tokens. Worker identities remain session-qualified. Stale completions cannot revive results after an edit or restart. Formula leases are independent of RTD subscriptions.
+Handles identify immutable results or recipes and resolve only through the caller workbook's live registry. Cell aliases use `xlduck://ABCD/t/123` (also `f` and `p`); four-letter tags are never reused within an Excel process, but can coincide across processes or later launches. Reference cells rather than copying tokens. Worker identities remain session-qualified. Stale completions cannot revive results after an edit or restart. Formula leases are independent of RTD subscriptions.
 
 A fragment is a query recipe, not a source snapshot. Materialize a table to reuse a particular computed result. Separate reads of changing sources do not form a transactional snapshot. Reuse applies to retained results, not an unlimited history. Failed or cancelled work has explicit retry rather than an automatic retry loop.
 
@@ -43,7 +43,7 @@ Preserve exact types and expose approximation explicitly. Keep full results in D
 
 ## Release gates
 
-- Bring public docs and versioned download links to 1.0.0; document current workbook metadata and credential association behaviour.
+- Keep public docs, embedded help and versioned downloads aligned with the workbook-first handle format. Existing formulas rebuild their handles on open; copied token text is not a persistence format.
 - Build from committed clean source. Run core/readers, browser, helper, package and installer checks, then native Excel and demo tests against the actual package.
 - Update and merge the PR after CI passes. Tag the merged source; verify published asset hashes and package contents.
 - Preserve private research workbook edits and the user's original skill archive outside the release changes.

@@ -32,16 +32,16 @@ public static class CellHandle
     }
 
     internal static string Format(ResultKind kind, long number, string tag) =>
-        Prefix + (kind switch { ResultKind.Table => "t", ResultKind.Fragment => "f", ResultKind.Plot => "p", _ => throw new ArgumentOutOfRangeException(nameof(kind)) })
-        + "/" + tag + "/" + number.ToString(CultureInfo.InvariantCulture);
+        Prefix + tag + "/" + (kind switch { ResultKind.Table => "t", ResultKind.Fragment => "f", ResultKind.Plot => "p", _ => throw new ArgumentOutOfRangeException(nameof(kind)) })
+        + "/" + number.ToString(CultureInfo.InvariantCulture);
 
     public static bool IsToken([NotNullWhen(true)] string? text)
     {
         if (text is null || text.Length is < 17 or > 35 || !text.StartsWith(Prefix, StringComparison.Ordinal)) return false;
         var body = text.AsSpan(Prefix.Length);
-        if (body[0] is not ('t' or 'f' or 'p') || body[1] != '/') return false;
+        if (body[4] != '/' || body[5] is not ('t' or 'f' or 'p')) return false;
         if (body[6] != '/' || body[7] is < '1' or > '9') return false;
-        foreach (var character in body.Slice(2, 4))
+        foreach (var character in body[..4])
             if (character is < 'A' or > 'Z') return false;
         if (!long.TryParse(body[7..], NumberStyles.None, CultureInfo.InvariantCulture, out var number) || number < 1) return false;
         return true;

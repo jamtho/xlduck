@@ -1,6 +1,6 @@
 # Release process and tested scope
 
-**XlDuck 1.0.0** is the public release of the research rewrite. The Windows x64 distribution contains the Excel-DNA host, separate DuckDB worker, pinned readers, bundled chart libraries, synthetic demo and agent bootstrap. Keep the complete folder intact; an XLL alone is not a distribution. The release is unsigned.
+**XlDuck 1.0.1** is a patch to the public research rewrite, putting the workbook tag first in handles. The Windows x64 distribution contains the Excel-DNA host, separate DuckDB worker, pinned readers, bundled chart libraries, synthetic demo and agent bootstrap. Keep the complete folder intact; an XLL alone is not a distribution. The release is unsigned.
 
 ## Runtime and coexistence
 
