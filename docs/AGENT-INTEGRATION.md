@@ -8,7 +8,7 @@ XlDuck is the SQL execution add-in. The agent's Excel add-in is a separate produ
 
 The package includes `agent/xlduck-skill.zip`, containing only a small `SKILL.md` bootstrap. It tells the agent how to read installed help, without freezing the function catalogue, workflow or JavaScript helper in its account. Install it using the provider-specific steps below, or paste the hint above when skill installation is unavailable.
 
-`DuckHelp` is available in builds after candidate 9. It returns plain text from resources embedded in the installed binary, without running queries or reading external data. The same documentation sources generate the installed help and the repository guidance:
+XlDuck 1.0 includes `DuckHelp`. It returns plain text from resources embedded in the installed binary, without running queries or reading external data. The same documentation sources generate the installed help and the repository guidance:
 
 | Formula | Content |
 | --- | --- |
@@ -54,14 +54,16 @@ The optional helper is for an agent whose actual tools include `run_officejs` (o
 ```text
 Agent's Excel tool
   -> Office.js Worksheet.evaluate + ctx.sync()
-  -> Excel calls DuckExplore or DuckCellStatus
-  -> XlDuck uses the workbook's existing worker/session
+  -> Excel calls DuckConnections, DuckExplore or DuckCellStatus
+  -> XlDuck reads workbook metadata or uses its existing worker/session
   -> JSON status or bounded results return to the agent
 ```
 
 The helper uses blank `AZ1000` on the explicitly named sheet as its workbook anchor. It never writes that cell. Inspect the workbook first and choose a different blank single-cell anchor in the helper if necessary. Connections, resources and the SQL policy are the same as for worksheet queries; this is not an unrestricted SQL endpoint.
 
-Load the helper declarations from `DuckHelp("officejs")` or the supplied file, then use the existing `ctx` supplied by the agent's host. Do not nest `Excel.run()` inside a host that already supplies it. For example, after the helper declarations:
+Load the helper declarations from `DuckHelp("officejs")` or the supplied file, then use the existing `ctx` supplied by the agent's host. Do not nest `Excel.run()` inside a host that already supplies it. Discover configured S3 scopes with `return await xlduckConnections(ctx, "Research");`. It returns endpoints and authentication methods without keys or source reads. Follow a non-null `nextOffset` with the helper's third argument. Use `DuckExplore` to list a narrow prefix, inspect a discovered file's schema and retrieve a small sample; the installed workflow gives the SQL. The tiny bootstrap skill does not need updating when these instructions change.
+
+For a source-independent query, after the helper declarations:
 
 ```js
 return await xlduckExplore(ctx, "Research", {

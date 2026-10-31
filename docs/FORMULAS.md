@@ -1,6 +1,6 @@
 # XlDuck formula and agent reference
 
-XlDuck 0.2 runs read-and-compute SQL through a separate worker for each ordinary workbook. An Excel coding agent should build a small, inspectable formula DAG, materialize shared sources and use ordinary Excel dependencies for changes. Most computations should finish within a few seconds; substantial preparation belongs outside the sheet.
+XlDuck 1.0 runs read-and-compute SQL through a separate worker for each ordinary workbook. An Excel coding agent should build a small, inspectable formula DAG, materialize shared sources and use ordinary Excel dependencies for changes. Most computations should finish within a few seconds; substantial preparation belongs outside the sheet.
 
 ## Discover guidance from the installed add-in
 
@@ -21,7 +21,7 @@ J1: =DuckInspect(A1, "rows")
 
 Discover the actual schema before choosing columns: `=DuckSchema("SELECT * FROM read_parquet(?)", sourceCell)` spills column names and types without retaining data rows. It can read source metadata; CSV/JSON schema inference can scan/sample data. Inspect a few real examples next, then retain the columns the investigation needs. Use the real path or source supplied by the user. Local, HTTP and S3 CSV/JSON/Parquet readers are supported. Use explicit reader functions, rather than SQL replacement scans such as `FROM 'file.parquet'`. `DuckCapture(A1:C20)` captures the header row and the values below it; its result is another table handle.
 
-Handles are short tokens such as `xlduck://t/42::Ab3dE6gH9jk`, meaningful only inside the producing workbook session. `t`, `f` and `p` identify tables, fragments and plots. The number identifies a result; the shared suffix distinguishes its session. Numbers are never reused within a session. Treat the complete token as opaque: do not extract dimensions, construct tokens, copy them between workbooks or invent internal table names. Reference the producing cell. `DuckInspect(handle)` spills column names and types; `DuckInspect(handle,"rows")` returns the row count; `DuckInspect(handle,"definition")` returns its request as JSON, including SQL and arguments. A fragment's schema binds its query with zero result rows; its row count requires materialization. Inspecting its definition does not read its source. Definitions can contain private query values, so do not include them in routine diagnostics.
+Handles are short tokens such as `xlduck://t/ABCD/42`, meaningful only inside the producing workbook session. `t`, `f` and `p` identify tables, fragments and plots. The number identifies a result; the four uppercase letters distinguish its session within this Excel process. Tags are not reused until Excel exits, but can coincide across separate processes or later launches. Numbers are never reused within a session. Treat the complete token as opaque: do not extract dimensions, construct tokens, copy them between workbooks or invent internal table names. Reference the producing cell. `DuckInspect(handle)` spills column names and types; `DuckInspect(handle,"rows")` returns the row count; `DuckInspect(handle,"definition")` returns its request as JSON, including SQL and arguments. A fragment's schema binds its query with zero result rows; its row count requires materialization. Inspecting its definition does not read its source. Definitions can contain private query values, so do not include them in routine diagnostics.
 
 ## SQL parameters and composition
 
@@ -102,7 +102,7 @@ Pause holds new computations; an already running computation may finish. Resume 
 
 Start with schema and a small metadata projection. For a message archive, retain IDs, dates, senders and subjects first; aggregate/filter those, then fetch `left(body, 500)` for a handful of chosen IDs from the original source. Verify the actual column names before writing that SQL. Avoid retaining every body or aggregating huge lists simply to inspect a sample. LIMIT bounds result rows, not all scanning, sorting, joining or aggregation work; even an excerpt query can read large source blocks. Expensive preparation belongs outside Excel.
 
-**XlDuck > Resources** controls each workbook's worker: defaults are **1024 MiB memory, 4 GiB temporary disk and 2 query threads**. Allowed ranges are 128–65536 MiB, 1–1024 GiB and 1–16 threads. These are explicit budgets, not recommendations to maximize them. Several workers can use their budgets simultaneously. DuckDB's memory setting does not cap total process memory, and not every operation spills. The dialog saves settings locally by workbook path; Apply restarts only that workbook. Worksheet SQL cannot change budgets. Memory/spill failures suggest query changes and these host controls.
+**XlDuck > Resources** controls each workbook's worker: defaults are **1024 MiB memory, 4 GiB temporary disk and 2 query threads**. Allowed ranges are 128–65536 MiB, 1–1024 GiB and 1–16 threads. These are explicit budgets, not recommendations to maximize them. Several workers can use their budgets simultaneously. DuckDB's memory setting does not cap total process memory, and not every operation spills. Apply restarts only that workbook; save the workbook to retain its budgets in metadata. Worksheet SQL cannot change budgets. Memory/spill failures suggest query changes and these host controls.
 
 ## Values and output bounds
 
@@ -127,7 +127,7 @@ Captures support up to one million cells. Headers are made deterministically uni
 
 ## Charts and preview
 
-Select a plot handle and open Preview Pane. Tables show up to 200 rows; charts up to 5,000, labelled when sampled. Aggregate or explicitly sample in SQL for a deliberate display. A pending/failed chart may show its previous successful state with a stale label; that state is never an input to new computations.
+Select a handle and open Preview Pane. Selecting any single cell in a `DuckOut` or `DuckQueryOut` spill shows its underlying retained table, including schema and SQL. This follows Excel's live spill parent, including headers; ordinary Excel spills and formulas combining multiple distinct output tables do not identify a single preview source. Tables show up to 200 rows; charts up to 5,000, labelled when sampled. Aggregate or explicitly sample in SQL for a deliberate display. A pending/failed chart may show its previous successful state with a stale label; that state is never an input to new computations.
 
 `DuckPlot(source,template,name1,value1,…,name6,value6)` supports:
 
@@ -142,7 +142,7 @@ Options also include `color`, `label`, `tooltip`, `title`, `xmin`, `xmax`, `ymin
 
 Map coordinates must be numeric, finite, non-null and within latitude -90 to 90 and longitude -180 to 180. Cast text coordinates and filter missing/invalid locations explicitly in SQL. A map rejects invalid coordinates instead of quietly omitting or coercing points.
 
-The libraries are bundled. Maps still request tiles from OpenStreetMap/Esri, exposing the requested viewport to the provider. Missing WebView2 produces a repair message, while worksheet computations remain available.
+The libraries are bundled. Maps still request tiles from OpenStreetMap/Esri, exposing the requested viewport and XlDuck application identity to the provider. OpenStreetMap requests use its canonical HTTPS endpoint, browser caching and an origin-only referrer. Missing background tiles leave the plotted data available with a notice; `basemap="satellite"` selects Esri instead. Missing WebView2 produces a repair message, while worksheet computations remain available.
 
 ## Workbook access and S3-compatible storage
 
@@ -150,9 +150,33 @@ Ordinary workbooks start automatically. Protected View workbooks cannot start qu
 
 Use **Connections** to add a bucket/path such as `s3://research/`, an endpoint such as `storage.example.com:9000`, and credentials. The endpoint has no scheme or path. Saved access keys go to Windows Credential Manager; environment and anonymous access are also supported. Environment authentication uses `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and optional `AWS_SESSION_TOKEN`, including for non-AWS servers. Advanced settings contain HTTPS (on by default), path-style URLs and an optional session token. Named profiles and SSO remain optional provider choices.
 
+### Discover connections and files
+
+`DuckConnections([anchorCell], [offset])` returns JSON describing the current workbook's configured S3 connections. In a worksheet, use `=DuckConnections()`. In native or Office.js worksheet evaluation, supply a single-cell reference in that worksheet: `DuckConnections(AZ1000)`. The anchor's contents are ignored and never changed; the anchor selects the workbook even if another workbook is active. The function reads configuration only: no credential lookup, source access, query execution or refresh.
+
+```json
+{"version":1,"state":"succeeded","connections":[{"type":"s3","name":"Research data","scope":"s3://research/","endpoint":"storage.example.com:9000","authentication":"saved_access_key","useSsl":false,"pathStyle":true,"requiresCredentialSetup":false}],"total":1,"nextOffset":null}
+```
+
+`authentication` is `anonymous`, `environment`, `named_profile`, `sso_profile` or `saved_access_key`. Keys, tokens, credential IDs and profile names are excluded. A null endpoint means the reader's default S3 endpoint. This is configured routing, not a complete inventory of accessible buckets or an access-control boundary. `state: "succeeded"` confirms metadata retrieval, not connectivity or permission. No connections returns an empty array; local files, HTTP or anonymously readable S3 objects may still be usable. While saved settings are loading, `state: "initializing"` means retry the same call later; it is not an empty inventory. Errors return `state: "failed"` and `failure`. Output fits 30000 characters; if `nextOffset` is non-null, request `DuckConnections(AZ1000,nextOffset)` until it is null. Read pages consecutively without changing configuration.
+
+Use a returned scope as the starting point for file discovery. With a suitably narrow pattern in B2:
+
+```excel
+=DuckQueryOut("SELECT file FROM glob(?) LIMIT 20", B2)
+```
+
+For example, B2 might contain `s3://research/observations/2025/*.parquet`. Use `DuckSchema("SELECT * FROM read_parquet(?)", fileCell)` on one discovered file, then query a small sample. S3 `glob` uses the configured endpoint and credentials; it requires object-listing permission. An exact object read may work even when listing is denied. `*` matches one path component; `**` recurses. A root `*` can miss nested data, so an empty result does not prove the bucket is empty. LIMIT caps the returned rows, not the listing's network work: prefer known prefixes, avoid broad recursive scans of large buckets, and request a path from the user if needed. See DuckDB's [S3 listing](https://duckdb.org/docs/lts/core_extensions/httpfs/s3api) and [file globbing](https://duckdb.org/docs/current/data/multiple_files/overview) documentation.
+
+An agent can do this without worksheet edits: load `DuckHelp("officejs")`, call `xlduckConnections(ctx, sheetName)` (optional third argument: offset), then use `xlduckExplore` with `op: "query"`, the same listing SQL, `arguments: [pattern]` and `maxRows: 20`. Continue with `op: "schema"` and then a small query against a discovered file. Configuration remains a user/host action through Connections.
+
 The S3 signing protocol includes a region string even for compatible services hosted elsewhere. XlDuck supplies `us-east-1` internally, so the dialog does not ask for it. This does not route traffic to AWS: the configured endpoint determines the server. Providers requiring a different value can use the optional `Region` field in `DuckSetConnections`; editing the connection in the dialog preserves that override.
 
-Connection settings are saved on this computer by workbook path, not workbook fingerprint. External edits preserve settings; Save As carries them to the new path; copies at a different path use defaults. Unsaved workbook settings persist when first saved. Applying settings restarts this workbook. Secrets stay outside cells and settings files. Removing a connection leaves its saved key available to other workbooks; unused `XlDuck/S3/…` entries can be removed in Windows Credential Manager. `Scope` selects credentials; it is not an access restriction. Live Hetzdev S3 reads and recovery from a simulated S3 outage are tested; broader provider/proxy compatibility remains a release validation item.
+Connection definitions and resource budgets are stored in an XlDuck custom XML part inside the workbook. Each connection has a stable ID and a readable name. Save the workbook after applying changes; renaming, moving, Save As and external copies preserve the definitions and IDs. Use .xlsx, .xlsm or .xlsb; CSV and legacy .xls cannot retain this metadata. `connectionsSaved` in DuckStatus reports whether the current definitions have been saved in a supported workbook format.
+
+Saved keys remain in Windows Credential Manager. Local files under `%LOCALAPPDATA%\XlDuck\credential-bindings` associate a connection ID and destination with a vault reference; neither the reference nor the actual keys are written into workbook metadata. A copy on the same computer can reuse the association. On another computer, the connection is visible but needs credentials. The discovery field `requiresCredentialSetup: true` means the saved-key association is missing for this connection and destination; false does not verify that the vault entry exists, that credentials are current, or that the server is reachable. Renaming a connection preserves its association. Changing endpoint, HTTPS, addressing style or signing region requires an association for the new destination. The editor clears prefilled keys when the destination changes. Environment/profile authentication continues to use that computer's own environment/profile configuration.
+
+Earlier path-based settings migrate into metadata when the workbook opens. Save it to retain the migration; old local records are preserved for recovery. Migration matches legacy OneDrive URL records independently of Excel's working directory and refuses conflicting matches. Invalid or duplicate workbook metadata produces an error rather than falling back to old settings. Applying settings restarts only this workbook. Removing a connection leaves its key available to other workbook copies; unused `XlDuck/S3/…` entries can be removed in Windows Credential Manager. Endpoints, scopes and profile names travel with the workbook when shared. `Scope` selects credentials; it is not an access restriction. Live Hetzdev S3 reads and recovery from a simulated S3 outage are tested; broader provider/proxy compatibility remains a release validation item.
 
 ## Commands available to automation
 
@@ -196,7 +220,7 @@ Application.Run "DuckRetryFailed", "Research.xlsx"
 Application.Run "DuckTogglePreview"
 ```
 
-The same workbook-name argument applies to `DuckPauseQueries`, `DuckResumeQueries` and `DuckInterrupt`. `DuckSetConnections(settingsJson,workbookName)` applies non-secret settings and restarts the named ordinary workbook. JSON uses property names `S3`, `Scope`, `Credentials`, `Region`, `Endpoint`, `Profile`, `UseSsl`, `PathStyle`, `CredentialId`; `Credentials` is currently numeric: 0 anonymous, 1 environment, 2 named profile, 3 SSO, 4 a saved access key. `CredentialId` references a key already saved through the dialog, never the secret itself. Example using environment credentials:
+The same workbook-name argument applies to `DuckPauseQueries`, `DuckResumeQueries` and `DuckInterrupt`. `DuckSetConnections(settingsJson,workbookName)` applies non-secret settings and restarts the named ordinary workbook. JSON uses property names `S3`, `Name`, `ConnectionId`, `Scope`, `Credentials`, `Region`, `Endpoint`, `Profile`, `UseSsl`, `PathStyle`, `CredentialId`; `Credentials` is currently numeric: 0 anonymous, 1 environment, 2 named profile, 3 SSO, 4 a saved access key. Omitted connection IDs are generated; omitted names default to the scope. Preserve `ConnectionId` when editing an existing connection. `CredentialId` references a key already saved through the dialog, never the secret itself; this trusted host command creates its local destination association, while workbook metadata excludes the vault reference. Save the workbook after applying settings. Example using environment credentials:
 
 ```json
 {"S3":[{"Scope":"s3://research/","Credentials":1,"Endpoint":"storage.example.com:9000","PathStyle":true,"UseSsl":true}]}

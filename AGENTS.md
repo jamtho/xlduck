@@ -45,5 +45,6 @@ Use `-NoBuild` for an existing build, `-NoRestore` on the core script after rest
 3. Do not change Trust Center settings or dismiss unrelated/security prompts automatically.
 4. Never close unrelated workbooks, suppress their save prompts or kill all Excel processes. Failed tests must release their own resources in `finally`.
 5. Keep original process identity/handles for cleanup; avoid PID-reuse and process-exit races.
+6. Validate installation outside the agent's process context. Packaged apps can expose a private HKCU registry view: setup and Excel launched from Codex can both appear successful while Explorer-launched Excel sees no startup entry. Run Install.cmd from File Explorer and verify an ordinary Windows-icon launch, or independently prove that registration and startup work in the ordinary Windows context. Reading back OPEN from the installer process is insufficient.
 
 Read `docs/FORMULAS.md` for the user/agent contract and `PLAN-modernization.md` for remaining release gates. Update these when behaviour changes. The user-provided `skill/xlduck.zip` is an original archive; preserve it when updating the unpacked agent guidance.

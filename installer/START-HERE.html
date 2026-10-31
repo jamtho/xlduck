@@ -9,17 +9,17 @@ code,pre{background:#edf2f7;border-radius:4px}code{padding:2px 5px}pre{padding:1
 .muted{color:#536478}.note{border-left:4px solid #ddb458;padding-left:16px}
 li{margin:8px 0} @media(max-width:700px){main{margin:0;padding:24px}}
 </style><main>
-<p class="muted">XlDuck · Windows x64 · Public preview setup</p>
+<p class="muted">XlDuck · Windows x64 · Installation</p>
 <h1>SQL research in Excel</h1>
 <p>Install the add-in once. Excel loads it on normal startup; your workbooks stay ordinary Excel files.</p>
-<p class="note">This development package is unsigned. Only use a download whose origin you trust. If Windows marks it as blocked, review the ZIP's Properties → Unblock before extracting it again. Setup does not change Excel's Trust Center or unblock files.</p>
+<p class="note">This release is unsigned. Only use a download whose origin you trust. If Windows marks it as blocked, review the ZIP's Properties → Unblock before extracting it again. Setup does not change Excel's Trust Center or unblock files.</p>
 <h2>1. Check the prerequisites</h2>
 <ul><li>64-bit desktop Excel on Windows x64 (Microsoft 365 or Excel 2021/2024).</li>
 <li><a href="https://dotnet.microsoft.com/en-us/download/dotnet/10.0">.NET 10 Desktop Runtime, Windows x64</a> — choose “Run apps”; no SDK needed.</li>
 <li><a href="https://developer.microsoft.com/en-us/microsoft-edge/webview2/">WebView2 Evergreen Runtime</a> for previews. Many machines already have it.</li></ul>
 <h2>2. Run Install.cmd</h2>
-<p>Save your work and close Excel yourself. In the extracted package, double-click <strong>Install.cmd</strong>. It checks the package and prerequisites, copies the complete add-in into your local application-data folder, and registers it for Excel startup. No administrator rights are needed for XlDuck itself.</p>
-<p>Open Excel normally and enter these in separate cells:</p>
+<p>Save your work and close Excel yourself. In the extracted package, double-click <strong>Install.cmd from Windows File Explorer</strong>. It checks the package and prerequisites, copies the complete add-in into your local application-data folder, and registers it for Excel startup. No administrator rights are needed for XlDuck itself.</p>
+<p>Open Excel from its Windows icon and enter these in separate cells:</p>
 <pre>=DuckVersion()
 =DuckQueryOutScalar("SELECT 42")</pre>
 <p>The query should settle to <strong>42</strong>. For a chart, enter the following, select its handle and choose <strong>XlDuck → Preview Pane</strong>:</p>

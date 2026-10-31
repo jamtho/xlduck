@@ -23,12 +23,12 @@ internal sealed class ConnectionsDialog : Form
         layout.RowStyles.Add(new(SizeType.AutoSize)); layout.RowStyles.Add(new(SizeType.Percent, 100));
         layout.RowStyles.Add(new(SizeType.AutoSize)); layout.RowStyles.Add(new(SizeType.AutoSize));
         layout.Controls.Add(new Label { AutoSize = true, MaximumSize = new(720, 0), Margin = new(0, 0, 0, 12), Text =
-            "Connect to S3-compatible storage. Settings are kept on this computer for this workbook path; access keys are stored in Windows Credential Manager. Local files and public HTTP sources need no connection entry." }, 0, 0);
-        _list.Columns.Add("Bucket / path", 260); _list.Columns.Add("Endpoint", 270); _list.Columns.Add("Credentials", 170);
+            "Connection names, endpoints and paths are saved inside the workbook. Save the workbook after applying changes. Access keys stay in Windows Credential Manager on this computer. Local files and public HTTP sources need no connection entry." }, 0, 0);
+        _list.Columns.Add("Name", 150); _list.Columns.Add("Bucket / path", 210); _list.Columns.Add("Endpoint", 230); _list.Columns.Add("Credentials", 170);
         _list.SizeChanged += (_, _) =>
         {
             var width = Math.Max(300, _list.ClientSize.Width - SystemInformation.VerticalScrollBarWidth);
-            _list.Columns[0].Width = width * 35 / 100; _list.Columns[1].Width = width * 40 / 100; _list.Columns[2].Width = width * 25 / 100;
+            _list.Columns[0].Width = width * 20 / 100; _list.Columns[1].Width = width * 28 / 100; _list.Columns[2].Width = width * 30 / 100; _list.Columns[3].Width = width * 22 / 100;
         };
         layout.Controls.Add(_list, 0, 1);
         var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
@@ -57,7 +57,9 @@ internal sealed class ConnectionsDialog : Form
     private void RefreshList()
     {
         _list.Items.Clear();
-        foreach (var entry in _entries) _list.Items.Add(new ListViewItem([entry.Connection.Scope, entry.Connection.Endpoint ?? "Default S3 endpoint", ConnectionEditor.CredentialLabel(entry.Connection.Credentials)]));
+        foreach (var entry in _entries) _list.Items.Add(new ListViewItem([entry.Connection.Name ?? entry.Connection.Scope, entry.Connection.Scope,
+            entry.Connection.Endpoint ?? "Default S3 endpoint", entry.Connection.Credentials == S3CredentialSource.AccessKey && entry.Connection.CredentialId is null
+                ? "Key needed on this computer" : ConnectionEditor.CredentialLabel(entry.Connection.Credentials)]));
     }
     private void Edit(int index)
     {
@@ -85,7 +87,7 @@ internal sealed class ConnectionEditor : Form
         SuspendLayout();
         Text = existing is null ? "Add S3-compatible connection" : "Edit S3-compatible connection";
         AutoScaleDimensions = new(96, 96); AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new(580, 440); MinimumSize = new(530, 320); StartPosition = FormStartPosition.CenterParent;
+        ClientSize = new(580, 480); MinimumSize = new(530, 320); StartPosition = FormStartPosition.CenterParent;
         var outer = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1, Padding = new(12) };
         outer.RowStyles.Add(new(SizeType.Percent, 100)); outer.RowStyles.Add(new(SizeType.AutoSize));
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
@@ -97,6 +99,7 @@ internal sealed class ConnectionEditor : Form
             fields.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new(0, 6, 8, 6) }, 0, row);
             control.Dock = DockStyle.Fill; control.Margin = new(0, 5, 0, 5); fields.Controls.Add(control, 1, row);
         }
+        var name = new TextBox { Name = "ConnectionName", Text = existing?.Name ?? "", PlaceholderText = "For example: AIS data", MaxLength = 120 };
         var scope = new TextBox { Name = "Scope", Text = existing?.Scope ?? "s3://", PlaceholderText = "s3://bucket/ or s3://bucket/path/" };
         var endpoint = new TextBox { Name = "Endpoint", Text = existing?.Endpoint ?? "", PlaceholderText = "storage.example.com:9000" };
         var source = new ComboBox { Name = "Credentials", DropDownStyle = ComboBoxStyle.DropDownList };
@@ -106,7 +109,7 @@ internal sealed class ConnectionEditor : Form
         var tls = new CheckBox { Name = "Tls", Text = "Use HTTPS", Checked = existing?.UseSsl ?? true, AutoSize = true };
         var pathStyle = new CheckBox { Name = "PathStyle", Text = "Put bucket in the URL path", Checked = existing?.PathStyle ?? true, AutoSize = true };
         var advanced = new CheckBox { Name = "Advanced", Text = "Advanced settings", AutoSize = true };
-        Row("Bucket / path", scope); Row("Endpoint", endpoint); Row("Credentials", source);
+        Row("Name", name); Row("Bucket / path", scope); Row("Endpoint", endpoint); Row("Credentials", source);
         Row("Access key ID", keyId); Row("Secret access key", secret); Row("", advanced);
         var advancedPanel = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
         void AdvancedField(string label, Control control) { advancedPanel.Controls.Add(new Label { Text = label, AutoSize = true }); control.Width = 330; advancedPanel.Controls.Add(control); }
@@ -128,15 +131,30 @@ internal sealed class ConnectionEditor : Form
                 : "Endpoint: your storage server's hostname and optional port. Leave it blank only for Amazon S3.");
         }
         source.SelectedIndexChanged += (_, _) => UpdateFields(); advanced.CheckedChanged += (_, _) => UpdateFields();
-        if (existing?.Credentials == S3CredentialSource.AccessKey)
+        S3AccessKey? originalKey = null;
+        if (existing?.Credentials == S3CredentialSource.AccessKey && existing.CredentialId is not null)
         {
             try
             {
-                var saved = editedKey ?? CredentialStore.Read(existing.CredentialId!);
+                var saved = originalKey = editedKey ?? CredentialStore.Read(existing.CredentialId);
                 keyId.Text = saved.KeyId; secret.Text = saved.Secret; token.Text = saved.SessionToken ?? "";
             }
             catch (InvalidOperationException) { credentialNotice = "The saved key is unavailable. Enter it again to repair this connection."; }
         }
+        else if (existing?.Credentials == S3CredentialSource.AccessKey)
+            credentialNotice = "This connection has no saved key on this computer for its endpoint. Enter one to connect.";
+        var destinationChanged = false;
+        void ClearKeyForNewDestination()
+        {
+            if (originalKey is null || destinationChanged) return;
+            destinationChanged = true;
+            keyId.Clear(); secret.Clear(); token.Clear();
+            credentialNotice = "The destination changed. Enter the access key for this endpoint; the previous key remains saved for its original endpoint.";
+            UpdateFields();
+        }
+        endpoint.TextChanged += (_, _) => ClearKeyForNewDestination();
+        tls.CheckedChanged += (_, _) => ClearKeyForNewDestination();
+        pathStyle.CheckedChanged += (_, _) => ClearKeyForNewDestination();
         UpdateFields(); scroll.Controls.Add(fields); outer.Controls.Add(scroll, 0, 0);
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
         var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
@@ -146,14 +164,19 @@ internal sealed class ConnectionEditor : Form
             try
             {
                 var chosen = Sources[source.SelectedIndex];
-                var credentialId = chosen == S3CredentialSource.AccessKey ? existing?.CredentialId ?? Guid.NewGuid().ToString("N") : null;
+                var key = chosen == S3CredentialSource.AccessKey ? new S3AccessKey(keyId.Text.Trim(), secret.Text, string.IsNullOrEmpty(token.Text) ? null : token.Text) : null;
+                key?.Validate();
+                // A replacement key gets its own entry: copies of this workbook may
+                // still use the old key and destination.
+                var credentialId = chosen == S3CredentialSource.AccessKey
+                    ? !destinationChanged && key == originalKey && existing?.CredentialId is not null ? existing.CredentialId : Guid.NewGuid().ToString("N") : null;
                 // Signing is a protocol detail. Keep provider overrides already set
                 // through host configuration; ordinary users need only their endpoint.
                 var connection = new S3Connection(scope.Text.Trim(), chosen, existing?.Region ?? S3Connection.DefaultSigningRegion, NullIfEmpty(endpoint.Text),
-                    chosen is S3CredentialSource.AwsProfile or S3CredentialSource.AwsSso ? NullIfEmpty(profile.Text) : null, tls.Checked, pathStyle.Checked, credentialId);
+                    chosen is S3CredentialSource.AwsProfile or S3CredentialSource.AwsSso ? NullIfEmpty(profile.Text) : null, tls.Checked, pathStyle.Checked, credentialId,
+                    existing?.ConnectionId ?? Guid.NewGuid().ToString("N"), NullIfEmpty(name.Text) ?? scope.Text.Trim()[..Math.Min(120, scope.Text.Trim().Length)]);
                 connection.Validate();
-                var key = chosen == S3CredentialSource.AccessKey ? new S3AccessKey(keyId.Text.Trim(), secret.Text, string.IsNullOrEmpty(token.Text) ? null : token.Text) : null;
-                key?.Validate(); Connection = connection; Key = key; DialogResult = DialogResult.OK; Close();
+                Connection = connection; Key = key; DialogResult = DialogResult.OK; Close();
             }
             catch (Exception error) { MessageBox.Show(this, error.Message, "Connection settings", MessageBoxButtons.OK, MessageBoxIcon.Information); }
         };

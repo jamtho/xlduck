@@ -33,6 +33,22 @@ function fixture(states, wrap = value => value) {
     return {ctx, calls};
 }
 (async () => {
+    for (const wrap of [value => value, value => [value], value => [[value]]]) {
+        const page = {version: 1, state: 'succeeded', connections: [{scope: 's3://research/'}], total: 2, nextOffset: 1};
+        const fixturePage = fixture([page], wrap);
+        assert.deepEqual(JSON.parse(JSON.stringify(await withoutTimers.xlduckConnections(fixturePage.ctx, 'Research'))), page);
+        assert.deepEqual(fixturePage.calls, ['DuckConnections(AZ1000,0)']);
+    }
+    const nextPage = fixture([{state: 'succeeded', connections: [], total: 1, nextOffset: null}]);
+    await sandbox.xlduckConnections(nextPage.ctx, 'Research', 1);
+    assert.deepEqual(nextPage.calls, ['DuckConnections(AZ1000,1)']);
+    for (const invalid of [-1, 33, 0.5, '0),Other()']) {
+        await assert.rejects(sandbox.xlduckConnections(nextPage.ctx, 'Research', invalid), /connection offset/);
+    }
+    const unavailable = fixture([{state: 'failed', failure: {message: 'Initializing'}}]);
+    assert.equal((await sandbox.xlduckConnections(unavailable.ctx, 'Research')).state, 'failed');
+    const initializing = fixture([{state: 'initializing'}]);
+    assert.equal((await sandbox.xlduckConnections(initializing.ctx, 'Research')).state, 'initializing');
     const request = {op: 'query', id: 'test-1', sql: 'SELECT "quoted" FROM ?'};
     let f = fixture([{state: 'queued', session: 's1'}, {state: 'running', session: 's1'}, {state: 'succeeded', session: 's1'}]);
     assert.equal((await sandbox.xlduckExplore(f.ctx, 'Research', request)).state, 'succeeded');
@@ -63,6 +79,8 @@ function fixture(states, wrap = value => value) {
         await assert.rejects(sandbox.xlduckExplore(f.ctx, 'Research', request), /did not return one JSON value/);
         f = fixture([{state: 'succeeded'}], wrap);
         await assert.rejects(sandbox.xlduckWaitCell(f.ctx, 'Research', 'A1'), /did not return one JSON value/);
+        f = fixture([{state: 'succeeded'}], wrap);
+        await assert.rejects(sandbox.xlduckConnections(f.ctx, 'Research'), /did not return one JSON value/);
     }
     // The connected agent's Office.js sandbox does not provide browser timers.
     f = fixture([{state: 'queued', session: 's1'}], value => [value]);
@@ -90,4 +108,5 @@ function fixture(states, wrap = value => value) {
     console.log('PASS long requests transfer in bounded Evaluate expressions without changing Unicode, escapes or arguments');
     console.log('PASS live Office.js scalar/one-cell response shapes work; missing or multi-cell responses fail explicitly');
     console.log('PASS timer-free agent hosts return pending status for a later poll without spinning or resubmitting');
+    console.log('PASS connection discovery evaluates on the named sheet, supports pages and scalar/one-cell JSON without timers or writes');
 })().catch(error => { console.error(error); process.exitCode = 1; });

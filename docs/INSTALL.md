@@ -2,15 +2,15 @@
 
 XlDuck is a Windows x64 Excel add-in for read-and-compute SQL research. Install it once and Excel loads it on normal startup. Workbooks remain ordinary `.xlsx` files. Your AI provider's Excel add-in is optional and installed separately.
 
-Download the complete Windows x64 ZIP from [0.2.0-preview.1](https://github.com/jamtho/xlduck/releases/tag/v0.2.0-preview.1), or build from source with `scripts/Build-Package.ps1`. This is an **unsigned public preview**. Do not use an older packed XLL as a substitute for this distribution. The release lists its tested scope and deferred compatibility trials.
+Download the complete Windows x64 ZIP from [1.0.0](https://github.com/jamtho/xlduck/releases/tag/v1.0.0), or build from source with `scripts/Build-Package.ps1`. This is an **unsigned release**. Do not use an older packed XLL as a substitute for this distribution. The release lists its tested scope and deferred compatibility trials.
 
 ## Install in a few steps
 
 1. Use **64-bit desktop Excel on Windows x64**, with the **x64 .NET 10 Desktop Runtime** and **WebView2 Evergreen Runtime**. Microsoft 365 / Excel 2021 or 2024 use the Office 16.x registration supported by setup. Mac, browser, 32-bit and ARM Excel are not supported. Install and open Excel at least once before setup.
 2. Review the download's origin. If Windows marks the ZIP as downloaded, use **Properties > General > Unblock** only after deciding to trust it, then extract the entire folder. XlDuck setup does not unblock files or change Trust Center. An organization's policies still apply.
 3. Open **START-HERE.html** in the extracted folder for prerequisite links and optional agent setup. Save your work and **close Excel yourself**.
-4. Double-click **Install.cmd**. No administrator rights are needed for XlDuck itself. If a prerequisite is missing, setup prints a link and stops without changing registration. Install the prerequisite and rerun it.
-5. Open Excel normally and perform the smoke test below. It should also work after closing and restarting Excel.
+4. Double-click **Install.cmd** from **Windows File Explorer**. No administrator rights are needed for XlDuck itself. If a prerequisite is missing, setup prints a link and stops without changing registration. Install the prerequisite and rerun it.
+5. Open Excel from the Windows Start menu or taskbar and perform the smoke test below. It should also work after closing and restarting Excel.
 
 Download prerequisites from Microsoft: [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) (Windows x64, under “Run apps”; no SDK needed), and [WebView2 Evergreen Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). Your organization may manage their installation. An existing .NET 8/9 runtime or a private development runtime is not the public prerequisite.
 
@@ -40,6 +40,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Setup.ps1 -Action 
 ```
 
 This checks package integrity, installed prerequisites and whether Excel is closed. A failure returns a nonzero exit code with the next step. Hashes detect incomplete or changed files; they do not authenticate an unsigned publisher. Setup does not download or silently install dependencies. If managed policy blocks these scripts or the XLL, use your organization's deployment route; do not change that policy to run setup.
+
+Run setup and its startup check outside packaged development apps. On this workstation, setup launched from Codex wrote an Excel startup entry visible to Codex and its child processes but absent from the registry view used by Excel launched from Windows Explorer. Reading the entry back or launching Excel again from the same development app gave a false positive. If this occurs, close Excel and rerun **Install.cmd** from File Explorer, then start Excel from its Windows icon. Windows supports private registry views for packaged apps; see [Microsoft's registry virtualization documentation](https://learn.microsoft.com/en-us/windows/msix/desktop/flexible-virtualization). No Trust Center change is needed.
 
 ## Verify installation
 
@@ -81,7 +83,7 @@ For a manually registered version, uncheck it in Excel's Add-ins dialog before c
 
 Agent skills are removed separately through the provider's UI, or by removing the local `%USERPROFILE%\.agents\skills\xlduck` folder after checking for your customizations. XlDuck setup does not remove them automatically.
 
-Connection settings under `%LOCALAPPDATA%\XlDuck\connections`, saved keys in Windows Credential Manager, logs and WebView data remain intact. Remove those only deliberately. Never remove workbooks, source data, AWS profiles or shared runtimes as part of add-in removal.
+Workbook connection metadata, local credential associations under `%LOCALAPPDATA%\XlDuck\credential-bindings`, legacy settings under `%LOCALAPPDATA%\XlDuck\connections`, saved keys in Windows Credential Manager, logs and WebView data remain intact. Remove those only deliberately. Never remove workbooks, source data, AWS profiles or shared runtimes as part of add-in removal.
 
 ## Manual installation
 
@@ -96,6 +98,7 @@ To upgrade manually, uncheck the old entry, save and fully close Excel, then res
 | Setup says Excel is open | Save and close your Excel windows, then retry. Setup never closes them. |
 | Another XlDuck build is registered | Uncheck the manual/development entry in Excel Add-ins, fully exit Excel, then retry. |
 | No ribbon or `#NAME?` | Check the registered XLL path, x64 Excel/runtime, complete package and any Excel security or Disabled Items notice. |
+| Works when an agent launches Excel, but not from the Windows icon | Close Excel and rerun Install.cmd from File Explorer. A packaged development app can see a private startup registration that ordinary Excel cannot see. Verify from the Windows icon, not the agent's launcher. |
 | Runtime/load error | Install the x64 Desktop Runtime. Other .NET add-ins can affect the runtime Excel selects; see [coexistence](RELEASE.md#runtime-and-coexistence). |
 | Preview is blank | Check WebView2 and the packaged preview assets. |
 | Query is pending or fails | Inspect `DuckCellStatus(producingCell)` and `DuckStatus()`; source configuration, Protected View and manual calculation are separate from installation. |
@@ -109,4 +112,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Get-Diagnostics.ps
 
 This prints a report without attaching to Excel or collecting workbook contents, credentials or connection settings. Include the package version and relevant `DuckStatus()` output when reporting a problem. Review error text before sharing because it may contain source paths or data.
 
-This is a pragmatic preview installer, not a signed MSI or automatic updater. The installer and normal Excel startup have been exercised on the development machine using the installed system runtime; see [validation evidence](RELEASE.md#installation-upgrade-and-removal-contract). This does not substitute for a clean supported machine's trial. Remaining publication checks are recorded in [release preparation](RELEASE.md#gates-before-public-publication).
+This is an unsigned per-user installer. Installation and ordinary Windows Excel startup have been exercised on the development workstation using the system runtime. Clean-machine certification, code signing and an automatic updater remain follow-up work; see [tested scope](RELEASE.md#tested-scope-and-follow-up-work).

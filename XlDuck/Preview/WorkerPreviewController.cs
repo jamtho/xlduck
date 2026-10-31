@@ -36,7 +36,7 @@ internal sealed class PreviewController(PreviewPane pane) : IDisposable
         if (!CellHandle.IsToken(text))
         {
             _hasSuccess = false;
-            pane.SetState(new EmptyPreviewModel { Title = "Preview", Message = "Select a table, fragment or plot handle." }); return;
+            pane.SetState(new EmptyPreviewModel { Title = "Preview", Message = "Select a handle or a cell in a DuckOut / DuckQueryOut result." }); return;
         }
         Status("Loading preview" + (_hasSuccess ? " — showing the previous result." : "…"));
         _ = LoadAsync(book.Session, text, _pending.Token);
@@ -46,7 +46,7 @@ internal sealed class PreviewController(PreviewPane pane) : IDisposable
     {
         _key = null; _cell = null; _hasSuccess = false;
         _pending?.Cancel();
-        pane.SetState(new EmptyPreviewModel { Title = "Preview", Message = "Select one table, fragment or plot handle cell." });
+        pane.SetState(new EmptyPreviewModel { Title = "Preview", Message = "Select one handle cell or a cell in a DuckOut / DuckQueryOut result." });
     }
     private async Task LoadAsync(WorkbookSession session, string value, CancellationToken token)
     {

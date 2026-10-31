@@ -45,9 +45,23 @@ internal sealed class PreviewPaneManager : IDisposable
                 if (!_panes.TryGetValue(window.Hwnd, out var pane) || !pane.Pane.Visible) continue;
                 var range = window.RangeSelection as Excel.Range;
                 if (range is null || Convert.ToDouble((object)range.CountLarge) != 1) { pane.Controller.Clear(); continue; }
+                // Excel owns spill geometry. Follow its parent rather than infer
+                // a rectangle from old results, which may have shrunk or moved.
+                if ((object)((dynamic)range).HasSpill is true) range = (Excel.Range)((dynamic)range).SpillParent;
                 var sheetId = book.Sheets.FirstOrDefault(pair => pair.Value.Name == range.Worksheet.Name).Key;
                 if (sheetId == 0) continue;
-                pane.Controller.Select(book, new CellAddress(sheetId, range.Row - 1, range.Column - 1), (object?)range.Value2);
+                var address = new CellAddress(sheetId, range.Row - 1, range.Column - 1);
+                object? value = range.Value2;
+                if (book.Cells.TryGetValue(address, out var formula) && formula.Formula == Convert.ToString(((dynamic)range).Formula2))
+                {
+                    var sources = formula!.Bindings.Values.Where(binding => binding.PreviewOutput && (!formula.Touched || binding.Seen))
+                        .Select(binding => binding.Lease.CellText).Distinct(StringComparer.Ordinal).ToArray();
+                    // A formula combining multiple outputs has no single source.
+                    if (sources.Length == 1 && formula.ImmediateFailure is null && !formula.WaitingInputs &&
+                        value is not System.Runtime.InteropServices.ErrorWrapper && !(value is int code && code < 0))
+                        value = sources[0];
+                }
+                pane.Controller.Select(book, address, value);
             }
             foreach (var id in _panes.Keys.Where(id => !live.Contains(id)).ToArray()) Remove(id);
         }

@@ -13,7 +13,7 @@ public static partial class PreviewAccess
     {
         if (!Uri.TryCreate(uri, UriKind.Absolute, out var url) || url.Scheme != "https" || !url.IsDefaultPort ||
             url.UserInfo.Length != 0 || url.Query.Length != 0 || url.Fragment.Length != 0) return false;
-        return url.Host is "a.tile.openstreetmap.org" or "b.tile.openstreetmap.org" or "c.tile.openstreetmap.org"
+        return url.Host == "tile.openstreetmap.org"
             ? OsmTile().IsMatch(url.AbsolutePath)
             : url.Host == "server.arcgisonline.com" && EsriTile().IsMatch(url.AbsolutePath);
     }

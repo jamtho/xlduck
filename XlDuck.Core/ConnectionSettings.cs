@@ -19,11 +19,13 @@ public sealed record S3AccessKey(string KeyId, string Secret, string? SessionTok
 /// <summary>Non-secret routing. Saved credentials are referenced by ID, never embedded in workbook settings.</summary>
 public sealed record S3Connection(string Scope, S3CredentialSource Credentials = S3CredentialSource.Environment,
     string Region = S3Connection.DefaultSigningRegion, string? Endpoint = null, string? Profile = null, bool UseSsl = true, bool PathStyle = false,
-    string? CredentialId = null)
+    string? CredentialId = null, string? ConnectionId = null, string? Name = null)
 {
     public const string DefaultSigningRegion = "us-east-1";
     public void Validate()
     {
+        if (ConnectionId is not null && !Guid.TryParseExact(ConnectionId, "N", out _)) throw new ArgumentException("Invalid connection ID.");
+        if (Name is { Length: > 120 } || Name?.Any(char.IsControl) == true) throw new ArgumentException("Connection names must be at most 120 characters without control characters.");
         if (!Enum.IsDefined(Credentials) || string.IsNullOrEmpty(Scope) || Scope.Length > 4096 || !Uri.TryCreate(Scope, UriKind.Absolute, out var scope) || scope.Scheme != "s3" || scope.Host.Length == 0 || scope.Query.Length != 0 || scope.Fragment.Length != 0 || scope.UserInfo.Length != 0)
             throw new ArgumentException("An S3 connection needs an s3://bucket/ scope without credentials or query parameters.");
         if (string.IsNullOrEmpty(Region) || Region.Length > 128 || Region.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '-')) throw new ArgumentException("Invalid S3 region.");

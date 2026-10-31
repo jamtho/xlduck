@@ -27,7 +27,11 @@ public static partial class DuckFunctions
             session = book.Session?.Id ?? Guid.Empty;
             var input = JsonSerializer.Deserialize<ExploreInput>(requestJson, DiagnosticJson) ?? throw new ArgumentException("Supply an exploration request.");
             id = input.Id;
-            if (book.Exploration is null) return JsonSerializer.Serialize(new { version = 1, id, state = "initializing" }, DiagnosticJson);
+            if (book.Exploration is null)
+            {
+                if (book.Status is not null) throw new InvalidOperationException(book.Status);
+                return JsonSerializer.Serialize(new { version = 1, id, state = "initializing" }, DiagnosticJson);
+            }
             if (input.Op == "stage")
             {
                 book.ExplorationTransfer!.Add(input.Id, input.Index, input.Count, input.Text ?? throw new ArgumentException("Missing transfer text."));
@@ -84,10 +88,12 @@ public static partial class DuckFunctions
             }).ToArray();
             var failure = cell?.ImmediateFailure ?? bindings.Where(binding => binding.Value.IsFaulted)
                 .Select(binding => ComputationFailure.From(binding.Value.Exception!)).FirstOrDefault();
+            if (book.Session is null && book.Status is not null)
+                failure = new("connection_settings", book.Status, "Open XlDuck > Connections to repair the workbook configuration.");
             var cancelled = bindings.Any(binding => binding.Value.IsCanceled);
             var ready = bindings.Length > 0 && bindings.All(binding => binding.Value.IsCompletedSuccessfully);
             var pending = computations.Select(item => item.computation.State).FirstOrDefault(state => state is not ("succeeded" or "failed" or "cancelled"));
-            var state = book.Session is null ? "initializing" : failure is not null ? "failed" : cancelled ? "cancelled"
+            var state = failure is not null ? "failed" : book.Session is null ? "initializing" : cancelled ? "cancelled"
                 : pending ?? (bindings.Any(binding => !binding.Value.IsCompleted) ? "reading"
                     : cell?.WaitingInputs == true ? "waiting_inputs"
                     : bindings.Any(binding => !binding.Published) ? "awaiting_calculation"

@@ -24,7 +24,7 @@ internal sealed class ResourcesDialog : Form
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new(16), ColumnCount = 2, RowCount = 6 };
         layout.ColumnStyles.Add(new(SizeType.Percent, 60)); layout.ColumnStyles.Add(new(SizeType.Percent, 40));
         var explanation = new Label { AutoSize = true, MaximumSize = new(520, 0), Margin = new(0, 0, 0, 12), Text =
-            "Budgets apply to this workbook's worker. Several open workbooks can use their budgets at the same time. Changes restart XlDuck for this workbook and are saved on this computer for its file path." };
+            "Budgets apply to this workbook's worker. Several open workbooks can use their budgets at the same time. Changes restart XlDuck for this workbook. Save the workbook to keep these budgets with the file." };
         layout.Controls.Add(explanation, 0, 0); layout.SetColumnSpan(explanation, 2);
         void Row(int row, string label, NumericUpDown input)
         {

@@ -314,17 +314,25 @@
             activeMap = map;
 
             const layer = (plotData.overrides.basemap || 'osm').toLowerCase();
+            let tiles;
             if (layer === 'satellite') {
-                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                tiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                     attribution: 'Tiles &copy; Esri',
                     maxZoom: 19
-                }).addTo(map);
+                });
             } else {
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap contributors',
+                tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
                     maxZoom: 19
-                }).addTo(map);
+                });
             }
+            const tileNotice = document.createElement('div');
+            tileNotice.className = 'map-tile-notice';
+            tileNotice.hidden = true;
+            tileNotice.textContent = 'Some background map tiles are unavailable. Your data is still shown. Check the connection or try basemap "satellite".';
+            target.after(tileNotice);
+            tiles.on('tileerror', event => { event.tile.style.visibility = 'hidden'; tileNotice.hidden = false; });
+            tiles.addTo(map);
 
             // Color palette for groups
             const palette = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'];

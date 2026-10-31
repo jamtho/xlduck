@@ -6,7 +6,6 @@
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
-using Microsoft.Web.WebView2.WinForms;
 using XlDuck.Host;
 
 namespace XlDuck.Preview;
@@ -29,7 +28,7 @@ public interface IPreviewPane { }
 [ClassInterface(ClassInterfaceType.None)]
 public class PreviewPane : UserControl, IPreviewPane
 {
-    private WebView2? _webView;
+    private PreviewBrowser? _webView;
     private Label? _fallbackLabel;
     private bool _isWebViewReady;
     private string? _pendingJson;
@@ -46,6 +45,7 @@ public class PreviewPane : UserControl, IPreviewPane
         SuspendLayout();
 
         BackColor = System.Drawing.Color.White;
+        AutoScaleMode = AutoScaleMode.None;
         Dock = DockStyle.Fill;
 
         ResumeLayout(false);
@@ -67,7 +67,7 @@ public class PreviewPane : UserControl, IPreviewPane
         Log.Write("[PreviewPane] InitializeWebViewAsync starting");
         try
         {
-            _webView = new WebView2
+            _webView = new PreviewBrowser
             {
                 Dock = DockStyle.Fill
             };
@@ -80,15 +80,12 @@ public class PreviewPane : UserControl, IPreviewPane
             Directory.CreateDirectory(userDataFolder);
 
             Log.Write($"[PreviewPane] Using WebView2 user data folder: {userDataFolder}");
-            var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-            if (IsDisposed || Disposing) return;
-
-            Log.Write("[PreviewPane] Calling EnsureCoreWebView2Async");
-            await _webView.EnsureCoreWebView2Async(env);
+            var env = await _webView.InitializeAsync(userDataFolder);
             if (IsDisposed || Disposing) return;
             Log.Write("[PreviewPane] WebView2 core initialized");
 
-            var core = _webView.CoreWebView2;
+            var core = _webView.CoreWebView2!;
+            core.Settings.UserAgent += " XlDuck/" + DuckFunctions.DuckVersion() + " (+https://github.com/jamtho/xlduck)";
             core.Settings.AreHostObjectsAllowed = false;
             core.Settings.AreDefaultScriptDialogsEnabled = false;
             core.Settings.AreDefaultContextMenusEnabled = false;
@@ -111,7 +108,7 @@ public class PreviewPane : UserControl, IPreviewPane
                 if (args.ResourceContext == CoreWebView2WebResourceContext.Image && args.Request.Method == "GET" && PreviewAccess.IsMapTile(args.Request.Uri)) return;
                 args.Response = env.CreateWebResourceResponse(null, 403, "Blocked", "Content-Type: text/plain");
             };
-            _webView.NavigationCompleted += OnNavigationCompleted;
+            core.NavigationCompleted += OnNavigationCompleted;
             core.Navigate(PreviewAccess.Document);
         }
         catch (WebView2RuntimeNotFoundException)
@@ -129,16 +126,24 @@ public class PreviewPane : UserControl, IPreviewPane
         }
     }
 
-    private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    private async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
         Log.Write($"[PreviewPane] NavigationCompleted, success={e.IsSuccess}");
         _isWebViewReady = e.IsSuccess;
         if (!e.IsSuccess) { ShowFallbackMessage("Preview failed to load. Repair the XlDuck installation."); return; }
 
-        // WebView2 handles display scaling. Page zoom is a separate user setting;
-        // reducing it for high-DPI displays made the pane too small over RDP.
+        // PreviewBrowser matches the child window's DPI, while page zoom stays 1.
         if (_webView is not null)
             Log.Write($"[PreviewPane] DPI={DeviceDpi}, ZoomFactor={_webView.ZoomFactor:F3}");
+        if (_webView?.CoreWebView2 is { } core)
+        {
+            try
+            {
+                var metrics = await core.ExecuteScriptAsync("({dpr:devicePixelRatio,width:innerWidth,height:innerHeight})");
+                if (!IsDisposed) Log.Write($"[PreviewPane] WindowDPI={GetDpiForWindow(_webView.Handle)}, ClientWidth={_webView.ClientSize.Width}, Metrics={metrics}");
+            }
+            catch (Exception error) { if (!IsDisposed) Log.Error("Preview scaling diagnostics", error); }
+        }
 
         // Send any pending state
         if (_pendingJson != null)
@@ -153,7 +158,7 @@ public class PreviewPane : UserControl, IPreviewPane
     /// </summary>
     public void SetState(PreviewModel model)
     {
-        Log.Write($"[PreviewPane] SetState: {model.Kind}");
+        Log.Write($"[PreviewPane] SetState: {model.Kind}, Handle={model.Handle}");
 
         var json = model.ToJson();
 
@@ -211,4 +216,7 @@ public class PreviewPane : UserControl, IPreviewPane
         }
         base.Dispose(disposing);
     }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(nint window);
 }

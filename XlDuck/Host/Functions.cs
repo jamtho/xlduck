@@ -64,7 +64,7 @@ public static partial class DuckFunctions
             var (book, address, formula) = WorkbookHost.Caller();
             key += ":date1904=" + book.Date1904;
             var cell = WorkbookHost.Touch(book, address, formula);
-            if (book.Session is null) return ExcelError.ExcelErrorNA;
+            if (book.Session is null) return book.Status is null ? ExcelError.ExcelErrorNA : Error(new InvalidOperationException(book.Status));
             if (!cell.Bindings.TryGetValue(key, out var binding))
             {
                 binding = create(book); binding.Key = key; cell.Bindings.Add(key, binding);
@@ -91,7 +91,7 @@ public static partial class DuckFunctions
         {
             var lease = book.Session!.Acquire(request);
             return new(key, lease, output is { } purpose ? Read(book.Session, lease, purpose, book.Date1904, 10000)
-                : Handle(lease));
+                : Handle(lease), previewOutput: output == ReadPurpose.Output);
         });
     }
     private static async Task<object> Handle(ResultLease lease)
@@ -99,8 +99,11 @@ public static partial class DuckFunctions
         await lease.Completion.ConfigureAwait(false);
         return lease.CellText;
     }
-    private static ResultHandle ResolveHandle(string text) => (WorkbookHost.Caller().Book.Session
-        ?? throw new InvalidOperationException("XlDuck is initializing this workbook.")).ResolveCellHandle(text);
+    private static ResultHandle ResolveHandle(string text)
+    {
+        var book = WorkbookHost.Caller().Book;
+        return (book.Session ?? throw new InvalidOperationException(book.Status ?? "XlDuck is initializing this workbook.")).ResolveCellHandle(text);
+    }
     private static QueryArgument Argument(object? value)
     {
         if (value is object[,] array)
@@ -168,7 +171,7 @@ public static partial class DuckFunctions
             return Evaluate(key, book =>
             {
                 var lease = book.Session!.AcquireData(handle);
-                return new(key, lease, Read(book.Session, lease, purpose, book.Date1904, maxRows));
+                return new(key, lease, Read(book.Session, lease, purpose, book.Date1904, maxRows), previewOutput: purpose == ReadPurpose.Output);
             });
         }
         catch (Exception error) { return Fail(error); }
@@ -247,7 +250,9 @@ public static partial class DuckFunctions
     [ExcelFunction(IsMacroType = true)] public static object DuckDate(double serial) => Date(serial, false);
     [ExcelFunction(IsMacroType = true)] public static object DuckDateTime(double serial) => Date(serial, true);
     private static object Date(double serial, bool time) { try { return ExcelValues.DateText(serial, WorkbookHost.Caller().Book.Date1904, time); } catch (Exception error) { return Fail(error); } }
-    [ExcelFunction] public static string DuckVersion() => "0.2.0-preview.1";
+    [ExcelFunction] public static string DuckVersion() => typeof(DuckFunctions).Assembly
+        .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+        .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().Single().InformationalVersion.Split('+')[0];
     [ExcelFunction] public static string DuckLibraryVersion() => "v1.5.6";
     [ExcelFunction(IsMacroType = true, IsVolatile = true, Description = "Workbook readiness and computation diagnostics as JSON; no SQL or credentials.")]
     public static string DuckStatus()

@@ -13,6 +13,14 @@ function xlduckReadJson(response, functionName) {
     return JSON.parse(value);
 }
 
+async function xlduckConnections(ctx, sheetName, offset = 0) {
+    if (!Number.isInteger(offset) || offset < 0 || offset > 32) throw new Error('Supply a connection offset between 0 and 32.');
+    const sheet = ctx.workbook.worksheets.getItem(sheetName);
+    const response = sheet.evaluate(`DuckConnections(AZ1000,${offset})`);
+    await ctx.sync();
+    return xlduckReadJson(response, 'DuckConnections');
+}
+
 async function xlduckExplore(ctx, sheetName, request, waitMs = 4000) {
     if (!Number.isFinite(waitMs) || waitMs < 0 || waitMs > 10000) throw new Error('waitMs must be between 0 and 10000.');
     if (typeof request.id !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(request.id)) throw new Error('Supply a request id of up to 64 letters, digits or hyphens.');
@@ -86,6 +94,13 @@ async function xlduckWaitCell(ctx, sheetName, address, waitMs = 4000) {
 }
 
 // In run_officejs, after the helper declarations, for example:
+// return await xlduckConnections(ctx, 'Research');
+// Then use a returned scope to list files under a narrow prefix:
+// return await xlduckExplore(ctx, 'Research', {
+//     op: 'query', id: 'files-001', sql: 'SELECT file FROM glob(?) LIMIT 20',
+//     arguments: ['s3://your-bucket/known-prefix/*.parquet'], maxRows: 20
+// });
+// LIMIT bounds returned rows, not S3 listing work. Inspect one discovered file:
 // return await xlduckExplore(ctx, 'Research', {
 //     op: 'schema', id: 'schema-001', sql: 'SELECT * FROM read_parquet(?)',
 //     arguments: ['s3://your-bucket/your-file.parquet']

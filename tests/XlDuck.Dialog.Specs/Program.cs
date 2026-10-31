@@ -39,6 +39,7 @@ internal static class Program
                 ShowOwned(editor);
                 Assert(editor.ClientSize.Width >= 578 * editor.DeviceDpi / 96, "Dialog dimensions did not scale with the display DPI");
                 Get<TextBox>(editor, "Scope").Text = "s3://research/";
+                Get<TextBox>(editor, "ConnectionName").Text = "Research data";
                 Get<TextBox>(editor, "Endpoint").Text = "storage.example.test:9000";
                 Get<TextBox>(editor, "KeyId").Text = "fixture-access-key";
                 Get<TextBox>(editor, "Secret").Text = "fixture-secret";
@@ -50,6 +51,7 @@ internal static class Program
                 Get<Button>(editor, "Done").PerformClick();
                 Assert(editor.Connection is { Credentials: S3CredentialSource.AccessKey, UseSsl: true, PathStyle: true, Region: "us-east-1" }, "Incorrect connection defaults");
                 Assert(editor.Connection!.Endpoint == "storage.example.test:9000" && editor.Key?.Secret == "fixture-secret", "Editor lost connection fields");
+                Assert(editor.Connection.Name == "Research data" && Guid.TryParseExact(editor.Connection.ConnectionId, "N", out _), "Missing connection name or stable ID");
                 // Done stages the key; only the outer dialog's Apply writes Credential Manager.
                 try { CredentialStore.Read(editor.Connection.CredentialId!); throw new Exception("Editor saved a key before Apply"); }
                 catch (InvalidOperationException) { }
@@ -73,6 +75,19 @@ internal static class Program
                 Get<Button>(editor, "Done").PerformClick();
                 Assert(editor.Connection?.Region == "local-1", "Editing an existing connection lost its server-specific signing override");
                 Console.WriteLine("PASS existing server signing override survives ordinary connection edits");
+            }
+            var original = new S3Connection("s3://research/", S3CredentialSource.AccessKey, Endpoint: "original.example.test", CredentialId: Guid.NewGuid().ToString("N"), ConnectionId: Guid.NewGuid().ToString("N"), Name: "Original");
+            using (var editor = new ConnectionEditor(original, new("fixture-id", "fixture-secret")))
+            {
+                ShowOwned(editor);
+                Get<TextBox>(editor, "ConnectionName").Text = "Renamed";
+                Assert(Get<TextBox>(editor, "Secret").Text == "fixture-secret", "Renaming cleared the key");
+                Get<TextBox>(editor, "Endpoint").Text = "replacement.example.test";
+                Assert(Get<TextBox>(editor, "Secret").Text.Length == 0 && Get<TextBox>(editor, "KeyId").Text.Length == 0, "Changing endpoint retained the old key");
+                Get<TextBox>(editor, "KeyId").Text = "replacement-id"; Get<TextBox>(editor, "Secret").Text = "replacement-secret";
+                Get<Button>(editor, "Done").PerformClick();
+                Assert(editor.Connection is { } changed && changed.ConnectionId == original.ConnectionId && changed.Name == "Renamed" && changed.CredentialId != original.CredentialId, "Endpoint edit lost identity or replaced the original key");
+                Console.WriteLine("PASS changing destination clears prefilled credentials and stages a separate key while retaining connection identity");
             }
             using (var dialog = new ConnectionsDialog(new("Research.xlsx", new([new("s3://research/", S3CredentialSource.Environment, Endpoint: "storage.example.test:9000", PathStyle: true)]))))
             {

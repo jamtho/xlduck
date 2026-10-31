@@ -30,7 +30,7 @@ public static partial class DuckFunctions
                     DuckHelp("reference") - function signatures, SQL capabilities, types, limits, connections and recovery.
                     DuckHelp("officejs") - JavaScript helpers for a host that supports Office.js Worksheet.evaluate.
 
-                    Start with workflow, then consult reference as needed. Keep final analyses as worksheet formulas. Inspect schemas before large queries; retain metadata before body text. Poll DuckCellStatus(cell) to distinguish running work from errors.
+                    Start with workflow, then consult reference as needed. Discover configured S3 scopes with DuckConnections() in a cell, or DuckConnections(AZ1000) through worksheet evaluation; no credentials are returned. List files under a narrow prefix, inspect schemas, then sample before large queries. Keep final analyses as worksheet formulas; retain metadata before body text. Poll DuckCellStatus(cell) to distinguish running work from errors.
 
                     An agent can read these functions through formula evaluation or an agreed help cell. Installing XlDuck does not automatically install an agent skill. Office.js access does not imply VBA/COM or ribbon-command access.
                     """,

@@ -13,6 +13,7 @@ if (-not $AddInPath) {
 $privateBuild = Copy-XlDuckDevelopmentBuild $AddInPath
 $session = $null; $sheet = $null; $other = $null; $otherSheet = $null
 $closeGuard = $null
+$metadata = $null; $migrationBook = $null; $migrationSheet = $null; $bindingRecords = @()
 $caseDirectory = Join-Path (Split-Path $PSScriptRoot -Parent) ('artifacts/production-tests/' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($caseDirectory)
 $savedPaths = @()
@@ -29,7 +30,7 @@ function Wait-Handle([string]$address) {
     Wait-XlDuckCell $sheet $address -TimeoutSeconds 15 -Until {
         param($value)
         if ($value -is [string] -and $value.StartsWith('#ERROR:')) { throw $value }
-        $value -is [string] -and $value -cmatch '^xlduck://[tfp]/[1-9][0-9]*::[A-Za-z0-9_-]{11}$'
+        $value -is [string] -and $value -cmatch '^xlduck://[tfp]/[A-Z]{4}/[1-9][0-9]*$'
     }
 }
 function Command([string]$name) { Invoke-XlDuckExcel { $excel.Run($name, $session.Workbook.Name) } | Out-Null }
@@ -94,6 +95,8 @@ try {
         if (-not $session.Application.RegisterXLL($privateBuild)) { throw 'Production add-in could not load.' }
     } else { $session = New-XlDuckExcelSession -AddInPath $privateBuild }
     $excel = $session.Application; $sheet = $session.Workbook.Worksheets.Item(1)
+    $expectedVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path (Split-Path $privateBuild -Parent) 'XlDuck.dll')).ProductVersion.Split('+')[0]
+    if ((Help-Text 'DuckVersion()') -ne $expectedVersion) { throw 'DuckVersion does not match the loaded binary version.' }
     Formula 'A1' '=DuckQuery("SELECT 1 n")'
     Formula 'Z1' '=DuckStatus()'
     if ($RuntimeRoot -and ([version](Stats).runtime).Major -ne 10) { throw 'Portable .NET 10 runtime was not selected.' }
@@ -101,6 +104,13 @@ try {
     Wait-Value 'D1' 1
     if ((Wait-Handle 'A1').Length -gt 27) { throw 'Table handles are not compact numbered aliases.' }
     Pass 'new workbooks compute automatically and return compact handles'
+    Formula 'AY1' '=DuckConnections()'
+    $emptyConnections = Wait-XlDuckCell $sheet 'AY1' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).state -eq 'succeeded' }
+    $emptyConnections = $emptyConnections | ConvertFrom-Json
+    if ($emptyConnections.total -ne 0 -or $emptyConnections.connections.Count -ne 0) { throw 'A new workbook inherited connections.' }
+    Pass 'connection discovery works without an anchor in a worksheet and reports an empty inventory'
+    Formula 'AY2' '=DuckHelp()'
+    Formula 'AY3' '=DuckVersion()'
     $beforeHelp = (Stats).statistics.Executions
     foreach ($topic in @('index','workflow','reference','officejs')) {
         $help = Help-Text ('DuckHelp("' + $topic + '")')
@@ -235,7 +245,7 @@ try {
     Pass 'legacy write/configuration functions and public helpers are not registered'
     $other = $excel.Workbooks.Add(); $otherSheet = $other.Worksheets.Item(1)
     $otherSheet.Range('A1').Formula2 = '=DuckQuery("SELECT 444 n")'
-    $otherHandle = Wait-XlDuckCell $otherSheet 'A1' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[1-9][0-9]*::[A-Za-z0-9_-]{11}$' }
+    $otherHandle = Wait-XlDuckCell $otherSheet 'A1' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[A-Z]{4}/[1-9][0-9]*$' }
     $sheet.Range('R2').Value2 = $otherHandle
     Formula 'F6' '=DuckScalar(R2)'
     [void](Wait-XlDuckCell $sheet 'F6' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') -and $v.Contains('different workbook') })
@@ -329,12 +339,39 @@ public sealed class XlDuckCancelClose : IDisposable {
     Wait-Value 'D1' 20
     if ($otherSheet.Range('A1').Value2 -ne $otherHandle) { throw 'Connection changes restarted another workbook.' }
     Pass 'connection settings apply without enablement and restart only their workbook'
+    $beforeDiscovery = Stats
+    $beforeDiscoveryRange = [string]$sheet.UsedRange.Address()
+    $other.Activate()
+    $connections = (Help-Text 'DuckConnections(AZ1000)') | ConvertFrom-Json
+    if ($connections.state -ne 'succeeded' -or $connections.total -ne 1 -or $connections.connections[0].scope -ne 's3://fixture/' -or $connections.connections[0].endpoint -ne '127.0.0.1:1' -or $connections.connections[0].authentication -ne 'anonymous') { throw 'Anchored connection discovery returned the wrong workbook or metadata.' }
+    $elsewhere = @(Invoke-XlDuckExcel { $otherSheet.Evaluate('DuckConnections(AZ1000)') })[0] | ConvertFrom-Json
+    if ($elsewhere.state -ne 'succeeded' -or $elsewhere.total -ne 0) { throw 'Connection discovery crossed workbook boundaries.' }
+    $fromCell = $sheet.Range('AY1').Value2 | ConvertFrom-Json
+    if ($fromCell.total -ne 1 -or $fromCell.connections[0].scope -ne 's3://fixture/') { throw 'Changing connections did not refresh the discovery formula.' }
+    foreach ($invalid in @('DuckConnections(42)', 'DuckConnections(AZ1000:AZ1001)', 'DuckConnections(AZ1000,-1)', 'DuckConnections(AZ1000,2)')) {
+        if (((Help-Text $invalid) | ConvertFrom-Json).state -ne 'failed') { throw "Invalid connection discovery input succeeded: $invalid" }
+    }
+    $endPage = (Help-Text 'DuckConnections(AZ1000,1)') | ConvertFrom-Json
+    if ($endPage.state -ne 'succeeded' -or $endPage.connections.Count -ne 0 -or $null -ne $endPage.nextOffset) { throw 'Connection discovery pagination did not terminate.' }
+    $afterDiscovery = Stats
+    if ($afterDiscovery.session -ne $beforeDiscovery.session -or $afterDiscovery.statistics.Executions -ne $beforeDiscovery.statistics.Executions -or [string]$sheet.UsedRange.Address() -ne $beforeDiscoveryRange -or $sheet.Range('AZ1000').Value2) { throw 'Connection discovery changed the session, executed a query or wrote cells.' }
+    $session.Workbook.Activate()
+    Pass 'anchored discovery isolates workbooks, updates after configuration and performs no computation or cell edits'
     $beforeResources = (Stats).session
     $excel.Run('DuckSetResources', '{"MemoryMiB":1536,"SpillGiB":6,"Threads":1}', $session.Workbook.Name) | Out-Null
     [void](Wait-Status { param($s) $s.session -ne $beforeResources -and $s.resources.MemoryMiB -eq 1536 -and $s.connections -eq 1 })
     Wait-Value 'D1' 20
     if ($otherSheet.Range('A1').Value2 -ne $otherHandle) { throw 'Resource changes restarted another workbook.' }
     Pass 'resource changes preserve connections and restart only the selected workbook'
+    $metadata = $session.Workbook.CustomXMLParts.SelectByNamespace('urn:xlduck:workbook-settings:v1')
+    if ($metadata.Count -ne 1) { throw 'Connection definitions were not written into workbook metadata.' }
+    $metadataXml = [xml]$metadata.Item(1).XML
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($metadata); $metadata = $null
+    $definitions = $metadataXml.DocumentElement.FirstChild.InnerText | ConvertFrom-Json
+    $connectionIdentity = $definitions.Connections[0].ConnectionId
+    if (-not $connectionIdentity -or $definitions.Connections[0].Scope -ne 's3://fixture/' -or $definitions.Connections[0].PSObject.Properties.Name -contains 'CredentialId') { throw 'Portable metadata lost connection identity or embedded a vault reference.' }
+    if ($session.Workbook.Saved) { throw 'Applying connection settings did not mark the workbook for saving.' }
+    Pass 'connection definitions and resource budgets live in workbook metadata without vault references'
     $saved = Join-Path $caseDirectory 'research.xlsx'; $savedPaths += $saved
     $session.Workbook.SaveAs($saved, 51)
     [void](Wait-Status { param($s) $s.connectionsSaved })
@@ -347,27 +384,132 @@ public sealed class XlDuckCancelClose : IDisposable {
     [IO.File]::WriteAllText($source, "n`n100`n")
     $session.Workbook.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($session.Workbook)
     [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sheet); $sheet = $null
-    $session.Workbook = $excel.Workbooks.Open($renamed); $sheet = $session.Workbook.Worksheets.Item(1)
+    # Model a workbook last saved with an older add-in. Only alter cached values in our closed fixture.
+    Add-Type -AssemblyName System.IO.Compression,System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::Open($renamed, [IO.Compression.ZipArchiveMode]::Update)
+    try {
+        $entry = $archive.GetEntry('xl/worksheets/sheet1.xml')
+        $reader = [IO.StreamReader]::new($entry.Open())
+        try { $xml = [xml]$reader.ReadToEnd() } finally { $reader.Dispose() }
+        $namespaces = [Xml.XmlNamespaceManager]::new($xml.NameTable)
+        $namespaces.AddNamespace('s', $xml.DocumentElement.NamespaceURI)
+        foreach ($address in @('AY2','AY3')) {
+            $cell = $xml.SelectSingleNode('//s:c[@r="' + $address + '"]', $namespaces)
+            if (-not $cell -or -not $cell.SelectSingleNode('s:f', $namespaces)) { throw 'Missing diagnostic formula fixture.' }
+            $cell.SetAttribute('t','str')
+            $value = $cell.SelectSingleNode('s:v', $namespaces)
+            if (-not $value) { $value = $xml.CreateElement('v', $xml.DocumentElement.NamespaceURI); [void]$cell.AppendChild($value) }
+            $value.InnerText = 'cached guidance from an older XlDuck build'
+        }
+        $entry.Delete(); $entry = $archive.CreateEntry('xl/worksheets/sheet1.xml')
+        $writer = [IO.StreamWriter]::new($entry.Open())
+        try { $writer.Write($xml.OuterXml) } finally { $writer.Dispose() }
+    } finally { $archive.Dispose() }
+    $session.Workbook = Invoke-XlDuckExcel { $excel.Workbooks.Open($renamed) }
+    if ($null -eq $session.Workbook) {
+        # Excel can open successfully without returning a COM result. Resolve only our exact fixture in our owned instance.
+        foreach ($candidate in $excel.Workbooks) {
+            if ($candidate.FullName -eq $renamed) { $session.Workbook = $candidate; break }
+        }
+    }
+    if ($null -eq $session.Workbook) { throw 'Excel did not reopen the saved fixture.' }
+    $sheet = $session.Workbook.Worksheets.Item(1)
     [void](Wait-Status { param($s) $s.ready -and $s.connections -eq 1 -and $s.session -ne $savedSession })
     Wait-Value 'F15' 100; Wait-Value 'D1' 20
     if ((Stats).resources.MemoryMiB -ne 1536) { throw 'Reopening lost the saved resource budget.' }
     Pass 'opening an ordinary saved workbook starts a fresh session and rereads its sources'
+    Wait-Value 'AY3' (Help-Text 'DuckVersion()')
+    Wait-Value 'AY2' (Help-Text 'DuckHelp()')
+    Pass 'reopening refreshes help and version cells cached by an older add-in'
     $copy = Join-Path $caseDirectory 'unfamiliar copy.xlsx'
     $originalSession = (Stats).session
     [IO.File]::Copy($renamed, $copy)
     $copyBook = $excel.Workbooks.Open($copy); $copySheet = $copyBook.Worksheets.Item(1)
     try {
         [void](Wait-XlDuckCell $copySheet 'F15' -Until { param($v) $v -eq 100 })
-        [void](Wait-XlDuckCell $copySheet 'Z1' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).session -ne $originalSession -and ($v | ConvertFrom-Json).connections -eq 0 })
+        [void](Wait-XlDuckCell $copySheet 'Z1' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).session -ne $originalSession -and ($v | ConvertFrom-Json).connections -eq 1 })
+        $copyConnections = @($copySheet.Evaluate('DuckConnections(AZ1000)'))[0] | ConvertFrom-Json
+        if ($copyConnections.connections[0].scope -ne 's3://fixture/') { throw 'A copied workbook lost its connections.' }
+        $copyMetadata = [xml]$copyBook.CustomXMLParts.SelectByNamespace('urn:xlduck:workbook-settings:v1').Item(1).XML
+        if (($copyMetadata.DocumentElement.FirstChild.InnerText | ConvertFrom-Json).Connections[0].ConnectionId -ne $connectionIdentity) { throw 'A copied workbook changed connection identity.' }
     } finally { $copyBook.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($copySheet); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($copyBook) }
-    Pass 'an ordinary workbook copy computes automatically in its own session'
+    Pass 'an externally copied workbook keeps its connection identities and computes in its own session'
+    # Seed an old local record for a workbook created by this harness. The fake
+    # vault reference tests association only; no credential is created or read.
+    $legacyPath = Join-Path $caseDirectory 'legacy connections.xlsx'; $savedPaths += $legacyPath
+    $migrationBook = $excel.Workbooks.Add(); $migrationBook.SaveAs($legacyPath, 51)
+    $migrationBook.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationBook); $migrationBook = $null
+    [void](Stats)
+    $fakeVaultId = [guid]::NewGuid().ToString('N')
+    $legacySettings = @{ S3 = @(@{ Scope = 's3://migration/'; Credentials = 4; Endpoint = 'original.example.test'; CredentialId = $fakeVaultId }); Resources = @{ MemoryMiB = 2048; SpillGiB = 8; Threads = 3 } }
+    $legacyCanonical = [IO.Path]::GetFullPath($legacyPath).ToUpperInvariant()
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { $legacyHash = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($legacyCanonical))).Replace('-', '') } finally { $sha.Dispose() }
+    $legacyDirectory = Join-Path $env:LOCALAPPDATA 'XlDuck/connections'
+    [void][IO.Directory]::CreateDirectory($legacyDirectory)
+    [IO.File]::WriteAllText((Join-Path $legacyDirectory ($legacyHash + '.json')), (@{ Version = 1; Path = $legacyCanonical; Settings = $legacySettings } | ConvertTo-Json -Depth 8))
+    $migrationBook = $excel.Workbooks.Open($legacyPath); $migrationSheet = $migrationBook.Worksheets.Item(1)
+    $migrationSheet.Range('A1').Formula2 = '=DuckConnections()'
+    $migrationResult = (Wait-XlDuckCell $migrationSheet 'A1' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).state -eq 'succeeded' }) | ConvertFrom-Json
+    if ($migrationResult.total -ne 1 -or $migrationResult.connections[0].requiresCredentialSetup) { throw 'Legacy settings did not acquire a local credential association.' }
+    $migrationXml = [xml]$migrationBook.CustomXMLParts.SelectByNamespace('urn:xlduck:workbook-settings:v1').Item(1).XML
+    $migrationDefinition = $migrationXml.DocumentElement.FirstChild.InnerText | ConvertFrom-Json
+    $migrationId = $migrationDefinition.Connections[0].ConnectionId
+    $bindingDirectory = Join-Path $env:LOCALAPPDATA 'XlDuck/credential-bindings'
+    $bindingRecords = @(Get-ChildItem -LiteralPath $bindingDirectory -Filter '*.json' | Where-Object { ((Get-Content -LiteralPath $_.FullName -Raw) | ConvertFrom-Json).ConnectionId -eq $migrationId } | Select-Object -ExpandProperty FullName)
+    if ($bindingRecords.Count -ne 1 -or $migrationXml.OuterXml.Contains($fakeVaultId) -or $migrationDefinition.Resources.MemoryMiB -ne 2048) { throw 'Migration lost budgets, exposed a vault reference or failed to persist the local association.' }
+    $migrationBook.Save(); $migrationBook.Close($false)
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationSheet); $migrationSheet = $null
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationBook); $migrationBook = $null
+    Pass 'legacy settings migrate into workbook metadata while the vault reference stays in the local association'
+    $migratedCopy = Join-Path $caseDirectory 'migrated copy.xlsx'; [IO.File]::Copy($legacyPath, $migratedCopy)
+    $migrationBook = $excel.Workbooks.Open($migratedCopy); $migrationSheet = $migrationBook.Worksheets.Item(1)
+    $migrationResult = (Wait-XlDuckCell $migrationSheet 'A1' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).state -eq 'succeeded' }) | ConvertFrom-Json
+    if ($migrationResult.connections[0].requiresCredentialSetup) { throw 'Copying a workbook lost its credential association on this computer.' }
+    # Change only the workbook's portable endpoint, bypassing the host dialog.
+    $migrationDefinition.Connections[0].Endpoint = 'replacement.example.test'
+    $migrationXml.DocumentElement.FirstChild.InnerText = $migrationDefinition | ConvertTo-Json -Depth 8 -Compress
+    $migrationBook.CustomXMLParts.SelectByNamespace('urn:xlduck:workbook-settings:v1').Item(1).Delete()
+    [void]$migrationBook.CustomXMLParts.Add($migrationXml.OuterXml)
+    $migrationBook.Save(); $migrationBook.Close($false)
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationSheet); $migrationSheet = $null
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationBook); $migrationBook = $null
+    [void](Stats)
+    $migrationBook = $excel.Workbooks.Open($migratedCopy); $migrationSheet = $migrationBook.Worksheets.Item(1)
+    $migrationResult = (Wait-XlDuckCell $migrationSheet 'A1' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).state -eq 'succeeded' -and ($v | ConvertFrom-Json).connections[0].endpoint -eq 'replacement.example.test' }) | ConvertFrom-Json
+    if (-not $migrationResult.connections[0].requiresCredentialSetup) { throw 'An endpoint edited in the workbook reused the original endpoint credential.' }
+    $migrationDefinition.Version = 999
+    $migrationXml.DocumentElement.FirstChild.InnerText = $migrationDefinition | ConvertTo-Json -Depth 8 -Compress
+    $migrationBook.CustomXMLParts.SelectByNamespace('urn:xlduck:workbook-settings:v1').Item(1).Delete()
+    [void]$migrationBook.CustomXMLParts.Add($migrationXml.OuterXml)
+    $migrationBook.Save()
+    $migrationBook.Close($false)
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationSheet); $migrationSheet = $null
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationBook); $migrationBook = $null
+    Pass 'a copied workbook reuses local credentials only while its destination remains unchanged'
+    [void](Stats)
+    $migrationBook = $excel.Workbooks.Open($migratedCopy); $migrationSheet = $migrationBook.Worksheets.Item(1)
+    [void](Wait-XlDuckCell $migrationSheet 'A1' -Until { param($v) $v -is [string] -and $v.StartsWith('{') -and ($v | ConvertFrom-Json).state -eq 'failed' })
+    $migrationSheet.Range('A3').Formula2 = '=DuckQueryOutScalar("SELECT 1")'
+    [void](Wait-XlDuckCell $migrationSheet 'A3' -Until { param($v) $v -is [string] -and $v.StartsWith('#ERROR:') -and $v.Contains('metadata') })
+    if ((@($migrationSheet.Evaluate('DuckCellStatus(A3)'))[0] | ConvertFrom-Json).state -ne 'failed') { throw 'Invalid settings were reported as pending calculation.' }
+    if ((@($migrationSheet.Evaluate('DuckExplore(AZ1000,"{""op"":""query"",""id"":""invalid-config"",""sql"":""SELECT 1""}")'))[0] | ConvertFrom-Json).state -ne 'failed') { throw 'Invalid settings left agent exploration initializing indefinitely.' }
+    try { $excel.Run('DuckRestartWorkbook', $migrationBook.Name) | Out-Null } catch { }
+    if ((@($migrationSheet.Evaluate('DuckConnections(AZ1000)'))[0] | ConvertFrom-Json).state -ne 'failed') { throw 'Restart silently replaced invalid metadata with defaults.' }
+    $excel.Run('DuckSetConnections', '{"S3":[{"Scope":"s3://repaired/","Credentials":0}]}', $migrationBook.Name) | Out-Null
+    [void](Wait-XlDuckCell $migrationSheet 'A3' -Until { param($v) $v -eq 1 })
+    if ((@($migrationSheet.Evaluate('DuckConnections(AZ1000)'))[0] | ConvertFrom-Json).connections[0].scope -ne 's3://repaired/') { throw 'Explicitly applying valid settings did not repair metadata.' }
+    $migrationBook.Close($false)
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationSheet); $migrationSheet = $null
+    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationBook); $migrationBook = $null
+    Pass 'unsupported workbook metadata reports a configuration failure instead of indefinite initialization or default settings'
     $audit = $excel.Workbooks.Add(); $auditSheet = $audit.Worksheets.Item(1)
     try {
         $auditSheet.Range('Z1').Formula2 = '=DuckStatus()'
         $auditSheet.Range('A50').Formula2 = '=DuckQuery("SELECT 7654321")'
-        [void](Wait-XlDuckCell $auditSheet 'A50' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[1-9][0-9]*::[A-Za-z0-9_-]{11}$' })
+        [void](Wait-XlDuckCell $auditSheet 'A50' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[A-Z]{4}/[1-9][0-9]*$' })
         $auditSheet.Rows.Item(45).Insert() | Out-Null
-        [void](Wait-XlDuckCell $auditSheet 'A51' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[1-9][0-9]*::[A-Za-z0-9_-]{11}$' })
+        [void](Wait-XlDuckCell $auditSheet 'A51' -Until { param($v) $v -is [string] -and $v -cmatch '^xlduck://[tfp]/[A-Z]{4}/[1-9][0-9]*$' })
         $auditSheet.Range('A51').ClearContents() | Out-Null
         [void](Wait-XlDuckCell $auditSheet 'Z1' -Until {
             param($v)
@@ -382,6 +524,10 @@ public sealed class XlDuckCancelClose : IDisposable {
     Write-Host $_.ScriptStackTrace
     throw
 } finally {
+    if ($metadata) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($metadata); $metadata = $null }
+    if ($migrationBook) { Invoke-XlDuckExcel { $migrationBook.Close($false) }; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationBook) }
+    if ($migrationSheet) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($migrationSheet) }
+    foreach ($bindingRecord in $bindingRecords) { Remove-Item -LiteralPath $bindingRecord }
     if ($closeGuard) { $closeGuard.Dispose() }
     if ($other) { Invoke-XlDuckExcel { $other.Close($false) }; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($other) }
     if ($otherSheet) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($otherSheet) }

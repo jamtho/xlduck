@@ -15,6 +15,12 @@ if ($RuntimeRoot) { $protectedOptions += @('-RuntimeRoot', $RuntimeRoot, '-Frame
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Test-ProtectedView.ps1') @protectedOptions
 if ($LASTEXITCODE -ne 0) { throw 'Protected View integration failed.' }
 if ($WithPreview) {
+    & dotnet build (Join-Path $PSScriptRoot 'XlDuck.Preview.Specs') --nologo -m:1 /nodeReuse:false /p:UseSharedCompilation=false /p:RestoreLockedMode=true
+    if ($LASTEXITCODE -ne 0) { throw 'Preview DPI test build failed.' }
+    foreach ($mode in @('unaware', 'system', 'per-monitor')) {
+        & dotnet run --project (Join-Path $PSScriptRoot 'XlDuck.Preview.Specs') --no-build --no-restore -- $mode
+        if ($LASTEXITCODE -ne 0) { throw "Preview DPI verification failed: $mode" }
+    }
     $previewOptions = @('-NoBuild')
     if ($AddInPath) { $previewOptions += @('-AddInPath', $AddInPath) }
     if ($RuntimeRoot) { $previewOptions += @('-RuntimeRoot', $RuntimeRoot, '-FrameworkProbe', $FrameworkProbe) }

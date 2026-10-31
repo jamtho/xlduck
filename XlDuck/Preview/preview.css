@@ -253,5 +253,8 @@
         /* Map container */
         .map-container {
             width: 100%;
-            height: 800px;
+            height: clamp(280px, 65vh, 600px);
         }
+
+        .map-tile-notice { padding: 8px; color: #765200; background: #fff7dc; }
+        .leaflet-control { max-width: calc(100% - 20px); overflow-wrap: anywhere; }

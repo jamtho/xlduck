@@ -58,12 +58,12 @@ try {
         if (-not $session.Application.RegisterXLL($build)) { throw 'Add-in failed to load.' }
     } else { $session = New-XlDuckExcelSession -AddInPath $build }
     $excel = $session.Application; $sheet = $session.Workbook.Worksheets.Item(1)
-    $sheet.Range('A1').Formula2 = '=DuckVersion()'
-    $sheet.Range('A2').Formula2 = '=DuckQueryOutScalar("SELECT n FROM read_csv(?)", B2)'
-    $sheet.Range('B2').Value2 = $server.Url
+    Invoke-XlDuckExcel { $sheet.Range('A1').Formula2 = '=DuckVersion()' }
+    Invoke-XlDuckExcel { $sheet.Range('A2').Formula2 = '=DuckQueryOutScalar("SELECT n FROM read_csv(?)", B2)' }
+    Invoke-XlDuckExcel { $sheet.Range('B2').Value2 = $server.Url }
     [void](Wait-XlDuckCell $sheet 'A2' -Until { param($v) $v -eq 42 })
-    $session.Workbook.SaveAs($path, 51)
-    $session.Workbook.Close($false)
+    Invoke-XlDuckExcel { $session.Workbook.SaveAs($path, 51) }
+    Invoke-XlDuckExcel { $session.Workbook.Close($false) }
     [void][Runtime.InteropServices.Marshal]::ReleaseComObject($sheet); $sheet = $null
     [void][Runtime.InteropServices.Marshal]::ReleaseComObject($session.Workbook); $session.Workbook = $null
     $server.Body = "n`n99`n"; $before = $server.Requests
@@ -84,8 +84,8 @@ try {
     Write-Host 'PASS Protected View retains cached results and makes no external read'
     $ordinary = $null; $ordinarySheet = $null
     try {
-        $ordinary = $excel.Workbooks.Add(); $ordinarySheet = $ordinary.Worksheets.Item(1)
-        $ordinarySheet.Range('A1').Formula2 = '=DuckQueryOutScalar("SELECT 7")'
+        $ordinary = Invoke-XlDuckExcel { $excel.Workbooks.Add() }; $ordinarySheet = $ordinary.Worksheets.Item(1)
+        Invoke-XlDuckExcel { $ordinarySheet.Range('A1').Formula2 = '=DuckQueryOutScalar("SELECT 7")' }
         [void](Wait-XlDuckCell $ordinarySheet 'A1' -Until { param($v) $v -eq 7 })
         if ((Test-SandboxedWorkbook $ordinary) -or -not (Test-SandboxedWorkbook $protectedBook) -or $server.Requests -ne $before) { throw 'Protected and ordinary workbook identities were confused.' }
     } finally {

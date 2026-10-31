@@ -95,7 +95,7 @@ $requiredFiles = @(
     'preview/leaflet.js','preview/leaflet.css','preview/sql-formatter.min.js',
     'preview/licenses/vega.txt','preview/licenses/vega-lite.txt','preview/licenses/vega-embed.txt',
     'preview/licenses/vega-interpreter.txt','preview/licenses/leaflet.txt','preview/licenses/sql-formatter.txt',
-    'LICENSE','README.md','docs/FORMULAS.md','docs/RELEASE.md','docs/INSTALL.md','docs/AGENT-INTEGRATION.md','docs/agent-exploration.js','licenses/nuget-packages.json',
+    'LICENSE','README.md','docs/FORMULAS.md','docs/RELEASE.md','docs/RELEASE-NOTES.md','docs/INSTALL.md','docs/AGENT-INTEGRATION.md','docs/agent-exploration.js','licenses/nuget-packages.json',
     'build-info.json','scripts/Get-Diagnostics.ps1','scripts/Verify-Package.ps1',
     'docs/AGENT-WORKFLOW.md','scripts/Setup.ps1','scripts/Setup.Core.ps1',
     'Install.cmd','Uninstall.cmd','Rollback.cmd','Install Codex Skill.cmd','START-HERE.html',

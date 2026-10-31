@@ -99,7 +99,8 @@ await Check("compact handles resolve only live results in their own workbook ses
     await using var other = new WorkbookSession(_ => new FakeBackend());
     var lease = session.Acquire(ComputationRequest.Query("SELECT 1")); await lease.Completion;
     var text = lease.CellText;
-    Equal(25, text.Length); Equal(true, text.StartsWith("xlduck://t/1::")); Equal(true, CellHandle.IsToken(text));
+    Equal(17, text.Length); Equal(true, text.StartsWith("xlduck://t/")); Equal(true, text.EndsWith("/1")); Equal(true, CellHandle.IsToken(text));
+    var tag = text.Split('/')[3]; Equal(4, tag.Length); Equal(true, tag.All(c => c is >= 'A' and <= 'Z'));
     Equal(false, text.Contains(session.Id.ToString("N")));
     Equal(text, session.GetCellText(lease.Handle));
     Equal(lease.Handle, session.ResolveCellHandle(text));
@@ -110,9 +111,9 @@ await Check("compact handles resolve only live results in their own workbook ses
     using (var fragment = session.Acquire(ComputationRequest.Fragment("SELECT * FROM ?", QueryArgument.Reference(lease.Handle))))
     {
         await fragment.Completion; Equal(fragment.Handle, session.ResolveCellHandle(fragment.CellText));
-        Equal(true, fragment.CellText.StartsWith("xlduck://f/2::"));
+        Equal("xlduck://f/" + tag + "/2", fragment.CellText);
         using var plot = session.Acquire(ComputationRequest.Plot(lease.Handle, "bar")); await plot.Completion;
-        Equal(plot.Handle, session.ResolveCellHandle(plot.CellText)); Equal(true, plot.CellText.StartsWith("xlduck://p/3::"));
+        Equal(plot.Handle, session.ResolveCellHandle(plot.CellText)); Equal("xlduck://p/" + tag + "/3", plot.CellText);
     }
     lease.Dispose(); await session.WaitForIdleAsync();
     Throws<ArgumentException>(() => session.ResolveCellHandle(text));
@@ -123,24 +124,35 @@ await Check("numbered cell aliases reuse live results but never reuse retired nu
     var first = session.Acquire(ComputationRequest.Query("SELECT 1")); await first.Completion;
     var original = first.CellText;
     using (var duplicate = session.Acquire(ComputationRequest.Query("SELECT 1"))) Equal(original, duplicate.CellText);
-    var tag = original.Split("::")[1];
+    var tag = original.Split('/')[3];
     first.Dispose(); await session.WaitForIdleAsync();
     using var second = session.Acquire(ComputationRequest.Query("SELECT 1")); await second.Completion;
-    Equal("xlduck://t/2::" + tag, second.CellText);
+    Equal("xlduck://t/" + tag + "/2", second.CellText);
     Throws<ArgumentException>(() => session.ResolveCellHandle(original));
     await using var reopened = new WorkbookSession(_ => new FakeBackend());
     using var fresh = reopened.Acquire(ComputationRequest.Query("SELECT 1")); await fresh.Completion;
-    Equal(true, fresh.CellText.StartsWith("xlduck://t/1::")); Equal(false, fresh.CellText == original);
+    Equal(true, fresh.CellText.EndsWith("/1")); Equal(false, fresh.CellText == original);
     Throws<ArgumentException>(() => reopened.ResolveCellHandle(original));
-    Equal(true, CellHandle.IsToken("xlduck://t/9223372036854775807::" + tag));
+    Equal(true, CellHandle.IsToken("xlduck://t/" + tag + "/9223372036854775807"));
     foreach (var bad in new[] {
-        "xlduck://t/0::" + tag, "xlduck://t/01::" + tag, "xlduck://T/2::" + tag,
-        "xlduck://t/-2::" + tag, "xlduck://t/+2::" + tag, "xlduck://t/2::" + tag + "=",
-        "xlduck://t/2::" + tag[..10], "xlduck://t/9223372036854775808::" + tag,
-        "xlduck://t2::" + tag, "xlduck://t/2:" + tag, "xlduck://t/2~" + tag,
-        "xlduck://t/::" + tag, "xlduck://t/2::" + tag[..10] + "!",
-        "XLDUCK://t/2::" + tag, "xlduck://x/2::" + tag, "T2~" + tag, "2026-10-25", "Table 2" })
+        "xlduck://t/ABCD/0", "xlduck://t/ABCD/01", "xlduck://T/ABCD/2",
+        "xlduck://t/ABCD/-2", "xlduck://t/ABCD/+2", "xlduck://t/ABCD/2=",
+        "xlduck://t/ABC/2", "xlduck://t/ABCD/9223372036854775808",
+        "xlduck://t/ABCDE/2", "xlduck://t/ABCD/", "xlduck://t/AbCD/2",
+        "xlduck://t/A!CD/2", "xlduck://t/ABCD/2/", "xlduck://t/1::Ab3dE6gH9jk",
+        "XLDUCK://t/ABCD/2", "xlduck://x/ABCD/2", "2026-10-25", "Table 2" })
         Equal(false, CellHandle.IsToken(bad));
+});
+await Check("short session tags stay distinct across concurrent and retired sessions", async () =>
+{
+    var tags = new System.Collections.Concurrent.ConcurrentBag<string>();
+    await Task.WhenAll(Enumerable.Range(0, 2000).Select(async i =>
+    {
+        await using var session = new WorkbookSession(_ => new FakeBackend());
+        using var lease = session.Acquire(ComputationRequest.Query("SELECT 1"));
+        await lease.Completion; tags.Add(lease.CellText.Split('/')[3]);
+    }));
+    Equal(2000, tags.Distinct(StringComparer.Ordinal).Count());
 });
 await Check("spill recovery preserves active hosts/workers and unmarked directories", async () =>
 {

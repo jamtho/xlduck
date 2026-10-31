@@ -39,7 +39,7 @@ Copy-Item -LiteralPath (Join-Path $repo 'third-party') -Destination $package -Re
 Copy-Item -LiteralPath (Join-Path $repo 'docs/assets') -Destination (Join-Path $package 'docs') -Recurse
 [void][IO.Directory]::CreateDirectory((Join-Path $package 'examples/research-demo'))
 Copy-Item -LiteralPath (Join-Path $repo 'examples/research-demo/XlDuck Research Demo.xlsx'),(Join-Path $repo 'examples/research-demo/README.md') -Destination (Join-Path $package 'examples/research-demo')
-Copy-Item -LiteralPath (Join-Path $repo 'docs/FORMULAS.md'),(Join-Path $repo 'docs/RELEASE.md'),(Join-Path $repo 'docs/INSTALL.md'),(Join-Path $repo 'docs/AGENT-INTEGRATION.md'),(Join-Path $repo 'docs/AGENT-WORKFLOW.md'),(Join-Path $repo 'docs/agent-exploration.js') -Destination (Join-Path $package 'docs')
+Copy-Item -LiteralPath (Join-Path $repo 'docs/FORMULAS.md'),(Join-Path $repo 'docs/RELEASE.md'),(Join-Path $repo 'docs/RELEASE-NOTES.md'),(Join-Path $repo 'docs/INSTALL.md'),(Join-Path $repo 'docs/AGENT-INTEGRATION.md'),(Join-Path $repo 'docs/AGENT-WORKFLOW.md'),(Join-Path $repo 'docs/agent-exploration.js') -Destination (Join-Path $package 'docs')
 [void][IO.Directory]::CreateDirectory((Join-Path $package 'scripts'))
 Copy-Item -LiteralPath (Join-Path $repo 'scripts/Get-Diagnostics.ps1'),(Join-Path $repo 'scripts/Verify-Package.ps1'),(Join-Path $repo 'scripts/Setup.ps1'),(Join-Path $repo 'scripts/Setup.Core.ps1') -Destination (Join-Path $package 'scripts')
 foreach ($launcher in @('Install.cmd','Uninstall.cmd','Rollback.cmd','Install Codex Skill.cmd','START-HERE.html')) {
@@ -97,5 +97,5 @@ try {
     }
 } finally { $archive.Dispose() }
 & (Join-Path $PSScriptRoot 'Verify-Package.ps1') -Directory $package
-Write-Host "Unsigned preview package: $package"
+Write-Host "Unsigned package: $package"
 Write-Host "Archive: $package.zip"

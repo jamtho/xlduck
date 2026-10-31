@@ -278,6 +278,8 @@ if (network)
                 [new("s3://bucket/", S3CredentialSource.AccessKey, Endpoint: server.Endpoint, UseSsl: false, PathStyle: true, CredentialId: id)], keys);
             var before = server.AuthenticatedS3Reads;
             await using var session = Session(config);
+            var listing = await Query(session, "SELECT file FROM glob(?) LIMIT 20", QueryArgument.Scalar("s3://bucket/*.parquet"));
+            Equal(1L, listing.TotalRows); Equal("s3://bucket/sample.parquet", listing.Rows[0][0].ToDisplayValue());
             Equal(2L, (await Query(session, "SELECT * FROM read_parquet(?)", QueryArgument.Scalar("s3://bucket/sample.parquet"))).TotalRows);
             Equal(true, server.AuthenticatedS3Reads > before);
             Equal(0d, (await Query(session, "SELECT count(*) FROM duckdb_settings() WHERE name IN ('s3_access_key_id','s3_secret_access_key','s3_session_token') AND coalesce(value,'')<>''")).Rows[0][0].ToDisplayValue());

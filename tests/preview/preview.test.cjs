@@ -92,7 +92,7 @@ const { chromium } = require('playwright');
     }
     check('offline chart rendering makes no external requests', () => assert.deepEqual(external, []));
     await page.setViewportSize({width:240,height:650});
-    await page.evaluate(() => renderState({kind:'plot',title:'Chart',handle:'xlduck://p/1::abcdefghijk',plot:{
+    await page.evaluate(() => renderState({kind:'plot',title:'Chart',handle:'xlduck://p/ABCD/1',plot:{
       template:'line',overrides:{x:'month',y:'records',title:'Monthly mail records in the California research selection (UTC)'},
       columns:['month','records'],types:['VARCHAR','DOUBLE'],rows:[['Jan',1354],['Feb',932]],
       kinds:[['Text','Number'],['Text','Number']],rowCount:2
@@ -156,7 +156,24 @@ const { chromium } = require('playwright');
       rows:[[51.5,-0.1],[52,0.1]], kinds:[['Number','Number'],['Number','Number']], rowCount:'2'
     }}));
     await page.waitForFunction(() => !!document.querySelector('.leaflet-container'));
-    check('bundled map renders with unavailable tiles', () => assert.ok(true));
+    await page.waitForFunction(() => document.querySelector('.map-tile-notice')?.hidden === false);
+    const mapState = await page.evaluate(() => ({
+      notice: document.querySelector('.map-tile-notice').textContent,
+      height: document.querySelector('.map-container').getBoundingClientRect().height,
+      viewportHeight: innerHeight,
+      attribution: document.querySelector('.leaflet-control-attribution').textContent,
+      referrer: document.querySelector('meta[name=referrer]').content
+    }));
+    check('unavailable map tiles leave data visible and explain the missing background', () => {
+      assert.match(mapState.notice, /data is still shown/);
+      assert.ok(external.some(url => url.startsWith('https://tile.openstreetmap.org/')));
+      assert.ok(external.every(url => url.startsWith('https://tile.openstreetmap.org/')));
+      assert.match(mapState.attribution, /OpenStreetMap/);
+      assert.equal(mapState.referrer, 'strict-origin-when-cross-origin');
+    });
+    check('map height fits the pane instead of forcing an 800px map', () => {
+      assert.ok(mapState.height <= Math.max(300, mapState.viewportHeight * 0.65) + 1);
+    });
     check('preview has no uncaught JavaScript errors', () => assert.deepEqual(errors, []));
     console.log(`${passed} passed, ${failed} unexpected failures, ${knownFailures} known defects reproduced.`);
     process.exitCode = failed || (knownFailures && !process.argv.includes('--allow-known-defects')) ? 1 : 0;

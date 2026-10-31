@@ -4,7 +4,7 @@
 
 XlDuck lets researchers build SQL analyses through Excel cells. DuckDB computes tables in a worker process; cells hold handles that connect sources, intermediate analyses, outputs and charts. Excel owns the dependency graph. AI working inside Excel can write the SQL and inspect results through the same worksheet functions.
 
-**[Download 0.2.0-preview.1 for Windows x64](https://github.com/jamtho/xlduck/releases/tag/v0.2.0-preview.1)**. This first public preview replaces the old shared engine and unrestricted configuration API. It is unsigned; installation and native Excel tests have run on the development workstation. Clean-machine and broader compatibility trials are [documented follow-ups](docs/RELEASE.md#preview-scope-and-follow-up-trials).
+**[Download XlDuck 1.0.0 for Windows x64](https://github.com/jamtho/xlduck/releases/tag/v1.0.0)**. The first full release of the rewrite brings workbook-local computation, portable connection definitions and tools for agents exploring data in Excel. The distribution is unsigned; see the [tested scope and follow-up work](docs/RELEASE.md#tested-scope-and-follow-up-work).
 
 ![A live XlDuck workbook with editable filters, a graph of table handles, and a line chart in the preview pane](docs/assets/research-chart.jpg)
 
@@ -12,11 +12,17 @@ The included demo uses synthetic observations. Selecting a plot handle displays 
 
 ## Install
 
-Download the ZIP from the [preview release](https://github.com/jamtho/xlduck/releases/tag/v0.2.0-preview.1), extract the complete folder and open **START-HERE.html**. After installing the x64 .NET 10 Desktop Runtime and WebView2 if needed, save your work, close Excel and run **Install.cmd**. The per-user setup copies the complete add-in to a stable folder and registers it for normal Excel startup. It includes rollback, removal and optional agent setup; no SDK is needed. See the [Windows installation guide](docs/INSTALL.md) for exact steps, manual registration and troubleshooting.
+Download the ZIP from the [release](https://github.com/jamtho/xlduck/releases/tag/v1.0.0), extract the complete folder and open **START-HERE.html**. After installing the x64 .NET 10 Desktop Runtime and WebView2 if needed, save your work, close Excel and run **Install.cmd** from File Explorer. The per-user setup copies the complete add-in to a stable folder and registers it for normal Excel startup. It includes rollback, removal and optional agent setup; no SDK is needed. See the [Windows installation guide](docs/INSTALL.md) for exact steps, manual registration and troubleshooting.
 
 The package includes a tiny XlDuck skill ZIP for compatible Excel agents and **Install Codex Skill.cmd** for local Codex. The skill reads its detailed guidance from the installed add-in, so most upgrades need no new skill upload. See [agent setup](docs/AGENT-INTEGRATION.md#install-the-bootstrap-skill) for provider-specific availability and verification.
 
 ## Start an analysis
+
+Open your preferred Excel agent and start with:
+
+> Use XlDuck for this analysis. First read DuckHelp() and DuckHelp("workflow"). Discover the available connections, inspect the actual schema and a small sample, and leave the final SQL and formulas in the workbook so I can inspect and change them.
+
+The agent can explore through XlDuck's bounded inspection functions before building a reproducible worksheet. SQL can live as ordinary text in cells, referenced by formulas below it. Retain tables in handle cells to reuse them across queries and charts. Your AI provider's Excel add-in is installed separately; XlDuck also works with handwritten SQL.
 
 After installation, open **examples/research-demo/XlDuck Research Demo.xlsx** from the extracted package. The [research demo](examples/research-demo/README.md) has editable filters, a visible query graph and two preview charts, with no credentials or external data required. Save your working copy under Documents before experimenting.
 
@@ -30,7 +36,7 @@ A4: =DuckPlot(A2, "line", "x", "n", "y", "square")
 D1: =DuckOut(A2)
 ```
 
-Select A4 and open **Preview Pane** (Ctrl+Shift+P) to see the chart. Select A1 or A2 for a table preview. Handles are opaque, workbook-session-specific references; use `DuckOut`, `DuckScalar` or `DuckInspect` to read them.
+Select A4 and open **Preview Pane** (Ctrl+Shift+P) to see the chart. Select A1, A2, or any cell in the D1 spill for the underlying table's preview. Handles such as `xlduck://t/ABCD/42` are opaque session references; refer to their producing cells and use `DuckOut`, `DuckScalar` or `DuckInspect` to read them.
 
 ![Selecting a retained table shows its typed columns and rows in the live XlDuck preview pane](docs/assets/research-table.jpg)
 
@@ -51,6 +57,7 @@ An unchanged query and unchanged typed inputs reuse their retained result. F9, S
 | `DuckInspect(handle, [field])` | `schema`, `rows`, or `definition` |
 | `DuckDate(serial)`, `DuckDateTime(serial)` | ISO text for explicit SQL date/timestamp casts |
 | `DuckStatus()` | Workbook readiness, session and computation counts as JSON |
+| `DuckConnections([anchor], [offset])` | Discover this workbook's S3 scopes/endpoints and authentication methods, without credentials or source reads |
 | `DuckCellStatus(cell)` | Per-cell execution, structured failure and Excel display status as JSON |
 | `DuckSchema(sql, …)` | Column names/types without retaining source data rows |
 | `DuckExplore(anchor, requestJson)` | Bounded, read-only agent inspection prototype, including start/poll |
@@ -69,13 +76,13 @@ Worksheet SQL supports read-and-compute SELECT queries and curated CSV, JSON, Pa
 
 Protected View workbooks do not run XlDuck queries. Excel's **Enable Editing** transition starts a fresh session; ordinary workbooks, including new books and copies, run automatically. XlDuck does not change Trust Center settings or add a separate approval dialog. A workbook that bypasses Protected View can therefore execute its read-and-compute formulas.
 
-Use **XlDuck > Connections** for S3-compatible storage. Configure an endpoint, bucket/path and saved access key, environment credentials or anonymous access. HTTPS and path-style addressing are advanced settings; profile providers remain optional. XlDuck supplies the protocol's signing-region default internally. Settings are stored locally by workbook path, independently of its file contents. Save As carries those settings to the new path; a copy at another path starts with defaults. Saved keys live in Windows Credential Manager and are not written to workbook settings or cells.
+Use **XlDuck > Connections** for S3-compatible storage. Give the connection a name and configure its endpoint, bucket/path and authentication. HTTPS and path-style addressing are advanced settings; profile providers remain optional. XlDuck supplies the protocol's signing-region default internally. Connection definitions and resource budgets are saved **inside the workbook**, so they survive renaming, moving and copying. Save the workbook after applying changes. Actual access keys stay in Windows Credential Manager; local associations connect them to stable connection IDs and their endpoints. Another computer needs its own credentials. Changing an endpoint requires entering credentials for that destination. Existing local settings migrate when their workbook opens; save it to complete migration.
 
 Automatic calculation is the primary mode. In manual mode, explicitly calculate to start work and calculate again after completion to propagate it; an asynchronous chain may need several passes. XlDuck changes neither Excel's calculation mode nor its global RTD interval.
 
 ## Development on Windows
 
-Requires 64-bit desktop Excel, a .NET SDK supporting the .NET 8 API target, the **x64 .NET 10 Desktop Runtime** for the intended public deployment, and WebView2 for the pane. The add-in and worker roll forward to the newest available compatible runtime. See [release preparation](docs/RELEASE.md) for tested load orders and remaining deployment checks; this is an unsigned public preview.
+Requires 64-bit desktop Excel, a .NET SDK supporting the .NET 8 API target, the **x64 .NET 10 Desktop Runtime** for public deployment, and WebView2 for the pane. The add-in and worker roll forward to the newest available compatible runtime. See [release preparation](docs/RELEASE.md) for tested load orders and remaining deployment checks. Public binaries are unsigned.
 
 Acquire the exact dependencies and build from the repository root:
 

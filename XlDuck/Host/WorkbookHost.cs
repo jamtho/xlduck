@@ -10,11 +10,12 @@ using Excel = Microsoft.Office.Interop.Excel;
 namespace XlDuck;
 
 internal readonly record struct CellAddress(nint Sheet, int Row, int Column);
-internal sealed class CellBinding(string key, ResultLease lease, Task<object> value) : IDisposable
+internal sealed class CellBinding(string key, ResultLease lease, Task<object> value, bool previewOutput = false) : IDisposable
 {
     internal string Key { get; set; } = key;
     internal ResultLease Lease { get; } = lease;
     internal Task<object> Value { get; } = value;
+    internal bool PreviewOutput { get; } = previewOutput;
     internal bool Seen;
     internal bool Published;
     public void Dispose() => Lease.Dispose();
@@ -44,7 +45,7 @@ internal sealed class OpenWorkbook(Excel.Workbook workbook)
     internal bool Closed;
     internal long Revision;
     internal string? Status;
-    internal Task SettingsWork = Task.CompletedTask;
+    internal bool HasMetadata;
     internal readonly Dictionary<CellAddress, FormulaCell> Cells = new();
     internal readonly Dictionary<nint, Excel.Worksheet> Sheets = new();
     internal static string SavedPath(Excel.Workbook workbook) => string.IsNullOrEmpty(workbook.Path) ? "" : workbook.FullName;
@@ -56,9 +57,10 @@ internal static class WorkbookHost
     private static readonly Dictionary<nint, OpenWorkbook> Books = new();
     private static readonly Dictionary<nint, OpenWorkbook> Sheets = new();
     private static readonly List<Task> Disposals = [];
-    private static readonly List<Task> SettingsWrites = [];
     private static readonly WorkbookSettingsStore SettingsStore = new(System.IO.Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XlDuck", "connections"));
+    private static readonly ConnectionCredentialBindings CredentialBindings = new(System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "XlDuck", "credential-bindings"));
     private static Excel.Application? _application;
     private static System.Windows.Forms.Timer? _timer;
     private static volatile bool _stopped = true;
@@ -107,11 +109,16 @@ internal static class WorkbookHost
     {
         if (!success) return;
         var identity = Identity(workbook);
-        if (Books.TryGetValue(identity, out var saving)) saving.SettingsSaved = false;
+        if (Books.TryGetValue(identity, out var saving))
+        {
+            saving.SettingsSaved = saving.HasMetadata && WorkbookMetadataAccess.SupportsFormat(workbook);
+            if (saving.HasMetadata && !saving.SettingsSaved) saving.Status = "This file format cannot keep XlDuck connections. Save as .xlsx, .xlsm or .xlsb.";
+            else if (saving.SettingsSaved) saving.Status = null;
+        }
         Queue(() =>
         {
             Reconcile();
-            if (Books.TryGetValue(identity, out var book) && book.Session is not null) Remember(book);
+            Changed?.Invoke();
         });
     }
     internal static void Reconcile()
@@ -150,22 +157,38 @@ internal static class WorkbookHost
             book.Sheets.Clear(); Books.Remove(removed);
         }
         Disposals.RemoveAll(task => task.IsCompleted);
-        SettingsWrites.RemoveAll(task => task.IsCompleted);
         Changed?.Invoke();
     }
     private static async Task LoadSettingsAsync(OpenWorkbook book)
     {
         var path = book.Path; var revision = book.Revision;
-        WorkbookSettings? settings;
-        try { settings = path.Length == 0 ? null : await SettingsStore.ReadAsync(path).ConfigureAwait(false); }
-        catch (Exception error) { Log.Error("Read workbook connections", error); settings = null; }
-        Queue(() =>
+        try
         {
-            if (book.Closed || book.Revision != revision) return;
-            if (book.Path != path) { _ = LoadSettingsAsync(book); return; }
-            ApplySettings(book, settings ?? new(), save: false);
-            book.SettingsSaved = settings is not null;
-        });
+            // Capture COM metadata before any await. A present but invalid part must
+            // never fall back to legacy settings or overwrite itself with defaults.
+            var xml = WorkbookMetadataAccess.Read(book.Workbook);
+            var settings = xml is null ? await SettingsStore.ReadForMigrationAsync(path).ConfigureAwait(false)
+                : CredentialBindings.Resolve(WorkbookMetadata.Read(xml));
+            Queue(() =>
+            {
+                if (book.Closed || book.Revision != revision) return;
+                if (book.Path != path) { _ = LoadSettingsAsync(book); return; }
+                try
+                {
+                    ApplySettings(book, settings ?? new(), save: xml is null && settings is not null);
+                    if (xml is not null) { book.HasMetadata = true; book.SettingsSaved = true; }
+                    else if (settings is not null) book.Status = "Connection settings migrated into this workbook. Save it to keep them with the file.";
+                }
+                catch (Exception error) { SettingsFailed(book, error); }
+            });
+        }
+        catch (Exception error) { Queue(() => { if (!book.Closed && book.Revision == revision) SettingsFailed(book, error); }); }
+    }
+    private static void SettingsFailed(OpenWorkbook book, Exception error)
+    {
+        Log.Error("Read workbook connections", error);
+        book.Status = "Could not load workbook connections: " + error.Message;
+        Recalculate(book); Changed?.Invoke();
     }
     internal static OpenWorkbook Active()
     {
@@ -216,13 +239,23 @@ internal static class WorkbookHost
     internal static void ApplySettings(OpenWorkbook book, WorkbookSettings settings, bool save = true)
     {
         RequireOrdinaryWorkbook(book.Workbook);
-        settings.Validate(); book.Revision++; book.Settings = settings; book.Status = null;
+        settings.Validate(); settings = settings.WithConnectionIds();
+        if (save)
+        {
+            // These references come from the host dialog/command or legacy local
+            // storage. Workbook XML is resolved separately and cannot supply one.
+            foreach (var connection in settings.S3.Where(c => c.Credentials == XlDuck.Core.S3CredentialSource.AccessKey && c.CredentialId is not null))
+                CredentialBindings.Save(connection);
+            WorkbookMetadataAccess.Write(book.Workbook, settings);
+            book.HasMetadata = true; book.SettingsSaved = false;
+        }
+        book.Revision++; book.Settings = settings; book.Status = null;
         Restart(book);
-        if (save) Remember(book);
     }
     internal static void Restart(OpenWorkbook book)
     {
         RequireOrdinaryWorkbook(book.Workbook);
+        if (book.Session is null && book.Status is not null) throw new InvalidOperationException(book.Status);
         book.Revision++;
         RetireSession(book);
         var worker = System.IO.Path.Combine(InstallDirectory, "worker", "XlDuck.Worker.exe");
@@ -244,32 +277,6 @@ internal static class WorkbookHost
             var disposal = session.DisposeAsync().AsTask(); Disposals.Add(disposal);
             _ = disposal.ContinueWith(task => { if (task.IsFaulted) Log.Write("Worker cleanup failed; restart XlDuck."); }, TaskScheduler.Default);
         }
-    }
-    private static void Remember(OpenWorkbook book)
-    {
-        if (book.Path.Length == 0) return;
-        var path = book.Path; var settings = book.Settings; var revision = book.Revision;
-        book.SettingsSaved = false;
-        AppendSettingsWork(book, async () =>
-        {
-            await SettingsStore.SaveAsync(path, settings).ConfigureAwait(false);
-            Queue(() => { if (!book.Closed && book.Session is not null && book.Path == path && book.Revision == revision) { book.SettingsSaved = true; Changed?.Invoke(); } });
-        });
-    }
-    private static void AppendSettingsWork(OpenWorkbook book, Func<Task> action)
-    {
-        var previous = book.SettingsWork;
-        book.SettingsWork = Task.Run(async () =>
-        {
-            try { await previous.ConfigureAwait(false); } catch { }
-            try { await action().ConfigureAwait(false); }
-            catch (Exception error)
-            {
-                Log.Error("Save workbook connections", error);
-                Queue(() => { if (!book.Closed) { book.Status = "Could not save connection settings. Save the workbook again."; Changed?.Invoke(); } });
-            }
-        });
-        SettingsWrites.Add(book.SettingsWork);
     }
     internal static void Recalculate(OpenWorkbook book)
     {
@@ -322,6 +329,29 @@ internal static class WorkbookHost
             if (Application.Intersect(target, range) is null) continue;
             if (Convert.ToString(((dynamic)range).Formula2) != cell.Formula) RemoveCell(book, address);
         }
+        // Excel can move a formula and its cached spill without invoking the UDF
+        // at its new address. Re-establish ownership there through normal
+        // evaluation; unchanged requests reuse the retained computation.
+        Queue(() =>
+        {
+            if (book.Closed || FindSheet(sheet) != book) return;
+            Excel.Range formulas;
+            try { formulas = target.SpecialCells(Excel.XlCellType.xlCellTypeFormulas); }
+            catch (COMException) { return; }
+            var changed = Application.Intersect(formulas, target);
+            if (changed is null) return;
+            var sheetId = book.Sheets.FirstOrDefault(pair => Identity(pair.Value) == Identity(sheet)).Key;
+            foreach (Excel.Range range in changed.Cells)
+            {
+                var formula = Convert.ToString(((dynamic)range).Formula2) ?? "";
+                if (!ExcelFormula.UsesXlDuck(formula)) continue;
+                var address = new CellAddress(sheetId, range.Row - 1, range.Column - 1);
+                if (book.Cells.TryGetValue(address, out var current) && current.Formula == formula) continue;
+                range.Dirty();
+                if (Application.Calculation == Excel.XlCalculation.xlCalculationAutomatic) range.Calculate();
+            }
+            Changed?.Invoke();
+        });
         Changed?.Invoke();
     }
     private static void Calculated(object source)
@@ -355,10 +385,9 @@ internal static class WorkbookHost
             }
             catch (Exception error) { Log.Error("Workbook event cleanup", error); }
         }
-        var writes = SettingsWrites.ToArray();
         foreach (var book in Books.Values) { book.Closed = true; RetireSession(book); book.Sheets.Clear(); }
         Books.Clear(); Sheets.Clear(); _application = null;
-        try { Task.WhenAll(Disposals.Concat(writes)).Wait(TimeSpan.FromSeconds(8)); } catch { }
-        Disposals.Clear(); SettingsWrites.Clear(); Changed = null;
+        try { Task.WhenAll(Disposals).Wait(TimeSpan.FromSeconds(8)); } catch { }
+        Disposals.Clear(); Changed = null;
     }
 }
